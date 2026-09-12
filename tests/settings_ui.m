@@ -37,6 +37,7 @@ char *GSFixtureRequest(char *json,char *role){
 BOOL GSIsGooglePhotos(void){return YES;}
 void GSInstallNativeRouting(void){}
 BOOL GSNativeRoutingAvailable(void){return YES;}
+NSDictionary *GSNativeRoutingSnapshot(void){return @{};}
 BOOL GSBackupRequestsAvailable(void){return YES;}
 NSDictionary *GSBackupRequestsSnapshot(void){return @{};}
 BOOL GSNativeRoutingEnabled(void){return NO;}

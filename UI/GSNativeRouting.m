@@ -1,6 +1,9 @@
 #import "GSNativeRouting.h"
+#import "GSExporter.h"
+#import "../Shared/IPCProtocol.h"
 #if GS_JAILED
 #import "GSBackupRequests.h"
+#import "GSNativeAccount.h"
 #endif
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -12,6 +15,14 @@ static NSString *const GSEnabledKey=@"dev.tqmane.gunshot.routeManualBackup";
 static NSString *const GSAccountKey=@"dev.tqmane.gunshot.routeAccount";
 static void (*GSBackupOriginal)(id,SEL,id);
 static void (*GSGridBackupOriginal)(id,SEL,id);
+static dispatch_queue_t GSImportQueue;
+static NSObject *GSImportLock;
+static NSMutableDictionary *GSImportStatus;
+static void GSInitializeImport(void){static dispatch_once_t once;dispatch_once(&once,^{GSImportQueue=dispatch_queue_create("dev.tqmane.gunshot.native-import",DISPATCH_QUEUE_SERIAL);GSImportLock=[NSObject new];GSImportStatus=[@{@"actions":@0,@"queued":@0,@"failed":@0}mutableCopy];});}
+static void GSImportResult(NSString *error,NSUInteger queued){
+ GSInitializeImport();@synchronized(GSImportLock){GSImportStatus[@"queued"]=@([GSImportStatus[@"queued"]unsignedIntegerValue]+queued);if(error){GSImportStatus[@"failed"]=@([GSImportStatus[@"failed"]unsignedIntegerValue]+1);GSImportStatus[@"lastError"]=error;}else[GSImportStatus removeObjectForKey:@"lastError"];}
+}
+NSDictionary *GSNativeRoutingSnapshot(void){GSInitializeImport();@synchronized(GSImportLock){NSMutableDictionary *s=[GSImportStatus mutableCopy];s[@"presentation"]=@"silent";return s;}}
 BOOL GSIsGooglePhotos(void){return [[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqualToString:@"GooglePhotos"];}
 BOOL GSNativeRoutingAvailable(void){return GSInstalled;}
 BOOL GSNativeRoutingEnabled(void){return GSInstalled&&[NSUserDefaults.standardUserDefaults boolForKey:GSEnabledKey];}
@@ -32,10 +43,32 @@ static void GSRoute(id localAssets){
   if(![asset isKindOfClass:PHAsset.class]){valid=NO;break;}
   [assets addObject:asset];
  }
- // A routed action NEVER falls back to a native upload if export/queueing fails.
- // An empty selection presents an explanatory error instead of reporting success.
- NSString *account=GSNativeRoutingAccount();
- dispatch_async(dispatch_get_main_queue(),^{GSPresentRoutedAssets(valid?assets:@[],account);});
+ // Compatibility path: import without creating or presenting a view controller.
+ // Failed imports remain visible in settings/diagnostics, never native fallback.
+ GSInitializeImport();@synchronized(GSImportLock){GSImportStatus[@"actions"]=@([GSImportStatus[@"actions"]unsignedIntegerValue]+1);}
+ if(!valid||!assets.count){GSImportResult(@"選択した写真を取得できませんでした。",0);return;}
+ NSString *account=[GSNativeRoutingAccount()copy];NSArray *selection=[assets copy];
+ dispatch_async(dispatch_get_main_queue(),^{
+#if GS_JAILED
+  if(![account isEqual:GSNativeAccountSummary()[@"email"]]){GSImportResult(@"ログイン中のアカウントと送信先が一致しません。",0);return;}
+#endif
+  dispatch_async(GSImportQueue,^{@autoreleasepool{
+   NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);
+   if(!account.length||![accounts[@"selected"]isEqual:account]){GSImportResult(@"送信先が変更されています。連携設定を確認してください。",0);return;}
+   NSDictionary *options=GSRequest(@{@"op":@"options"},&error);NSUInteger queued=0;
+   for(PHAsset *asset in selection){@autoreleasepool{
+    if(error||!options)break;
+    if(!GSNativeRoutingEnabled()||![GSNativeRoutingAccount()isEqual:account]){error=[NSError errorWithDomain:@"GoToHP.Import" code:1 userInfo:nil];break;}
+    NSURL *dir=[NSURL fileURLWithPath:[NSTemporaryDirectory()stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
+    BOOL created=[NSFileManager.defaultManager createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:&error];
+    NSArray *files=created?GSExportAsset(asset,dir,&error):nil;
+    NSString *job=files?GSImportFiles(files,account,options[@"quality"],asset.creationDate,&error):nil;
+    [NSFileManager.defaultManager removeItemAtURL:dir error:nil];
+    if(!job){if(!error)error=[NSError errorWithDomain:@"GoToHP.Import" code:2 userInfo:nil];break;}queued++;
+   }}
+   GSImportResult(queued==selection.count?nil:@"写真をキューに追加できませんでした。アカウントと写真へのアクセスを確認してください。",queued);
+  }});
+ });
 }
 static void GSBackup(id object,SEL selector,id assets){
  if(!GSNativeRoutingEnabled()){GSBackupOriginal(object,selector,assets);return;}

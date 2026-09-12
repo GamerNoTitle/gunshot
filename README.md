@@ -4,7 +4,7 @@ Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`
 
 **開発版です。iPhone での起動・Google 認証・実アップロード・quota 判定は未検証です。** ビルド成功と実機動作は別です。添付された Google Photos 7.92.0 の Info.plist は minimum iOS **18.0** でした。iOS 15/16 の端末では対応する旧版 Google Photos が必要です。
 
-**追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos 内の **GoToHP → Settings** から設定できます。[手動・自動バックアップを GoToHP へ転送](docs/analysis/backup-routing.md)する設定は jailed / 7.92.0 限定・既定 OFF です。Google Photos の自動バックアップをオンにし、アプリを前面で開いて使用します。実機での再照合は検証中です。
+**追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos 内の **GoToHP → Settings** から設定できます。[手動・自動バックアップを GoToHP へ転送](docs/analysis/backup-routing.md)する設定は jailed / 7.92.0 限定・既定 OFF です。有効化後は純正の手動バックアップを押すだけで、GoToHP 画面を開かずに保存済みの画質・送信先で処理します。Google Photos の自動バックアップをオンにし、アプリを前面で開いて使用します。実機での再照合は検証中です。
 
 [全アップロード置換の状況と診断手順](docs/full-upload-replacement.md)：全置換はまだ未完成です。7.92.0 の native uploader を観測する opt-in 診断・JSON export を追加しています。
 

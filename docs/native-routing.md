@@ -6,7 +6,7 @@
 
 Google Photos → **GoToHP → Settings** に account、quality、queue の設定ページがあります。そこで account を追加・選択してから **Route Google Photos backup action** を有効にします。有効化時に GoToHP の送信先メールアドレスと対象範囲を表示します。Google Photos の automatic backup は別途 OFF にし、独立した標準アップロードとの重複を避けてください。
 
-以後、対象となる Google Photos の標準バックアップ操作は選択 asset を GoToHP に渡して queue 画面を開きます。元の標準アップロード関数を呼びません。失敗時に標準アップロードへ戻す fallback はありません。成功・失敗と progress は GoToHP queue で確認します。Google Photos 内部の backup DB、サーバーのレスポンス、完了 callback を偽装しません。画質と送信先は GoToHP の設定を使用します。アカウント変更時は転送設定を OFF/ON して送信先を再確認する必要があります。
+以後、対象となる Google Photos の標準バックアップ操作は選択 asset を画面なしで GoToHP の永続 queue に追加します。元の標準アップロード関数を呼びません。失敗時に標準アップロードへ戻す fallback はありません。成功・失敗と progress は GoToHP queue で確認します。Google Photos 内部の backup DB、サーバーのレスポンス、完了 callback を偽装しません。画質と送信先は GoToHP の設定を使用します。アカウント変更時は転送設定を OFF/ON して送信先を再確認する必要があります。
 
 ## 調査根拠
 
@@ -19,7 +19,7 @@ Google Photos → **GoToHP → Settings** に account、quality、queue の設�
 | PHSLocalAsset | phAsset | @16@0:8 |
 | PHSLocalAsset | isLocked | B16@0:8 |
 
-実行時にも version、class、selector、encoding を全て照合し、一致したときだけ Objective-C method replacement を行います。未知の型・取得できない asset・locked asset は GoToHP のエラー画面に送ります。NSSet/NSArray の全件を解決してから処理するため、未対応 item の混在で一部だけ native へ送ることはありません。
+実行時にも version、class、selector、encoding を全て照合し、一致したときだけ Objective-C method replacement を行います。未知の型・取得できない asset・locked asset は 画面を開かず取込を止め、GoToHP 設定画面と診断にエラーを記録します。NSSet/NSArray の全件を解決してから処理するため、未対応 item の混在で一部だけ native へ送ることはありません。
 
 これは公開 API の保証ではありません。別バージョンでは転送設定は unavailable になり、標準操作は Google Photos 本来のものです。更新後は routing が働くと想定せず、GoToHP の Upload を利用してください。自動バックアップ、共有時に発生する upload、locked folder、編集の保存、新規生成コンテンツなど、上記 action を通らない経路は対象外です。全経路を置換するには Swift/Scotty uploader と完了 model の実機解析が別途必要です。
 
