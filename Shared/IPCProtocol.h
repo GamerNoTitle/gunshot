@@ -18,4 +18,4 @@ extern kern_return_t rocketbootstrap_unlock(const char *);
 #ifdef __cplusplus
 }
 #endif
-NSDictionary *GSRequest(NSDictionary *request, NSError **error);
+FOUNDATION_EXPORT NSDictionary *GSRequest(NSDictionary *request, NSError **error);

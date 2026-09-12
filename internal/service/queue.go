@@ -207,6 +207,9 @@ func (e *Engine) execute(ctx context.Context, snapshot Job, paths []string) {
 		j.MediaKey = key
 		j.Uploaded = j.Total
 		j.Error = ""
+	case errors.Is(err, errRemoteComponentExists):
+		j.State = "failed"
+		j.Error = "remote_live_photo_component_exists"
 	case j.State == "committing":
 		j.State = "failed"
 		j.Error = "commit_outcome_unknown"

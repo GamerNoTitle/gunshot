@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 )
 
+var errRemoteComponentExists = backend.ErrGunshotRemoteComponentExists
+
 func Initialize(root string) (*Engine, error) {
 	e, err := Open(root, upload)
 	if err != nil {

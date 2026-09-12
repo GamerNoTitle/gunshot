@@ -6,7 +6,7 @@
 - (void)importAssets:(NSArray<PHAsset *> *)assets;
 - (void)importURLs:(NSArray<NSURL *> *)urls;
 @end
-void GSPresent(UIViewController *host);
-void GSInstallButton(UIWindow *window);
+FOUNDATION_EXPORT void GSPresent(UIViewController *host);
+FOUNDATION_EXPORT void GSInstallButton(UIWindow *window);
 @interface GSUploadActivity : UIActivity
 @end

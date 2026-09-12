@@ -211,3 +211,17 @@ func TestCorruptStateDoesNotReset(t *testing.T) {
 		t.Fatal("corrupt state silently reset")
 	}
 }
+
+func TestRemoteLivePhotoComponentIsNotRetried(t *testing.T) {
+	e := newEngine(t, func(context.Context, []string, string, string, func(Progress)) (string, error) {
+		return "", errRemoteComponentExists
+	})
+	j := importTest(t, e, "original")
+	e.online = true
+	e.wifi = true
+	e.Tick()
+	waitIdle(t, e)
+	if j.State != "failed" || j.Error != "remote_live_photo_component_exists" || j.Attempts != 1 {
+		t.Fatal("duplicate component outcome lost")
+	}
+}

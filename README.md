@@ -36,7 +36,7 @@ Jailbroken iPhone 用の Google Photos uploader。`xob0t/gotohp` の Go upload c
 | saver | Storage Saver / Pixel 2 profile |
 | quota | Original quality / 通常 quota / Pixel 8 profile |
 
-設定は新規 job に固定されます。既存 job の account / quality は変更されません。API 成功だけで無料・無制限とは判定しません。
+設定は新規 job に固定されます。既存 job の account / quality は変更されません。Google 側に同じ内容が既に存在する場合は再送を省略し、既存 asset の画質を変更しません。API 成功だけで無料・無制限とは判定しません。
 
 ## ビルド
 
@@ -71,6 +71,7 @@ go vet -tags cli ./...
 - cancel は best effort。Google に commit 済みの asset は削除しません。cancel と成功が競合した場合、確認できた成功を completed と表示します。
 - Wi-Fi/charging は daemon が約5秒ごとに確認。制限に反すると実行中 request を中断し pending に戻します。Wi-Fi 検出は Network.framework の経路判定で、接続後の Google 到達性まで保証しません。
 - 同じ内容でも異なる account / quality は別 job。同一 policy の completed 履歴を消すとローカル重複履歴は消えますが、upstream remote hash check は残ります。
+- Live Photo の片方が既に remote にある場合は `remote_live_photo_component_exists` として停止します。完全なペアとして存在するかを推測せず、繰り返し自動再送しません。
 - 元の写真ライブラリの asset は削除しません。completed / cancelled の daemon staging copy は削除します。
 
 ## セキュリティ

@@ -6,4 +6,4 @@ scheme=${1:-rootless}
 case "$scheme" in rootless) args=(THEOS_PACKAGE_SCHEME=rootless);; rootful) args=(THEOS_PACKAGE_SCHEME=);; *) echo 'Expected rootless or rootful' >&2; exit 1;; esac
 bash scripts/build-go.sh
 make clean
-make package FINALPACKAGE=1 "${args[@]}"
+make -k package FINALPACKAGE=1 "${args[@]}"
