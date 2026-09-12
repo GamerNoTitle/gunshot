@@ -35,6 +35,10 @@ NSDictionary *GSNativeAccountSummary(void){
  if(![email isKindOfClass:NSString.class]||!email.length||![identifier isKindOfClass:NSString.class]||!identifier.length)return nil;
  return @{@"email":email,@"identifier":identifier};
 }
+BOOL GSNativeAccountMatches(id accountID){
+ if(!NSThread.isMainThread||!accountID)return NO;
+ return [GSGet(GSGet(GSSource.manager,@"viewingAccount"),@"accountID")isEqual:accountID];
+}
 void GSInstallNativeAccount(void){
  if(GSSource||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"])return;
  Class cls=NSClassFromString(@"PHSAccountManagerImpl");Method method=class_getInstanceMethod(cls,NSSelectorFromString(@"viewingAccount"));

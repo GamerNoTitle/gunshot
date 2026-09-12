@@ -1,5 +1,7 @@
 # Google Photos の標準バックアップ操作を GoToHP へ転送
 
+**jailed 7.92.0 の新しい手動・自動バックアップ経路は [共通要求の連携](analysis/backup-routing.md) を参照してください。以下は rootful/rootless に残る従来の手動 UI フックの説明です。**
+
 **対応範囲は Google Photos 7.92.0 の手動「今すぐバックアップ」操作です。自動バックアップを含む全アップロードの置き換えは未実装です。実機未検証。**
 
 Google Photos → **GoToHP → Settings** に account、quality、queue の設定ページがあります。そこで account を追加・選択してから **Route Google Photos backup action** を有効にします。有効化時に GoToHP の送信先メールアドレスと対象範囲を表示します。Google Photos の automatic backup は別途 OFF にし、独立した標準アップロードとの重複を避けてください。

@@ -72,7 +72,7 @@ UIKit の background 制限を解除しません。Go HTTP は background URLSes
 
 ## 実機検証
 
-サイドロードと LiveContainer それぞれで、起動、Settings、認証、JPEG/動画/Live Photo、複数選択、Wi-Fi/充電条件、background 中断、foreground 復帰、force kill と再起動、期限切れ credential を確認します。GoToHP を一度開くまで uploader は初期化しません。Native routing は [native-routing.md](native-routing.md) の別項目として検証してください。
+サイドロードと LiveContainer それぞれで、起動、Settings、認証、JPEG/動画/Live Photo、複数選択、Wi-Fi/充電条件、background 中断、foreground 復帰、force kill と再起動、期限切れ credential を確認します。GoToHP を開いたとき、または有効なバックアップ連携要求が到着したときに uploader を初期化します。Native routing は [native-routing.md](native-routing.md) の別項目として検証してください。
 
 
 ## ログイン済み Google Photos のアカウントを利用する
@@ -82,3 +82,5 @@ UIKit の background 制限を解除しません。Go HTTP は background URLSes
 `Inject dylibs/frameworks` 有効時だけ本体のログインが拒否される実機報告があります。ユーザー環境では注入なしでログイン後に同じアプリへ tweak を追加すると起動できました。既存アプリは削除せず、同じ署名アカウント・アプリ識別子で更新してください。この手順や初回ログインの互換性は全環境で保証されていません。
 
 [認証経路・保存内容・検証範囲](analysis/native-account.md)を参照してください。
+
+手動・自動バックアップの新しい連携は [backup-routing.md](analysis/backup-routing.md) を参照してください。

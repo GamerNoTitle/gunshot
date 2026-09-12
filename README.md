@@ -4,7 +4,7 @@ Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`
 
 **開発版です。iPhone での起動・Google 認証・実アップロード・quota 判定は未検証です。** ビルド成功と実機動作は別です。添付された Google Photos 7.92.0 の Info.plist は minimum iOS **18.0** でした。iOS 15/16 の端末では対応する旧版 Google Photos が必要です。
 
-**追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos 内の **GoToHP → Settings** から設定できます。[標準の手動バックアップを GoToHP へ転送](docs/native-routing.md)する設定は 7.92.0 限定・既定 OFF です。自動バックアップの置き換えではありません。
+**追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos 内の **GoToHP → Settings** から設定できます。[手動・自動バックアップを GoToHP へ転送](docs/analysis/backup-routing.md)する設定は jailed / 7.92.0 限定・既定 OFF です。Google Photos の自動バックアップをオンにし、アプリを前面で開いて使用します。実機での再照合は検証中です。
 
 [全アップロード置換の状況と診断手順](docs/full-upload-replacement.md)：全置換はまだ未完成です。7.92.0 の native uploader を観測する opt-in 診断・JSON export を追加しています。
 
@@ -74,7 +74,7 @@ go vet -tags cli ./...
 
 - `pending → preparing → uploading → committing → completed`。`importing` はまだ端末から受け渡し中。
 - 通信失敗は指数 backoff。upstream 内部にも request retry があり、Preferences の回数は **job 単位**の追加 retry 上限です。
-- `committing` 中断は `commit_outcome_unknown` として failed に保持し、自動再送しません。手動 Retry 時も hash check を行います。非公式 API に exactly-once guarantee はありません。
+- `committing` 中断は `commit_outcome_unknown` として failed に保持し、自動再送しません。original は既存 saver を省略しないため ForceUpload します。手動 Retry では再送・重複の可能性があります。非公式 API に exactly-once guarantee はありません。
 - restart はファイルの先頭から再試行します。byte offset を使った Google upload session resume は未実装です。
 - cancel は best effort。Google に commit 済みの asset は削除しません。cancel と成功が競合した場合、確認できた成功を completed と表示します。
 - Wi-Fi/charging は daemon が約5秒ごとに確認。制限に反すると実行中 request を中断し pending に戻します。Wi-Fi 検出は Network.framework の経路判定で、接続後の Google 到達性まで保証しません。
@@ -98,4 +98,4 @@ bash scripts/sync-upstream.sh <commit>
 
 submodule の commit と `GotohpCore/UPSTREAM_REVISION` を更新し、`.build/upstream` に iOS projection を生成します。本家ファイルは直接変更しません。変更内容・差分・テストを確認してから commit。projection の境界と IPA 調査は [docs/architecture.md](docs/architecture.md)、実機チェックは [docs/device-validation.md](docs/device-validation.md)。
 
-高度な Google Photos 私有 UI hook、自動バックアップ、編集済み Live Photo の current representation、任意 device profile、Keychain、quota 自動検証はこの版に含みません。添付 IPA はリポジトリや配布物に含めていません。
+高度な Google Photos 私有 UI hook、jailed のアプリ終了後の自動バックアップ、編集済み Live Photo の current representation、任意 device profile、Keychain、quota 自動検証はこの版に含みません。添付 IPA はリポジトリや配布物に含めていません。

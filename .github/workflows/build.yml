@@ -57,6 +57,8 @@ jobs:
           mkdir -p .build
           clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/native-routing-test
           .build/native-routing-test
+          clang -fobjc-arc -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSBackupRequests.m tests/backup_requests.m -o .build/backup-requests-test
+          .build/backup-requests-test
           clang -fobjc-arc -framework Foundation UI/GSUploadDiagnostics.m tests/upload_diagnostics.m -o .build/upload-diagnostics-test
           .build/upload-diagnostics-test
           clang -fobjc-arc -framework Foundation UI/GSNativeAccount.m tests/native_account.m -o .build/native-account-test
