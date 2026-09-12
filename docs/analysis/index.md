@@ -49,3 +49,5 @@
 - [PR #2](https://github.com/tqmane/gunshot/pull/2): jailed / LiveContainer 用成果物、アプリ内設定、手動 action 転送。
 - [PR #3](https://github.com/tqmane/gunshot/pull/3): 全置換に必要な native uploader の受動診断。
 - [診断版 CI](https://github.com/tqmane/gunshot/actions/runs/34673212132): Go / C ABI / native mock tests / 3方式の iOS build・package check 成功。実機互換性の証明ではありません。
+
+- [ログイン中アカウントの認証とアカウントメニュー](native-account.md) — jailed の SSO bridge、ログイン拒否の再現条件、メニュー移動。

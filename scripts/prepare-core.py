@@ -45,3 +45,13 @@ p.write_text(s)
 p = d / 'backend/googleauth_test.go'
 s = p.read_text().replace('"proxy: %s"', '`"proxy":"%s"`').replace('"upload_threads: %d"', '`"uploadThreads":%d`')
 p.write_text(s)
+
+# iOS session tokens stay in the host. Refresh is delegated to its SSO authorizer.
+shutil.copy2(r / 'GotohpCore/native_auth.go.txt', d / 'backend/gunshot_native_auth.go')
+shutil.copy2(r / 'tests/native_auth_test.go.txt', d / 'backend/gunshot_native_auth_test.go')
+p = d / 'backend/api.go'
+s = p.read_text()
+needle = 'func (a *Api) BearerToken() (string, error) {'
+assert s.count(needle) == 1, 'review upstream bearer-token entry point'
+s = s.replace(needle, needle + '\n if token, native, err := gunshotNativeBearer(a.authData); native { return token, err }')
+p.write_text(s)

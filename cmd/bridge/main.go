@@ -2,10 +2,16 @@ package main
 
 /*
 #include <stdlib.h>
+#include <stdint.h>
+static inline char *gunshot_host_bearer(uintptr_t provider, const char *account) {
+ return ((char *(*)(const char *))provider)(account);
+}
 */
 import "C"
 import (
+	"app/backend"
 	"context"
+	"errors"
 	"github.com/tqmane/gunshot/internal/service"
 	"io"
 	"log"
@@ -16,6 +22,24 @@ import (
 
 var engine *service.Engine
 var initMu sync.Mutex
+
+//export GunshotSetHostBearerProvider
+func GunshotSetHostBearerProvider(provider C.uintptr_t) {
+	if provider == 0 {
+		backend.GunshotSetNativeBearerProvider(nil)
+		return
+	}
+	backend.GunshotSetNativeBearerProvider(func(identifier string) (string, error) {
+		account := C.CString(identifier)
+		defer C.free(unsafe.Pointer(account))
+		token := C.gunshot_host_bearer(provider, account)
+		if token == nil {
+			return "", errors.New("host authorization unavailable")
+		}
+		defer C.free(unsafe.Pointer(token))
+		return C.GoString(token), nil
+	})
+}
 
 //export GunshotPing
 func GunshotPing() C.int { return 1 }

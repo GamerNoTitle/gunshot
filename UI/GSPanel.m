@@ -1,5 +1,6 @@
 #import "GSPanel.h"
 #import "GSExporter.h"
+#import "GSNativeAccount.h"
 #import "GSNativeRouting.h"
 #import "GSUploadDiagnostics.h"
 #import "../Shared/IPCProtocol.h"
@@ -20,6 +21,7 @@
 @property(nonatomic,strong) NSMutableDictionary *options;
 @property(nonatomic,strong) NSTimer *timer;
 @property(nonatomic) BOOL busy;
+@property(nonatomic) BOOL nativeAuthorizationFailed;
 @property(nonatomic,strong) NSArray *sharedItems;
 @property(nonatomic,strong) NSArray *routedAssets;
 @property(nonatomic,copy) NSString *routeAccount;
@@ -28,21 +30,33 @@
 @end
 @implementation GSPanel
 - (void)viewDidLoad{
- [super viewDidLoad];self.title=@"GoToHP";self.jobs=@[];self.statusText=@"Connecting…";
+ [super viewDidLoad];GSInstallNativeRouting();GSInstallUploadDiagnostics();self.title=@"GoToHP";self.jobs=@[];self.statusText=@"Connecting…";
  self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc]initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(close)];
  self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:self.settingsMode?@"Account":@"Upload" style:UIBarButtonItemStylePlain target:self action:@selector(primary)];
 #if GS_JAILED
  self.navigationItem.prompt=@"Jailed: uploads require this app in the foreground.";
 #endif
+ if(self.settingsMode&&GSIsGooglePhotos()){
+ UIBarButtonItem *upload=[[UIBarButtonItem alloc]initWithTitle:@"Upload" style:UIBarButtonItemStylePlain target:self action:@selector(openUploadPanel)];
+ self.navigationItem.rightBarButtonItems=@[self.navigationItem.rightBarButtonItem,upload];
+ }
  if(!self.settingsMode&&GSIsGooglePhotos()){
  UIBarButtonItem *settings=[[UIBarButtonItem alloc]initWithTitle:@"Settings" style:UIBarButtonItemStylePlain target:self action:@selector(openEmbeddedSettings)];
  self.navigationItem.rightBarButtonItems=@[self.navigationItem.rightBarButtonItem,settings];
  }
  self.tableView.rowHeight=UITableViewAutomaticDimension;self.tableView.estimatedRowHeight=64;
+#if GS_JAILED
+ if(GSIsGooglePhotos()&&GSNativeAccountSummary()){[self connectNativeAccount];return;}
+#endif
  [self refresh];
 }
 - (void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];__weak GSPanel *weak=self;self.timer=[NSTimer scheduledTimerWithTimeInterval:2 repeats:YES block:^(NSTimer *t){[weak refresh];}];}
 - (void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[self.timer invalidate];self.timer=nil;}
+- (void)openUploadPanel{
+ if(self.busy)return;
+ GSPanel *panel=[[GSPanel alloc]initWithStyle:UITableViewStyleInsetGrouped];
+ [self.navigationController pushViewController:panel animated:YES];
+}
 - (void)openEmbeddedSettings{
  if(self.busy)return;
  GSPanel *settings=[[GSPanel alloc]initWithStyle:UITableViewStyleInsetGrouped];settings.settingsMode=YES;
@@ -51,7 +65,7 @@
 - (void)close{if(!self.busy){if(self.navigationController.viewControllers.count>1){[self.navigationController popViewControllerAnimated:YES];return;}if(self.activityCompletion)self.activityCompletion();else[self dismissViewControllerAnimated:YES completion:nil];}}
 - (void)message:(NSString *)message{self.statusText=message;[self.tableView reloadData];}
 - (void)refresh{
- if(self.busy)return;self.busy=YES;
+ if(self.busy||self.nativeAuthorizationFailed)return;self.busy=YES;
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
  NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);NSDictionary *options=accounts?GSRequest(@{@"op":@"options"},&error):nil;
  NSMutableArray *jobs=[NSMutableArray array];NSInteger cursor=0;NSDictionary *page=nil;
@@ -88,7 +102,25 @@
 }
 - (void)sheet:(UIAlertController *)sheet{sheet.popoverPresentationController.sourceView=self.view;sheet.popoverPresentationController.sourceRect=CGRectMake(self.view.bounds.size.width/2,80,1,1);[self presentViewController:sheet animated:YES completion:nil];}
 - (void)primary{if(self.busy)return;if(self.settingsMode)[self addAccount];else if(self.sharedItems.count){NSArray *items=self.sharedItems;self.sharedItems=nil;if([items.firstObject isKindOfClass:PHAsset.class])[self importAssets:items];else[self importURLs:items];}else[self choose];}
+#if GS_JAILED
+- (void)connectNativeAccount{
+ NSDictionary *account=GSNativeAccountSummary();
+ if(!account){[self message:@"Google Photos のアカウントを取得できません。プロフィールメニューを開き直してください。"];return;}
+ self.nativeAuthorizationFailed=NO;self.busy=YES;[self message:@"Google Photos のログイン中アカウントを確認中…"];
+ dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
+  NSError *error=nil;
+  GSRequest(@{@"op":@"account_native",@"account":account[@"email"],@"nativeID":account[@"identifier"]},&error);
+  dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;
+   if(error){self.nativeAuthorizationFailed=YES;[self message:@"Google Photos の認証を取得・検証できませんでした。ログイン状態を確認して Account から再試行してください。"];return;}
+   [self refresh];
+  });
+ });
+}
+#endif
 - (void)addAccount{
+#if GS_JAILED
+ if(GSIsGooglePhotos()){[self connectNativeAccount];return;}
+#endif
  UIAlertController *a=[UIAlertController alertControllerWithTitle:@"Add Google account" message:GS_AUTH_HELP preferredStyle:UIAlertControllerStyleAlert];
  [a addTextFieldWithConfigurationHandler:^(UITextField *f){f.secureTextEntry=YES;f.autocorrectionType=UITextAutocorrectionTypeNo;f.autocapitalizationType=UITextAutocapitalizationTypeNone;f.placeholder=@"oauth_token / credential";}];
  [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
@@ -174,6 +206,11 @@
 @end
 
 void GSPresent(UIViewController *host){if(!host)return;GSPanel *panel=[[GSPanel alloc]initWithStyle:UITableViewStyleInsetGrouped];UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:panel];[host presentViewController:nav animated:YES completion:nil];}
+void GSPresentSettings(UIViewController *host){
+ if(!host||host.presentedViewController)return;
+ GSPanel *panel=[[GSPanel alloc]initWithStyle:UITableViewStyleInsetGrouped];panel.settingsMode=YES;
+ [host presentViewController:[[UINavigationController alloc]initWithRootViewController:panel] animated:YES completion:nil];
+}
 @interface GSLauncher : NSObject
 + (void)open:(UIButton *)button;
 @end
@@ -182,8 +219,7 @@ void GSPresent(UIViewController *host){if(!host)return;GSPanel *panel=[[GSPanel 
 @end
 static char GSLauncherKey;
 void GSInstallButton(UIWindow *window){
- GSInstallNativeRouting();
- GSInstallUploadDiagnostics();
+ if(GSIsGooglePhotos())return;
  if(window.windowLevel!=UIWindowLevelNormal||!window.rootViewController||objc_getAssociatedObject(window,&GSLauncherKey))return;
  UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem];[button setTitle:@"GoToHP" forState:UIControlStateNormal];button.backgroundColor=UIColor.secondarySystemBackgroundColor;button.layer.cornerRadius=18;button.accessibilityLabel=@"Open GoToHP upload queue";
  [button addTarget:GSLauncher.class action:@selector(open:) forControlEvents:UIControlEventTouchUpInside];button.translatesAutoresizingMaskIntoConstraints=NO;[window addSubview:button];

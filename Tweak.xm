@@ -1,3 +1,4 @@
+#import "UI/GSAccountMenu.h"
 #import <UIKit/UIKit.h>
 #import "UI/GSPanel.h"
 %hook UIWindow
@@ -14,3 +15,8 @@
  return %orig(items,all);
 }
 %end
+
+%ctor {
+ %init;
+ dispatch_async(dispatch_get_main_queue(),^{GSInstallAccountMenu();});
+}
