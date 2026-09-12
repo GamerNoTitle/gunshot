@@ -47,15 +47,15 @@ static void GSRoute(id localAssets){
  // Compatibility path: import without creating or presenting a view controller.
  // Failed imports remain visible in settings/diagnostics, never native fallback.
  GSInitializeImport();@synchronized(GSImportLock){GSImportStatus[@"actions"]=@([GSImportStatus[@"actions"]unsignedIntegerValue]+1);}
- if(!valid||!assets.count){GSImportResult(GSL(@"The selected photos could not be retrieved."),0);return;}
+ if(!valid||!assets.count){GSImportResult(@"The selected photos could not be retrieved.",0);return;}
  NSString *account=[GSNativeRoutingAccount()copy];NSArray *selection=[assets copy];
  dispatch_async(dispatch_get_main_queue(),^{
 #if GS_JAILED
-  if(![account isEqual:GSNativeAccountSummary()[@"email"]]){GSImportResult(GSL(@"The signed-in account does not match the upload destination."),0);return;}
+  if(![account isEqual:GSNativeAccountSummary()[@"email"]]){GSImportResult(@"The signed-in account does not match the upload destination.",0);return;}
 #endif
   dispatch_async(GSImportQueue,^{@autoreleasepool{
    NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);
-   if(!account.length||![accounts[@"selected"]isEqual:account]){GSImportResult(GSL(@"The destination has changed. Check the backup integration settings."),0);return;}
+   if(!account.length||![accounts[@"selected"]isEqual:account]){GSImportResult(@"The destination has changed. Check the backup integration settings.",0);return;}
    NSDictionary *options=GSRequest(@{@"op":@"options"},&error);NSUInteger queued=0;
    for(PHAsset *asset in selection){@autoreleasepool{
     if(error||!options)break;
@@ -67,7 +67,7 @@ static void GSRoute(id localAssets){
     [NSFileManager.defaultManager removeItemAtURL:dir error:nil];
     if(!job){if(!error)error=[NSError errorWithDomain:@"GoToHP.Import" code:2 userInfo:nil];break;}queued++;
    }}
-   GSImportResult(queued==selection.count?nil:GSL(@"Could not add photos to the queue. Check the account and photo access."),queued);
+   GSImportResult(queued==selection.count?nil:@"Could not add photos to the queue. Check the account and photo access.",queued);
   }});
  });
 }

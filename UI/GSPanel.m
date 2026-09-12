@@ -36,10 +36,11 @@
 @property(nonatomic,strong) NSArray *sharedItems;
 @property(nonatomic,copy) void (^activityCompletion)(void);
 @property(nonatomic,copy) NSString *statusText;
+@property(nonatomic,copy) NSString *statusLanguage;
 @end
 @implementation GSPanel
 - (void)viewDidLoad{
- [super viewDidLoad];GSInstallNativeRouting();GSInstallUploadDiagnostics();self.title=@"GoToHP";self.jobs=@[];self.statusText=GSL(@"Checking the connection…");
+ [super viewDidLoad];GSInstallNativeRouting();GSInstallUploadDiagnostics();self.title=@"GoToHP";self.jobs=@[];self.statusText=GSL(@"Checking the connection…");self.statusLanguage=GSLanguage();
  self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:GSL(@"Done") style:UIBarButtonItemStylePlain target:self action:@selector(close)];
  self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:self.settingsMode?GSL(@"Reconnect"):GSL(@"Add") style:UIBarButtonItemStylePlain target:self action:@selector(primary)];
 #if !GS_JAILED
@@ -99,7 +100,7 @@
  if(self.navigationController.viewControllers.count>1){[self.navigationController popViewControllerAnimated:YES];return;}
  if(self.activityCompletion)self.activityCompletion();else[self dismissViewControllerAnimated:YES completion:nil];
 }
-- (void)message:(NSString *)message{self.statusText=message;[self.tableView reloadData];}
+- (void)message:(NSString *)message{self.statusText=message;self.statusLanguage=GSLanguage();[self.tableView reloadData];}
 - (void)refresh{
  if(self.busy||self.refreshing||self.nativeAuthorizationFailed)return;self.refreshing=YES;
  NSUInteger generation=self.stateGeneration;
@@ -125,7 +126,7 @@
  }
 #endif
  self.statusText=[accounts[@"selected"]length]?[NSString stringWithFormat:@"%@ · %@",authorization,readiness]:GSL(@"Connect an account to continue");
- NSString *importError=GSNativeRoutingSnapshot()[@"lastError"];if(importError)self.statusText=importError;
+ NSString *importError=GSNativeRoutingSnapshot()[@"lastError"];if(importError)self.statusText=importError;self.statusLanguage=GSLanguage();
  [self.tableView reloadData];
  });
  });
@@ -194,7 +195,7 @@
  cell.detailTextLabel.textColor=UIColor.secondaryLabelColor;cell.imageView.tintColor=tableView.tintColor;
  if(path.section==0){
   cell.textLabel.text=[self.accounts[@"selected"]length]?self.accounts[@"selected"]:GSL(@"Google Photos account");
-  cell.detailTextLabel.text=self.statusText;cell.imageView.image=[UIImage systemImageNamed:@"person.crop.circle"];
+  cell.detailTextLabel.text=GSLocalizedStatus(self.statusText,self.statusLanguage);cell.imageView.image=[UIImage systemImageNamed:@"person.crop.circle"];
   cell.selectionStyle=UITableViewCellSelectionStyleNone;
   if(self.busy){UIActivityIndicatorView *spinner=[[UIActivityIndicatorView alloc]initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];[spinner startAnimating];cell.accessoryView=spinner;}
   return cell;

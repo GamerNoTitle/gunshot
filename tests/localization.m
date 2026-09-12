@@ -10,6 +10,7 @@ int main(void){@autoreleasepool{
  assert(([[NSString stringWithFormat:GSL(@"Upload history (%lu)"),3UL]isEqual:@"アップロード履歴（3件）"]));
  GSSetLanguage(@"en");assert([GSL(@"Quality")isEqual:@"Quality"]);
  assert(([[NSString stringWithFormat:GSL(@"Upload history (%lu)"),3UL]isEqual:@"Upload history (3)"]));
+ assert([GSLocalizedStatus(@"認証確認済み · アップロード可能",@"ja")isEqual:@"Authenticated · Ready to upload"]);
  assert([GSL(@"unknown future key")isEqual:@"unknown future key"]);
  GSSetLanguage(@"invalid");assert([GSLanguageOverride()isEqual:@"system"]);
  GSSetLanguage(@"ja");GSSetLanguage(@"system");assert([GSLanguageOverride()isEqual:@"system"]);

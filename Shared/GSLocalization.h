@@ -26,3 +26,14 @@ static inline void GSSetLanguage(NSString *language) {
 static inline NSString *GSL(NSString *key) {
  return GSLocalizationCatalogs()[GSLanguage()][key]?:key;
 }
+
+// Status is captured asynchronously and may outlive a language change. Translate
+// known status text at display time without re-running authentication or IPC.
+static inline NSString *GSLocalizedStatus(NSString *text, NSString *sourceLanguage) {
+ if(!text)return nil;
+ NSDictionary *source=GSLocalizationCatalogs()[sourceLanguage?:@"en"];
+ for(NSString *key in source)if([source[key]isEqual:text])return GSL(key);
+ NSArray *parts=[text componentsSeparatedByString:@" · "];
+ if(parts.count>1){NSMutableArray *translated=[NSMutableArray array];for(NSString *part in parts)[translated addObject:GSLocalizedStatus(part,sourceLanguage)];return [translated componentsJoinedByString:@" · "];}
+ return GSL(text); // Unknown server/system errors keep their original wording.
+}
