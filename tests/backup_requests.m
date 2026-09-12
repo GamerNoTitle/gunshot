@@ -40,7 +40,7 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 @implementation GMUUploadRequest
 - (void)startFetcher{nativePayload++;}
 - (_Bool)didStart{return NO;}
-- (void)didCompleteWithSuccess:(_Bool)success resultantMediaItem:(id)item error:(id)error{if(success&&item&&!error)successes++;else failures++;}
+- (void)didCompleteWithSuccess:(_Bool)success resultantMediaItem:(id)item error:(id)error{if(success&&!error)successes++;else failures++;}
 @end
 @interface GMUAssetUploadRequest : GMUUploadRequest
 @property(nonatomic,strong) PHAsset *asset;
@@ -49,7 +49,7 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)cancel;
 @end
 @implementation GMUAssetUploadRequest
-- (void)start{nativeStarts++;if(remoteMatch)[self didCompleteWithSuccess:YES resultantMediaItem:@"server-item" error:nil];else[self startFetcher];}
+- (void)start{nativeStarts++;if(remoteMatch)[self didCompleteWithSuccess:YES resultantMediaItem:nil error:nil];else[self startFetcher];}
 - (_Bool)shouldTimeout{return YES;}
 - (void)cancel{}
 @end

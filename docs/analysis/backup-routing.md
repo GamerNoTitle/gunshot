@@ -29,7 +29,7 @@ fingerprintDidComplete:error: の逆アセンブルでは
 `uploadRequest:didDiscoverFingerprintExists:mediaKey:`、
 `existenceCheckDidFailWithFingerprint:` が確認でき、最後の経路が実データ送信へ
 つながります。再照合失敗時には純正側にバックアップエラーが残り得ます。
-Go 側の成功と純正側の再照合成功は診断で別々に数えます。
+Go 側の成功と純正側の再照合成功は診断で別々に数えます。既存 fingerprint の成功分岐では success=YES、resultantMediaItem=nil、error=nil が渡されます（framework 内 0x1a218a4 / 0x1a219ac）。mediaKey は別の didDiscoverFingerprintExists callback で通知されるため、nil の media item を再照合失敗とは扱いません。
 
 ## 使い方
 

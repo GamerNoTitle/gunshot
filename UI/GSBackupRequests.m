@@ -104,8 +104,8 @@ static void GSFinish(id request,BOOL success){
 static void GSBindCompletion(Class c,BOOL live){
  SEL s=NSSelectorFromString(live?@"didCompleteWithError:resultantMediaItem:":@"didCompleteWithSuccess:resultantMediaItem:error:");
  IMP old=method_getImplementation(class_getInstanceMethod(c,s));
- if(live)GSReplace(c,s,imp_implementationWithBlock(^(id request,id error,id result){GSFinish(request,error==nil&&result!=nil);((void(*)(id,SEL,id,id))old)(request,s,error,result);}));
- else GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,id error){GSFinish(request,success&&error==nil&&result!=nil);((void(*)(id,SEL,BOOL,id,id))old)(request,s,success,result,error);}));
+ if(live)GSReplace(c,s,imp_implementationWithBlock(^(id request,id error,id result){GSFinish(request,error==nil);((void(*)(id,SEL,id,id))old)(request,s,error,result);}));
+ else GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,id error){GSFinish(request,success&&error==nil);((void(*)(id,SEL,BOOL,id,id))old)(request,s,success,result,error);}));
 }
 static void GSBindStart(Class c){
  SEL s=NSSelectorFromString(@"start");IMP original=method_getImplementation(class_getInstanceMethod(c,s));
