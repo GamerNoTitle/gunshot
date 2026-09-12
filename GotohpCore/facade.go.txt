@@ -1,0 +1,13 @@
+package backend
+import("context";"errors";"net/http")
+type contextTransport struct{ctx context.Context;base http.RoundTripper}
+func(t contextTransport)RoundTrip(r *http.Request)(*http.Response,error){return t.base.RoundTrip(r.Clone(t.ctx))}
+// GunshotUpload keeps upstream's ordinary and paired upload paths intact.
+func GunshotUpload(ctx context.Context, paths []string, opts UploadOptions, reporter UploadReporter)(string,error){
+ items,warnings:=ClassifyUploadWork(paths,LivePhotoClassificationOptions{Enabled:len(paths)==2,SkipIncomplete:true,Cancelled:func()bool{return ctx.Err()!=nil}},nil)
+ if len(warnings)>0 || len(items)!=1{return "",errors.New("media pairing failed")}
+ if len(paths)==2 && items[0].Kind!=UploadWorkLivePhoto{return "",errors.New("not a Live Photo pair")}
+ api,err:=NewApi(opts.Api);if err!=nil{return "",err}
+ api.client.Transport=contextTransport{ctx,api.client.Transport}
+ key,_,err:=uploadWorkItem(ctx,api,items[0],opts,0,reporter);return key,err
+}

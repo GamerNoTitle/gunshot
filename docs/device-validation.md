@@ -1,0 +1,16 @@
+# Device validation gate
+
+No jailbroken iPhone or Google test credential was available during implementation. This checklist records remaining runtime gates, not passed tests.
+
+1. Install a package matching the jailbreak bootstrap; record iPhone model, iOS, injection framework, root scheme, and Google Photos version. The supplied 7.92.0 IPA requires iOS 18.0; it cannot validate iOS 15/16.
+2. Run `/var/jb/usr/libexec/gotohpd --self-test` for rootless, `/usr/libexec/gotohpd --self-test` for rootful. Expect exit 0 (C → Go → C). Then check `launchctl print system/dev.tqmane.gunshot` and Settings ping. Never launch a second real daemon manually.
+3. Verify unauthorized processes cannot ping/import, account mutations from Photos fail, malformed/complex Mach messages are rejected, and missing identity SPI fails closed. Verify RocketBootstrap sandbox traversal actually works on the selected bootstrap.
+4. Add a test account from Settings; check secure field clears, no token appears in queue, logs or account summary, files are 0600 / directory 0700, invalid credentials are not saved, and account removal is refused while unfinished jobs remain.
+5. JPEG, PNG, HEIC, RAW, MP4, MOV, 4K, HDR: upload one original; inspect remote pixel size/codec, capture date/timezone, filename, EXIF/orientation/GPS. PhotoKit export does not reencode, but server preservation must still be checked.
+6. Live Photo: HEIC+MOV and JPEG+MOV; confirm the remote library shows **one playable asset**. Validate identifier, still-image-time, capture date, rotation and location. This build exports original resources, not the edited representation. Mismatched pair must fail, not become two successful entries.
+7. Queue 100+ mixed assets. Preparation may need iCloud download and an open app. Kill Google Photos after Queued; verify progress continues. Restart gotohpd, respring SpringBoard, disable network, switch Wi-Fi to cellular, unplug charger, pause/cancel, retry failed jobs. Check commit interruption stays uncertain instead of claiming cancelled/completed.
+8. Duplicate files: same account/policy should return existing queued/completed ID; alternate accounts/policies are separate. Simulate remote hash lookup failure and lost commit response.
+9. Original / Saver / Quota: compare account storage before and after with a fresh test asset. A media key is not proof of zero quota usage. Do not mark unlimited behavior verified without server/account-side evidence.
+10. Monitor RAM, CPU, thermal and storage under large video + 4 concurrent jobs. Audit token SPI, arm64 daemon on arm64e hardware, jailbreak TLS trust and respring behavior all require real-device evidence.
+
+Current limits: no byte-offset remote resume; no Keychain; no automatic backup; no arbitrary device-profile editor; no private Google Photos selection hooks; no automatic assertion of quota savings. Staging copies remain for failed jobs until cancel; cancel removes staging, never remote photos. Uninstall keeps private account/queue data for deliberate recovery/removal.

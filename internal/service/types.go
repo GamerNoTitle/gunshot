@@ -1,0 +1,208 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+const MaxMessage = 60000
+const MaxChunk = 32768
+const MaxJobs = 10000
+
+type Resource struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+type Options struct {
+	Quality      string `json:"quality"`
+	Concurrent   int    `json:"concurrent"`
+	Retries      int    `json:"retries"`
+	WiFiOnly     bool   `json:"wifiOnly"`
+	ChargingOnly bool   `json:"chargingOnly"`
+	Paused       bool   `json:"paused"`
+}
+
+func defaults() Options {
+	return Options{Quality: "original", Concurrent: 1, Retries: 3, WiFiOnly: true}
+}
+func (o Options) valid() bool {
+	return validQuality(o.Quality) && o.Concurrent >= 1 && o.Concurrent <= 4 && o.Retries >= 0 && o.Retries <= 10
+}
+func validQuality(q string) bool { return q == "original" || q == "saver" || q == "quota" }
+
+type Job struct {
+	ID              string     `json:"id"`
+	Account         string     `json:"account"`
+	Quality         string     `json:"quality"`
+	State           string     `json:"state"`
+	Resources       []Resource `json:"resources"`
+	Created         int64      `json:"created"`
+	Timestamp       int64      `json:"timestamp"`
+	Fingerprint     string     `json:"fingerprint,omitempty"`
+	Attempts        int        `json:"attempts"`
+	Next            int64      `json:"next,omitempty"`
+	Uploaded        int64      `json:"uploaded"`
+	Total           int64      `json:"total"`
+	Error           string     `json:"error,omitempty"`
+	MediaKey        string     `json:"mediaKey,omitempty"`
+	CancelRequested bool       `json:"cancelRequested,omitempty"`
+	Owner           string     `json:"owner"`
+}
+type State struct {
+	Version int     `json:"version"`
+	Options Options `json:"options"`
+	Jobs    []*Job  `json:"jobs"`
+}
+type Request struct {
+	Op        string     `json:"op"`
+	ID        string     `json:"id,omitempty"`
+	Account   string     `json:"account,omitempty"`
+	Secret    string     `json:"secret,omitempty"`
+	Quality   string     `json:"quality,omitempty"`
+	Resources []Resource `json:"resources,omitempty"`
+	Index     int        `json:"index,omitempty"`
+	Offset    int64      `json:"offset,omitempty"`
+	Data      []byte     `json:"data,omitempty"`
+	Timestamp int64      `json:"timestamp,omitempty"`
+	Options   *Options   `json:"options,omitempty"`
+	Cursor    int        `json:"cursor,omitempty"`
+	Online    bool       `json:"online,omitempty"`
+	WiFi      bool       `json:"wifi,omitempty"`
+	Charging  bool       `json:"charging,omitempty"`
+}
+type Progress struct {
+	State           string
+	Uploaded, Total int64
+}
+type Runner func(context.Context, []string, string, string, func(Progress)) (string, error)
+type Engine struct {
+	mu                     sync.Mutex
+	root                   string
+	state                  State
+	active                 map[string]context.CancelFunc
+	runner                 Runner
+	online, wifi, charging bool
+	stopped                bool
+	wg                     sync.WaitGroup
+	fault                  bool
+}
+
+var errRequest = errors.New("invalid request")
+
+func atomicJSON(path string, v any) error {
+	b, e := json.Marshal(v)
+	if e != nil {
+		return e
+	}
+	d := filepath.Dir(path)
+	f, e := os.CreateTemp(d, ".write-*")
+	if e != nil {
+		return e
+	}
+	defer os.Remove(f.Name())
+	if _, e = f.Write(b); e == nil {
+		e = f.Sync()
+	}
+	ce := f.Close()
+	if e != nil {
+		return e
+	}
+	if ce != nil {
+		return ce
+	}
+	if e = os.Rename(f.Name(), path); e != nil {
+		return e
+	}
+	df, e := os.Open(d)
+	if e != nil {
+		return e
+	}
+	defer df.Close()
+	return df.Sync()
+}
+func Open(root string, runner Runner) (*Engine, error) {
+	if e := os.MkdirAll(filepath.Join(root, "media"), 0700); e != nil {
+		return nil, e
+	}
+	if e := os.Chmod(root, 0700); e != nil {
+		return nil, e
+	}
+	s := State{Version: 1, Options: defaults(), Jobs: []*Job{}}
+	b, e := os.ReadFile(filepath.Join(root, "state.json"))
+	if e == nil {
+		if json.Unmarshal(b, &s) != nil || s.Version != 1 || !s.Options.valid() {
+			return nil, errors.New("invalid state; restore backup")
+		}
+	} else if !os.IsNotExist(e) {
+		return nil, e
+	}
+	en := &Engine{root: root, state: s, active: map[string]context.CancelFunc{}, runner: runner}
+	for _, j := range s.Jobs {
+		if !validID(j.ID) {
+			return nil, errors.New("invalid job id")
+		}
+		switch j.State {
+		case "uploading", "preparing":
+			j.State = "pending"
+		case "committing":
+			j.State = "failed"
+			j.Error = "commit_outcome_unknown"
+		case "importing":
+			j.State = "cancelled"
+			j.Error = "import_interrupted"
+		}
+		if j.CancelRequested && j.State == "pending" {
+			j.State = "cancelled"
+		}
+		if j.State == "cancelled" || j.State == "completed" {
+			_ = os.RemoveAll(en.jobDir(j.ID))
+		}
+	}
+	if e = en.save(); e != nil {
+		return nil, e
+	}
+	return en, nil
+}
+func (e *Engine) save() error {
+	err := atomicJSON(filepath.Join(e.root, "state.json"), e.state)
+	if err != nil {
+		e.fault = true
+	}
+	return err
+}
+func (e *Engine) jobDir(id string) string { return filepath.Join(e.root, "media", id) }
+func (e *Engine) find(id string) *Job {
+	for _, j := range e.state.Jobs {
+		if j.ID == id {
+			return j
+		}
+	}
+	return nil
+}
+func (e *Engine) Close() {
+	e.mu.Lock()
+	e.stopped = true
+	for _, c := range e.active {
+		c()
+	}
+	e.mu.Unlock()
+	e.wg.Wait()
+}
+func (e *Engine) Run(ctx context.Context) {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			e.Close()
+			return
+		case <-t.C:
+			e.Tick()
+		}
+	}
+}

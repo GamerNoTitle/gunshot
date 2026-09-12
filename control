@@ -1,0 +1,9 @@
+Package: dev.tqmane.gunshot
+Name: GoToHP (Gunshot)
+Version: 0.1.0
+Architecture: iphoneos-arm
+Description: Independent Google Photos upload service with an in-app queue and Preferences.
+Maintainer: tqmane
+Author: tqmane
+Section: Tweaks
+Depends: firmware (>= 15.0), mobilesubstrate, preferenceloader, com.rpetrich.rocketbootstrap (>= 1.0.10)
