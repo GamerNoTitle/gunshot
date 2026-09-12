@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+@class UIWindow;
 @interface UIViewController : NSObject @end
 @interface UITableViewController : UIViewController @end
 @interface UIActivity : NSObject @end

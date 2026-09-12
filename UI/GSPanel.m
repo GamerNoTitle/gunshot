@@ -116,7 +116,7 @@
  return path.row<rows.count?[rows[path.row]integerValue]:-1;
 }
 - (NSString *)qualityTitle:(NSString *)quality{
- return @{@"original":@"オリジナル画質",@"saver":@"容量を節約",@"quota":@"通常の保存容量を使用"}[quality]?:@"未設定";
+ return @{@"original":@"オリジナル画質",@"saver":@"容量を節約",@"quota":@"通常の保存容量を使用"}[quality?:@""]?:@"未設定";
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{return self.queueSection+1;}
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
@@ -190,7 +190,7 @@
  cell.textLabel.text=resources.firstObject[@"name"]?:@"メディア";
  long long uploaded=[job[@"uploaded"]longLongValue],total=[job[@"total"]longLongValue];
  NSString *sizes=[NSString stringWithFormat:@"%@ / %@",[NSByteCountFormatter stringFromByteCount:uploaded countStyle:NSByteCountFormatterCountStyleFile],[NSByteCountFormatter stringFromByteCount:total countStyle:NSByteCountFormatterCountStyleFile]];
- cell.detailTextLabel.text=[NSString stringWithFormat:@"%@ · %@\n%@",states[state]?:@"状態を確認中",[self qualityTitle:job[@"quality"]],sizes];
+ cell.detailTextLabel.text=[NSString stringWithFormat:@"%@ · %@\n%@",states[state?:@""]?:@"状態を確認中",[self qualityTitle:job[@"quality"]],sizes];
  cell.imageView.image=[UIImage systemImageNamed:[state isEqual:@"completed"]?@"checkmark.circle.fill":[state isEqual:@"failed"]?@"exclamationmark.circle":@"icloud.and.arrow.up"];
  if([state isEqual:@"failed"]){cell.imageView.tintColor=UIColor.systemRedColor;cell.detailTextLabel.text=[cell.detailTextLabel.text stringByAppendingString:@"\nタップして再試行できます"];}else if([state isEqual:@"completed"])cell.imageView.tintColor=UIColor.systemGreenColor;
  cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;return cell;
