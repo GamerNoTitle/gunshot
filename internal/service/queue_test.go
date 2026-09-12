@@ -299,3 +299,21 @@ func TestGooglePhotosSettingsRole(t *testing.T) {
 		t.Fatal("expanded role crossed native boundary")
 	}
 }
+
+func TestOriginalDoesNotReuseLegacyUnverifiedCompletion(t *testing.T) {
+	e := newEngine(t, nil)
+	old := importTest(t, e, "original")
+	old.State = "completed"
+	old.MediaKey = "legacy-saver-match"
+	fresh := importTest(t, e, "original")
+	if fresh.State != "pending" {
+		t.Fatal("legacy completion prevented sending original bytes")
+	}
+	fresh.State = "completed"
+	fresh.OriginalPolicy = 1
+	fresh.MediaKey = "original-key"
+	duplicate := importTest(t, e, "original")
+	if duplicate.State != "cancelled" {
+		t.Fatal("current original completion was not deduplicated")
+	}
+}

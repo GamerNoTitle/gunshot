@@ -126,6 +126,11 @@ func (e *Engine) seal(j *Job) (any, error) {
 	fingerprint := hex.EncodeToString(h.Sum(nil))
 	delete(e.importHashes, j.ID)
 	for _, old := range e.state.Jobs {
+		// Older builds could mark original completed from a saver hash match.
+		// Do not reuse that unverified completion for a new original request.
+		if j.Quality == "original" && old.State == "completed" && old.OriginalPolicy == 0 {
+			continue
+		}
 		if old.ID != j.ID && old.Fingerprint == fingerprint && old.State != "cancelled" {
 			j.State = "cancelled"
 			if err := e.save(); err != nil {
@@ -156,6 +161,9 @@ func (e *Engine) Tick() {
 			continue
 		}
 		j.State = "preparing"
+		if j.Quality == "original" {
+			j.OriginalPolicy = 1
+		}
 		j.Attempts++
 		j.Uploaded = 0
 		j.Error = ""
