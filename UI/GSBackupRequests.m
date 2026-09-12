@@ -111,7 +111,7 @@ static void GSBindStart(Class c){
  SEL s=NSSelectorFromString(@"start");IMP original=method_getImplementation(class_getInstanceMethod(c,s));
  GSReplace(c,s,imp_implementationWithBlock(^(id request){GSStart(request,s,original);}));
  SEL started=NSSelectorFromString(@"didStart");IMP oldStarted=method_getImplementation(class_getInstanceMethod(c,started));
- GSReplace(c,started,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.cancelled?YES:((BOOL(*)(id,SEL))oldStarted)(request,started);}));
+ GSReplace(c,started,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled?YES:((BOOL(*)(id,SEL))oldStarted)(request,started);}));
  SEL timeout=NSSelectorFromString(@"shouldTimeout");IMP oldTimeout=method_getImplementation(class_getInstanceMethod(c,timeout));
  GSReplace(c,timeout,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled?NO:((BOOL(*)(id,SEL))oldTimeout)(request,timeout);}));
  SEL cancel=NSSelectorFromString(@"cancel");IMP oldCancel=method_getImplementation(class_getInstanceMethod(c,cancel));
@@ -137,7 +137,7 @@ static void GSBindScotty(void){
   IMP old=method_getImplementation(m);
   GSReplace(c,s,imp_implementationWithBlock(^(id service,id asset,BOOL cellular,BOOL background,id start,id progress,id released,void(^done)(id,id)){
    if(!GSBlockNative()){((void(*)(id,SEL,id,BOOL,BOOL,id,id,id,id))old)(service,s,asset,cellular,background,start,progress,released,done);return;}
-   GSCount(@"nativePayloadBlocked");if(done)done(nil,[NSError errorWithDomain:@"GoToHP.Backup" code:4 userInfo:nil]);
+   GSCount(@"nativePayloadBlocked");if(released)((void(^)(void))released)();if(done)done(nil,[NSError errorWithDomain:@"GoToHP.Backup" code:4 userInfo:nil]);
   }));
  }
  SEL stateless=NSSelectorFromString(@"statelessUploadWithAsset:shouldAllowCellular:progress:completionHandler:");m=class_getInstanceMethod(c,stateless);
