@@ -5,17 +5,37 @@
 #import "../UI/GSExporter.h"
 #import "../Shared/IPCProtocol.h"
 #include <stdlib.h>
-// Simulator-only service: never imports a credential, contacts Google or uploads.
-NSDictionary *GSRequest(NSDictionary *request,NSError **error){
- NSString *op=request[@"op"];
- if([op isEqual:@"accounts"])return @{@"selected":@"test@example.com",@"accounts":@[@{@"email":@"test@example.com"}]};
- if([op isEqual:@"options"])return @{@"quality":@"original",@"concurrent":@2,@"retries":@3,@"wifiOnly":@YES,@"chargingOnly":@NO,@"paused":@NO};
- if([op isEqual:@"list"])return @{@"jobs":@[],@"next":@(-1),@"online":@YES};
- return @{};
+#include "libgotohp.h"
+// Real jailed adapter + UIKit + NWPath + Go runtime. Only account operations are fake.
+// A synchronous main callback models native SSO while the core queue is busy.
+
+static BOOL SnapshotDuringAuthorization;
+NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"test@example.com",@"identifier":@"fixture"};}
+char *GSNativeBearer(const char *identifier){return NULL;}
+char *GSFixtureRequest(char *json,char *role){
+ NSDictionary *request=[NSJSONSerialization JSONObjectWithData:[[NSString stringWithUTF8String:json]dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+ NSString *op=request[@"op"];id data=@{};
+ // Runtime requests cross the real C ABI and Go JSON decoder. The previous
+ // all-fake service accepted integer 1/0 via boolValue and missed this bug.
+ if([op isEqual:@"conditions"]||[op isEqual:@"list"])return GunshotRequest(json,role);
+ if([op isEqual:@"account_native"]){
+  NSLog(@"Fixture: authorizing");
+  dispatch_sync(dispatch_get_main_queue(),^{
+   NSDictionary *snapshot=GSEmbeddedRuntimeSnapshot();
+   SnapshotDuringAuthorization=[snapshot[@"authorization"]isEqual:@"checking"];
+   NSLog(@"Fixture: authorization snapshot returned");
+  });
+ }
+ if([op isEqual:@"accounts"])data=@{@"selected":@"test@example.com",@"accounts":@[@{@"email":@"test@example.com"}]};
+ if([op isEqual:@"options"])data=@{@"quality":@"original",@"concurrent":@2,@"retries":@3,@"wifiOnly":@NO,@"chargingOnly":@NO,@"paused":@NO};
+ NSData *reply=[NSJSONSerialization dataWithJSONObject:@{@"ok":@YES,@"data":data} options:0 error:nil];
+ return strdup([[NSString alloc]initWithData:reply encoding:NSUTF8StringEncoding].UTF8String);
 }
 BOOL GSIsGooglePhotos(void){return YES;}
 void GSInstallNativeRouting(void){}
 BOOL GSNativeRoutingAvailable(void){return YES;}
+BOOL GSBackupRequestsAvailable(void){return YES;}
+NSDictionary *GSBackupRequestsSnapshot(void){return @{};}
 BOOL GSNativeRoutingEnabled(void){return NO;}
 NSString *GSNativeRoutingAccount(void){return @"test@example.com";}
 void GSSetNativeRouting(BOOL enabled,NSString *account){}
@@ -52,17 +72,22 @@ static GSPanel *Panel(UIViewController *host){
 @end
 @implementation GSFixtureScene
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options{
+ NSLog(@"Fixture: scene connecting");
  self.window=[[UIWindow alloc]initWithWindowScene:(UIWindowScene *)scene];
  self.window.rootViewController=[UIViewController new];self.window.rootViewController.view.backgroundColor=UIColor.systemBackgroundColor;
  [self.window makeKeyAndVisible];
 }
 - (void)sceneDidBecomeActive:(UIScene *)scene{
- if(self.started)return;self.started=YES;
+ if(self.started)return;self.started=YES;NSLog(@"Fixture: scene active");
  UIViewController *root=self.window.rootViewController;
  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:30];
  // A detached delegate controller must resolve to the active scene's root.
  GSPresentSettings([UIViewController new]);
- Await(^BOOL{GSPanel *panel=Panel(root);return panel.settingsMode&&panel.viewIfLoaded.window&&[[panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].textLabel.text isEqual:@"test@example.com"];},^{
+ Await(^BOOL{GSPanel *panel=Panel(root);return panel.settingsMode&&panel.viewIfLoaded.window&&[[panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].detailTextLabel.text isEqual:@"認証確認済み · アップロード可能"];},^{
+  NSDictionary *runtime=GSEmbeddedRuntimeSnapshot();
+  if(![runtime[@"conditionsAccepted"]boolValue]||!SnapshotDuringAuthorization||![runtime[@"coreReady"]boolValue]||![runtime[@"foreground"]boolValue]||![runtime[@"path"]isEqual:@"satisfied"]){Finish(NO,@"embedded runtime state or nonblocking authorization snapshot failed");return;}
+  NSSet *allowed=[NSSet setWithArray:@[@"coreReady",@"conditionsAccepted",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
+  if(![[NSSet setWithArray:runtime.allKeys]isSubsetOfSet:allowed]){Finish(NO,@"unexpected diagnostic fields");return;}
   GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=7){Finish(NO,@"settings sections missing");return;}
   Capture(self.window,@"settings-light.png");
   [panel.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:6] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
@@ -80,7 +105,7 @@ static GSPanel *Panel(UIViewController *host){
       Capture(self.window,@"settings-dark.png");
       [root dismissViewControllerAnimated:NO completion:^{
        GSPresentSettings(nil);
-       Await(^BOOL{return Panel(root).viewIfLoaded.window!=nil;},^{Finish(YES,@"detached, nested, repeated and nil-host presentation; settings rendered");},deadline);
+       Await(^BOOL{return Panel(root).viewIfLoaded.window!=nil;},^{Finish(YES,@"detached, nested, repeated and nil-host presentation; settings rendered; real jailed runtime online and authorization snapshot nonblocking");},deadline);
       }];
      });
     },deadline);
@@ -95,4 +120,8 @@ static GSPanel *Panel(UIViewController *host){
  UISceneConfiguration *config=[[UISceneConfiguration alloc]initWithName:@"Fixture" sessionRole:session.role];config.delegateClass=GSFixtureScene.class;return config;
 }
 @end
-int main(int argc,char **argv){@autoreleasepool{return UIApplicationMain(argc,argv,nil,NSStringFromClass(GSFixtureApp.class));}}
+int main(int argc,char **argv){@autoreleasepool{
+ NSLog(@"Fixture: main");
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,60*NSEC_PER_SEC),dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{Finish(NO,@"watchdog: no completion within 60 seconds after main");});
+ return UIApplicationMain(argc,argv,nil,NSStringFromClass(GSFixtureApp.class));
+}}

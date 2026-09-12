@@ -3,14 +3,21 @@
 #import "GSNativeAccount.h"
 #import "GSNativeRouting.h"
 #import "GSUploadDiagnostics.h"
+#if GS_JAILED
+#import "GSBackupRequests.h"
+#endif
 #import "../Shared/IPCProtocol.h"
 #import <PhotosUI/PhotosUI.h>
 #import <objc/runtime.h>
 #if GS_JAILED
 #define GS_ACCOUNT_HELP @"アカウントの接続・更新を実行してください。"
+#define GS_BACKUP_TITLE @"手動・自動バックアップを GoToHP へ送る"
+#define GS_BACKUP_HELP @"Google Photos のバックアップをオンにすると、自動バックアップも GoToHP に送ります。送信画質は GoToHP の設定を使用します。jailed ではアプリを前面で開いてください。"
 #define GS_QUEUED_HELP @"アップロード中はこのアプリを開いてください。待機中の項目は次回起動時に再開します。"
 #define GS_AUTH_HELP @"Paste the EmbeddedSetup oauth_token or a complete gotohp credential. It is stored privately in this app and sent to Google. It is never displayed again."
 #else
+#define GS_BACKUP_TITLE @"手動バックアップを GoToHP へ送る"
+#define GS_BACKUP_HELP @"手動の「今すぐバックアップ」が対象です。"
 #define GS_ACCOUNT_HELP @"設定 → GoToHP からアカウントを追加してください。"
 #define GS_QUEUED_HELP @"アプリを閉じてもバックグラウンドでアップロードを続けます。"
 #define GS_AUTH_HELP @"Paste the EmbeddedSetup oauth_token or a complete gotohp credential. The value is sent only to gotohpd and Google. It is never displayed again."
@@ -84,7 +91,23 @@
  NSMutableArray *jobs=[NSMutableArray array];NSInteger cursor=0;NSDictionary *page=nil;
  if(options)do{page=GSRequest(@{@"op":@"list",@"cursor":@(cursor)},&error);if(!page)break;[jobs addObjectsFromArray:page[@"jobs"]?:@[]];cursor=[page[@"next"]integerValue];}while(cursor>=0);
  dispatch_async(dispatch_get_main_queue(),^{self.refreshing=NO;if(generation!=self.stateGeneration){[self refresh];return;}if(error){[self message:error.localizedDescription];return;}self.accounts=accounts;self.options=[options mutableCopy];self.jobs=jobs;
- self.statusText=[accounts[@"selected"]length]?([page[@"online"]boolValue]?@"接続済み":@"ネットワーク接続を待っています"):@"アカウントの接続が必要です";
+ NSString *readiness=@"アップロード可能";
+ if([options[@"paused"]boolValue])readiness=@"アップロードを一時停止中";
+ else if(![page[@"online"]boolValue])readiness=@"通信またはアプリの起動を待機中";
+ else if([options[@"wifiOnly"]boolValue]&&![page[@"wifi"]boolValue])readiness=@"Wi-Fi 接続を待機中";
+ else if([options[@"chargingOnly"]boolValue]&&![page[@"charging"]boolValue])readiness=@"充電を待機中";
+ NSString *authorization=@"アカウント設定済み";
+#if GS_JAILED
+ NSDictionary *runtime=GSEmbeddedRuntimeSnapshot();
+ if([runtime[@"authorization"]isEqual:@"validated"])authorization=@"認証確認済み";
+ if(![options[@"paused"]boolValue]){
+  if(![runtime[@"conditionsAccepted"]boolValue])readiness=@"アップロード開始条件の反映に失敗（診断を確認）";
+  else if(![runtime[@"foreground"]boolValue])readiness=@"アプリの前面表示を待機中";
+  else if([runtime[@"path"]isEqual:@"unknown"])readiness=@"通信状態を確認中";
+  else if(![runtime[@"networkOnline"]boolValue])readiness=@"ネットワーク接続を待機中";
+ }
+#endif
+ self.statusText=[accounts[@"selected"]length]?[NSString stringWithFormat:@"%@ · %@",authorization,readiness]:@"アカウントの接続が必要です";
  [self.tableView reloadData];
  if(self.routedAssets){NSArray *assets=self.routedAssets;self.routedAssets=nil;
  if(!assets.count){[self message:@"選択した写真を取得できませんでした。「アップロード」から選び直してください。バックアップは開始していません。"];return;}
@@ -103,7 +126,7 @@
 #endif
  [groups addObject:@{@"title":@"アカウント",@"rows":accountRows,@"footer":@"接続状態と送信先を上で確認できます。"}];
  [groups addObject:@{@"title":@"アップロード設定",@"rows":@[@0,@1,@2,@3,@4,@5],@"footer":GS_QUEUED_HELP}];
- if(GSIsGooglePhotos())[groups addObject:@{@"title":@"Google Photos との連携",@"rows":@[@10],@"footer":@"手動の「今すぐバックアップ」が対象です。自動バックアップの置き換えは未対応です。"}];
+ if(GSIsGooglePhotos())[groups addObject:@{@"title":@"Google Photos との連携",@"rows":@[@10],@"footer":GS_BACKUP_HELP}];
  [groups addObject:@{@"title":@"キューの管理",@"rows":@[@8,@9]}];
  if(GSIsGooglePhotos())[groups addObject:@{@"title":@"診断",@"rows":@[@11,@12],@"footer":@"互換性調査用です。トークンやメディア本体は記録しません。"}];
  return groups;
@@ -164,7 +187,7 @@
  }
  NSInteger control=[self controlAtPath:path];
  if(control>=0){
-  NSArray *titles=@[@"画質",@"同時アップロード数",@"再試行回数",@"Wi-Fi 接続時のみ",@"充電中のみ",@"アップロードを一時停止",@"送信先アカウント",@"GoToHP からアカウントを削除",@"失敗した項目を再試行",@"完了した履歴を消去",@"手動バックアップを GoToHP へ送る",@"アップロードの診断",@"診断データを書き出す",@"アカウントを接続・更新",@"写真・動画を選択"];
+  NSArray *titles=@[@"画質",@"同時アップロード数",@"再試行回数",@"Wi-Fi 接続時のみ",@"充電中のみ",@"アップロードを一時停止",@"送信先アカウント",@"GoToHP からアカウントを削除",@"失敗した項目を再試行",@"完了した履歴を消去",GS_BACKUP_TITLE,@"アップロードの診断",@"診断データを書き出す",@"アカウントを接続・更新",@"写真・動画を選択"];
   NSArray *icons=@[@"photo",@"square.stack.3d.up",@"arrow.clockwise",@"wifi",@"battery.100.bolt",@"pause.circle",@"person.crop.circle.badge.checkmark",@"person.crop.circle.badge.minus",@"arrow.clockwise.circle",@"checkmark.circle",@"arrow.triangle.branch",@"waveform.path.ecg",@"square.and.arrow.up",@"person.crop.circle.badge.checkmark",@"plus.circle"];
   cell.textLabel.text=titles[control];cell.imageView.image=[UIImage systemImageNamed:icons[control]];
   cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
@@ -181,7 +204,7 @@
    [toggle addTarget:self action:@selector(controlSwitchChanged:) forControlEvents:UIControlEventValueChanged];
    cell.accessoryView=toggle;cell.selectionStyle=UITableViewCellSelectionStyleNone;
   }
-  if(control==10)cell.detailTextLabel.text=GSNativeRoutingAvailable()?@"「今すぐバックアップ」の手動操作に適用":@"このバージョンでは利用できません";
+  if(control==10)cell.detailTextLabel.text=GSNativeRoutingAvailable()?GS_BACKUP_TITLE:@"このバージョンでは利用できません";
   return cell;
  }
  if(!self.jobs.count){cell.textLabel.text=@"まだアップロードはありません";cell.detailTextLabel.text=@"「写真・動画を選択」から追加できます。";cell.imageView.image=[UIImage systemImageNamed:@"tray"];cell.selectionStyle=UITableViewCellSelectionStyleNone;return cell;}
@@ -237,7 +260,12 @@
  [a addAction:[UIAlertAction actionWithTitle:@"接続" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){NSString *secret=a.textFields.firstObject.text;a.textFields.firstObject.text=@"";[self request:@{@"op":@"account_add",@"secret":secret?:@""}];}]];[self sheet:a];
 }
 - (void)exportUploadDiagnostics{
- NSData *json=[NSJSONSerialization dataWithJSONObject:GSUploadDiagnosticsSnapshot() options:NSJSONWritingPrettyPrinted error:nil];
+ NSMutableDictionary *snapshot=[GSUploadDiagnosticsSnapshot() mutableCopy];
+#if GS_JAILED
+ snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
+ snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();
+#endif
+ NSData *json=[NSJSONSerialization dataWithJSONObject:snapshot options:NSJSONWritingPrettyPrinted error:nil];
  NSURL *file=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gotohp-upload-diagnostics.json"]];
  if(!json||![json writeToURL:file options:NSDataWritingAtomic error:nil]){[self message:@"診断データを書き出せませんでした。"];return;}
  UIActivityViewController *share=[[UIActivityViewController alloc]initWithActivityItems:@[file] applicationActivities:nil];
@@ -245,11 +273,14 @@
  [self presentViewController:share animated:YES completion:nil];
 }
 - (void)toggleNativeRouting{
+#if GS_JAILED
+ if(!GSBackupRequestsAvailable()){[self message:@"このバージョンではバックアップ要求を置き換えられません。GoToHP のアップロード画面から選択してください。"];return;}
+#endif
  if(!GSNativeRoutingAvailable()){[self message:@"このバージョンでは手動バックアップ連携を利用できません。「アップロード」から写真を選択してください。"];return;}
  if(GSNativeRoutingEnabled()){GSSetNativeRouting(NO,nil);[self.tableView reloadData];return;}
  NSString *account=self.accounts[@"selected"];
  if(!account.length){[self message:GS_ACCOUNT_HELP];return;}
- UIAlertController *a=[UIAlertController alertControllerWithTitle:@"手動バックアップを GoToHP に送りますか？" message:[NSString stringWithFormat:@"送信先: %@\n手動の「今すぐバックアップ」を GoToHP に送ります。自動バックアップ・共有・ロックされたフォルダは対象外です。重複を避けるには Google Photos の自動バックアップをオフにしてください。進捗は GoToHP に表示します。",account] preferredStyle:UIAlertControllerStyleAlert];
+ UIAlertController *a=[UIAlertController alertControllerWithTitle:GS_BACKUP_TITLE message:[NSString stringWithFormat:@"送信先: %@\n%@\n純正への送信に切り替えず、GoToHP のキューで失敗・再試行を確認します。",account,GS_BACKUP_HELP] preferredStyle:UIAlertControllerStyleAlert];
  [a addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
  [a addAction:[UIAlertAction actionWithTitle:@"有効にする" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){GSSetNativeRouting(YES,account);[self.tableView reloadData];}]];[self sheet:a];
 }
@@ -259,8 +290,10 @@
  [a addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];[self sheet:a];
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path{
- [tableView deselectRowAtIndexPath:path animated:YES];if(self.busy)return;
+ [tableView deselectRowAtIndexPath:path animated:YES];
  NSInteger control=[self controlAtPath:path];
+ if(control==12){[self exportUploadDiagnostics];return;}
+ if(self.busy)return;
  if(control>=0){
   if(control==14){[self choose];return;}
   if(control==13){[self addAccount];return;}

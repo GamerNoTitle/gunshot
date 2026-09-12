@@ -19,3 +19,7 @@ extern kern_return_t rocketbootstrap_unlock(const char *);
 }
 #endif
 FOUNDATION_EXPORT NSDictionary *GSRequest(NSDictionary *request, NSError **error);
+#if GS_JAILED
+// Nonblocking, metadata-only; safe while native authorization is in progress.
+FOUNDATION_EXPORT NSDictionary *GSEmbeddedRuntimeSnapshot(void);
+#endif

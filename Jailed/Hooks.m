@@ -2,6 +2,7 @@
 #import <objc/runtime.h>
 #import "../UI/GSPanel.h"
 #import "../UI/GSAccountMenu.h"
+#import "../UI/GSNativeRouting.h"
 
 // Independent Objective-C hooks: no Substrate / ElleKit dependency for IPA injection.
 static id (*GSOriginalActivityInit)(id, SEL, NSArray *, NSArray *);
@@ -17,7 +18,7 @@ __attribute__((constructor)) static void GSLoadJailed(void) {
  dispatch_async(dispatch_get_main_queue(),^{
  NSString *executable=[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"];
  if(![executable isEqualToString:@"GooglePhotos"])return;
- GSInstallAccountMenu();
+ GSInstallAccountMenu();GSInstallNativeRouting();
  Method activity=class_getInstanceMethod(UIActivityViewController.class,@selector(initWithActivityItems:applicationActivities:));
  if(activity)GSOriginalActivityInit=(void *)method_setImplementation(activity,(IMP)GSActivityInit);
  });

@@ -11,7 +11,7 @@ func roleAllowed(role, op string) bool {
 	if role == "daemon" {
 		return op == "conditions"
 	}
-	common := op == "ping" || op == "list" || op == "accounts" || op == "options" || op == "retry" || op == "cancel" || op == "clear_completed" || op == "retry_failed"
+	common := op == "job" || op == "ping" || op == "list" || op == "accounts" || op == "options" || op == "retry" || op == "cancel" || op == "clear_completed" || op == "retry_failed"
 	if role == "settings" || role == "googlephotos" {
 		return common || (role == "googlephotos" && (op == "begin" || op == "append" || op == "seal")) || op == "configure" || op == "account_add" || op == "account_native" || op == "account_remove" || op == "account_select"
 	}
@@ -125,6 +125,8 @@ func (e *Engine) handle(r Request, role string) (any, error) {
 		return nil, errRequest
 	}
 	switch r.Op {
+	case "job":
+		return j, nil
 	case "append":
 		return nil, e.appendChunk(j, r)
 	case "seal":

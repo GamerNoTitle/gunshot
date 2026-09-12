@@ -37,6 +37,7 @@ func (o Options) valid() bool {
 func validQuality(q string) bool { return q == "original" || q == "saver" || q == "quota" }
 
 type Job struct {
+	OriginalPolicy  int        `json:"originalPolicy,omitempty"` // 1: original bytes sent without legacy remote-hash shortcut.
 	ID              string     `json:"id"`
 	Account         string     `json:"account"`
 	Quality         string     `json:"quality"`

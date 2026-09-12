@@ -86,6 +86,6 @@ func (r *reporter) ThreadStatus(s backend.ThreadStatus) {
 	r.callback(Progress{State: phase, Uploaded: r.completed + s.BytesUploaded})
 }
 func upload(ctx context.Context, paths []string, account, quality string, cb func(Progress)) (string, error) {
-	opts := backend.UploadOptions{Api: backend.ApiOptions{Account: account, Saver: quality == "saver", UseQuota: quality == "quota"}, Threads: 1, PairLivePhotos: len(paths) == 2, SkipIncompleteLivePhotos: true}
+	opts := backend.UploadOptions{Api: backend.ApiOptions{Account: account, Saver: quality == "saver", UseQuota: quality == "quota"}, Threads: 1, ForceUpload: quality == "original", PairLivePhotos: len(paths) == 2, SkipIncompleteLivePhotos: true}
 	return backend.GunshotUpload(ctx, paths, opts, &reporter{callback: cb})
 }

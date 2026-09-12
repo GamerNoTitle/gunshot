@@ -1,4 +1,7 @@
 #import "GSNativeRouting.h"
+#if GS_JAILED
+#import "GSBackupRequests.h"
+#endif
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -43,6 +46,9 @@ static void GSGridBackup(id object,SEL selector,id assets){
  GSRoute(assets);
 }
 void GSInstallNativeRouting(void){
+#if GS_JAILED
+ GSInstallBackupRequests();
+#endif
  // Called on the main thread when installing the app's GoToHP launcher.
  if(GSInstalled||!GSIsGooglePhotos()||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqualToString:@"7.92.0"])return;
  Class behavior=NSClassFromString(@"PHSBackupActionBehaviorImpl");
