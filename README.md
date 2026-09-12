@@ -12,7 +12,7 @@ Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`
 
 ## 構成（jailbreak 版）
 
-- Theos / Logos tweak: Google Photos と Apple Photos に GoToHP ボタン、対応する共有シートに `Upload with GoToHP`。
+- Theos / Logos tweak: Google Photos のアカウントメニューに GoToHP 設定、Apple Photos に GoToHP ボタン、対応する共有シートに `Upload with GoToHP`。
 - PhotoKit: 元の写真/動画を再エンコードせず export。Live Photo は still + pairedVideo の original resources。
 - RocketBootstrap + Mach IPC: sandbox から daemon へ bounded chunk transfer。kernel audit token と署名 identifier / executable path で送信元を検証。
 - `gotohpd`: mobile ユーザーの launchd daemon。Go `c-archive` をリンク。UI プロセスには Go runtime を載せません。
@@ -24,7 +24,7 @@ Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`
 1. GitHub Actions の `gotohp-tweak-rootless` / `gotohp-tweak-rootful` から対応 `.deb` を取得。
 2. RocketBootstrap、PreferenceLoader、使用中の jailbreak の substrate-compatible tweak injection が必要です。rootless を優先、rootful は同じソースからビルドします。
 3. パッケージマネージャーでインストールし、Photos / Google Photos / Settings を再起動。
-4. **Google Photos → GoToHP → Settings → Account** または **設定 → GoToHP → Open GoToHP settings → Account** で `oauth_token` または完全な gotohp credential を入力。
+4. **jailed:** Google Photos のプロフィール画像 → **GoToHP の設定** でログイン中アカウントを自動接続します。**独立 daemon:** アカウントメニューの GoToHP 設定 → Account、または **設定 → GoToHP → Open GoToHP settings → Account** で `oauth_token` または完全な gotohp credential を入力。
    - 認証入力は upstream と同じ方式です。[upstream のサインイン手順](https://github.com/xob0t/gotohp#sign-in) を参照。
    - Google Photos iOS の既存ログイン状態を盗用・抽出しません。iOS アプリにログインしているだけでは uploader の認証にはなりません。
    - token binding 必須 credential は binding 情報も含めて import してください。iPhone 上の ADB 抽出はありません。
@@ -32,7 +32,7 @@ Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`
 6. 準備が終わってキューに入るまでアプリを開いておいてください。**Queued 後**はアプリを終了しても daemon が処理します。準備中の強制終了では、その時点までに daemon に受け渡せた項目だけ継続します。
 7. 同じ画面で progress / completed / failed を確認。失敗行から Retry / Cancel。複数選択は項目単位でキューに追加します。
 
-共有シートでは `PHAsset` またはローカル file URL が得られる場合に action を表示します。共有データが image object / provider のみの場合や Google Photos 独自共有 UI では、常設 GoToHP ボタンから写真を選びます。URL 共有は共有元が渡したファイルそのものを使い、Google Photos 内の選択を推測しません。
+共有シートでは `PHAsset` またはローカル file URL が得られる場合に action を表示します。共有データが image object / provider のみの場合や Google Photos 独自共有 UI では、Google Photos のアカウントメニュー → GoToHP の設定 → Upload（Apple Photos では GoToHP ボタン）から写真を選びます。URL 共有は共有元が渡したファイルそのものを使い、Google Photos 内の選択を推測しません。
 
 画質は Preferences の Quality 行をタップして切替:
 
@@ -84,7 +84,7 @@ go vet -tags cli ./...
 
 ## セキュリティ
 
-`/var/mobile/Library/Application Support/GoToHP/` は 0700、queue と credential は 0600。credential はこの開発版では private JSON ファイルに保存し、Keychain 保存は未実装です。認証通信は TLS 検証を有効にし、credential や upstream の生の error / response は UI・ログへ返しません。
+`/var/mobile/Library/Application Support/GoToHP/` は 0700、queue と credential は 0600。独立 daemon の credential はこの開発版では private JSON ファイルに保存し、Keychain 保存は未実装です。jailed の native account は email と account ID のみ保存し、トークンの取得・更新を Google Photos の既存 SSO に任せます。認証通信は TLS 検証を有効にし、credential や upstream の生の error / response は UI・ログへ返しません。
 
 IPC の role は JSON から受け取りません。Settings と許可済み Google Photos は account/settings mutation、Google Photos / Photos は import/queue 操作が可能です。root / カーネル / 許可済みプロセスに別 tweak を注入できる攻撃者からの保護は提供しません。protocol は任意の filesystem path を受け付けず、daemon が生成した ID と検証済み basename だけを使います。
 

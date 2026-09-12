@@ -68,7 +68,7 @@ LiveContainer の Tweaks importer に直接入れる場合は、後述の **単�
 
 UIKit の background 制限を解除しません。Go HTTP は background URLSession に移管できないため、画面ロック・OS suspend・force kill 後の継続は提供しません。中断時のキャンセル処理が OS 停止に間に合わない場合でも、次回初期化で queue を復旧します。再送は先頭からで、commit 中断は結果不明として停止します。通知の処理は core queue 上なので認証・ディスク処理が終わるまで遅れる場合があります。
 
-credential は sandbox 内の 0600 JSON で、Keychain は未実装です。ディレクトリは 0700、初回 unlock 後アクセス可能、backup 対象から除外します。同じアプリ/LiveContainer のコードとその管理者から隔離するものではありません。独立 daemon 用の外部 IPC は開きません。
+アカウントの binding は sandbox 内の 0600 JSON に保存します。native account のトークンは保存せず、Google Photos の既存 SSO が管理します。以前に手動 import した credential は削除するまで JSON に残る場合があります。GoToHP 独自の Keychain store は未実装です。ディレクトリは 0700、初回 unlock 後アクセス可能、backup 対象から除外します。同じアプリ/LiveContainer のコードとその管理者から隔離するものではありません。独立 daemon 用の外部 IPC は開きません。
 
 ## 実機検証
 
