@@ -8,6 +8,8 @@ Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`
 
 [全アップロード置換の状況と診断手順](docs/full-upload-replacement.md)：全置換はまだ未完成です。7.92.0 の native uploader を観測する opt-in 診断・JSON export を追加しています。
 
+[Google Photos 7.92.0 アプリ解析結果・総合索引](docs/analysis/index.md)：全件 metadata 検索、解析済み upload 経路、根拠、未解析領域の入口です。
+
 ## 構成（jailbreak 版）
 
 - Theos / Logos tweak: Google Photos と Apple Photos に GoToHP ボタン、対応する共有シートに `Upload with GoToHP`。
