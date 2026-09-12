@@ -32,14 +32,22 @@ codesign --force --sign - "$app"
 python3 - <<'PY'
 import json,subprocess,pathlib,shutil
 run=lambda *args:subprocess.check_output(args,text=True).strip()
-devices=json.loads(run('xcrun','simctl','list','devices','available','-j'))['devices']
-choices=[d for runtime,group in devices.items() if '.iOS-' in runtime for d in group if d.get('isAvailable') and d['name'].startswith('iPhone')]
-if not choices:raise SystemExit('No available iPhone simulator runtime')
-device=next((d for d in choices if d['state']=='Booted'),choices[0]);udid=device['udid']
-if device['state']!='Booted':subprocess.run(['xcrun','simctl','boot',udid],check=True,timeout=90)
+# Use a fixture-owned device rather than the runner image's pre-created device.
+# Install/launch on that shared seed can stall before the fixture reaches main.
+runtimes=json.loads(run('xcrun','simctl','list','runtimes','-j'))['runtimes']
+runtimes=[r for r in runtimes if r.get('isAvailable') and '.iOS-' in r['identifier']]
+if not runtimes:raise SystemExit('No available iPhone simulator runtime')
+runtime=max(runtimes,key=lambda r:tuple(map(int,r['version'].split('.'))))
+types=json.loads(run('xcrun','simctl','list','devicetypes','-j'))['devicetypes']
+device_type=next(d for d in types if d['name']=='iPhone 16 Pro')
+udid=run('xcrun','simctl','create','GoToHP Settings CI',device_type['identifier'],runtime['identifier'])
+print('Fixture device:',udid,runtime['name'],flush=True)
+subprocess.run(['xcrun','simctl','boot',udid],check=True,timeout=90)
 subprocess.run(['xcrun','simctl','bootstatus',udid,'-b'],check=True,timeout=180)
 app='.build/settings-smoke/GoToHPSettingsFixture.app';bundle='dev.tqmane.gunshot.settingsfixture'
-subprocess.run(['xcrun','simctl','install',udid,app],check=True,timeout=60)
+print('Installing settings fixture',flush=True)
+subprocess.run(['xcrun','simctl','install',udid,app],check=True,timeout=120)
+print('Launching settings fixture',flush=True)
 launch_error=None
 try:
  subprocess.run(['xcrun','simctl','launch','--console',udid,bundle],check=True,timeout=120)

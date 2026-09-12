@@ -84,6 +84,7 @@ static GSPanel *Panel(UIViewController *host){
 }
 - (void)sceneDidBecomeActive:(UIScene *)scene{
  if(self.started)return;self.started=YES;NSLog(@"Fixture: scene active");
+ GSSetLanguage(@"ja");NSLog(@"Fixture: language initialized");
  UIViewController *root=self.window.rootViewController;
  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:30];
  // A detached delegate controller must resolve to the active scene's root.
@@ -131,7 +132,7 @@ static GSPanel *Panel(UIViewController *host){
 }
 @end
 int main(int argc,char **argv){@autoreleasepool{
- GSSetLanguage(@"ja");NSLog(@"Fixture: main");
+ NSLog(@"Fixture: main");
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,60*NSEC_PER_SEC),dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{Finish(NO,@"watchdog: no completion within 60 seconds after main");});
  return UIApplicationMain(argc,argv,nil,NSStringFromClass(GSFixtureApp.class));
 }}
