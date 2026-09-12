@@ -143,6 +143,9 @@ func Open(root string, runner Runner) (*Engine, error) {
 	} else if !os.IsNotExist(e) {
 		return nil, e
 	}
+	if err := validateState(s); err != nil {
+		return nil, err
+	}
 	en := &Engine{root: root, state: s, active: map[string]context.CancelFunc{}, importHashes: map[string][]hash.Hash{}, runner: runner}
 	for _, j := range s.Jobs {
 		if !validID(j.ID) {
@@ -207,4 +210,34 @@ func (e *Engine) Run(ctx context.Context) {
 			e.Tick()
 		}
 	}
+}
+
+func validateState(s State) error {
+	if len(s.Jobs) > MaxJobs {
+		return errors.New("too many persisted jobs")
+	}
+	seen := map[string]bool{}
+	states := map[string]bool{"importing": true, "pending": true, "preparing": true, "uploading": true, "committing": true, "completed": true, "failed": true, "cancelled": true}
+	for _, j := range s.Jobs {
+		if j == nil || !validID(j.ID) || seen[j.ID] || !states[j.State] || !validQuality(j.Quality) || j.Account == "" || len(j.Resources) < 1 || len(j.Resources) > 2 || j.Attempts < 0 {
+			return errors.New("invalid persisted job")
+		}
+		if j.Owner != "photos" && j.Owner != "googlephotos" {
+			return errors.New("invalid job owner")
+		}
+		seen[j.ID] = true
+		names := map[string]bool{}
+		var total int64
+		for _, r := range j.Resources {
+			if !safeName(r.Name) || names[r.Name] || r.Size <= 0 || r.Size > 100<<30 {
+				return errors.New("invalid persisted resource")
+			}
+			names[r.Name] = true
+			total += r.Size
+		}
+		if j.Total != total {
+			return errors.New("invalid persisted resource sizes")
+		}
+	}
+	return nil
 }

@@ -31,8 +31,9 @@ static BOOL GSOnline=NO, GSWiFi=NO; // Accessed only on the conditions queue.
 static void GSConditions(void) {
  BOOL online=GSOnline,wifi=GSWiFi,charging=NO;
  typedef CFTypeRef (*PowerInfo)(void);typedef CFStringRef (*PowerType)(CFTypeRef);
- static PowerInfo powerInfo=(PowerInfo)dlsym(RTLD_DEFAULT,"IOPSCopyPowerSourcesInfo");
- static PowerType powerType=(PowerType)dlsym(RTLD_DEFAULT,"IOPSGetProvidingPowerSourceType");
+ static void *powerFramework=dlopen("/System/Library/Frameworks/IOKit.framework/IOKit",RTLD_LAZY|RTLD_LOCAL);
+ static PowerInfo powerInfo=powerFramework?(PowerInfo)dlsym(powerFramework,"IOPSCopyPowerSourcesInfo"):NULL;
+ static PowerType powerType=powerFramework?(PowerType)dlsym(powerFramework,"IOPSGetProvidingPowerSourceType"):NULL;
  CFTypeRef info=powerInfo?powerInfo():NULL;if(info){CFStringRef source=powerType?powerType(info):NULL;charging=source&&CFEqual(source,CFSTR("AC Power"));CFRelease(info);}
  NSData *b=[NSJSONSerialization dataWithJSONObject:@{@"op":@"conditions",@"online":@(online),@"wifi":@(wifi),@"charging":@(charging)} options:0 error:nil];
  NSString *json=[[NSString alloc]initWithData:b encoding:NSUTF8StringEncoding];

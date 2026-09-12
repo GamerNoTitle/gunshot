@@ -225,3 +225,22 @@ func TestRemoteLivePhotoComponentIsNotRetried(t *testing.T) {
 		t.Fatal("duplicate component outcome lost")
 	}
 }
+
+func TestStructurallyCorruptStateRejected(t *testing.T) {
+	for _, mutate := range []func(*State){
+		func(s *State) { s.Jobs = append(s.Jobs, nil) },
+		func(s *State) { s.Jobs[0].Resources[0].Name = "../credentials.json" },
+		func(s *State) { s.Jobs[0].State = "unknown" },
+		func(s *State) { s.Jobs = append(s.Jobs, s.Jobs[0]) },
+	} {
+		e := newEngine(t, nil)
+		importTest(t, e, "original")
+		mutate(&e.state)
+		if err := e.save(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Open(e.root, nil); err == nil {
+			t.Fatal("accepted invalid persisted job")
+		}
+	}
+}
