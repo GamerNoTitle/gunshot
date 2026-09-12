@@ -12,8 +12,8 @@ func roleAllowed(role, op string) bool {
 		return op == "conditions"
 	}
 	common := op == "ping" || op == "list" || op == "accounts" || op == "options" || op == "retry" || op == "cancel" || op == "clear_completed" || op == "retry_failed"
-	if role == "settings" {
-		return common || op == "configure" || op == "account_add" || op == "account_remove" || op == "account_select"
+	if role == "settings" || role == "googlephotos" {
+		return common || (role == "googlephotos" && (op == "begin" || op == "append" || op == "seal")) || op == "configure" || op == "account_add" || op == "account_remove" || op == "account_select"
 	}
 	if role == "googlephotos" || role == "photos" {
 		return common || op == "begin" || op == "append" || op == "seal"

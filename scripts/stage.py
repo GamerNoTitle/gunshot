@@ -25,3 +25,7 @@ launchctl bootout system '{launch}' 2>/dev/null || true
 '''
 for name,body in [('postinst',post),('prerm',pre)]:
     p=control/name;p.write_text(body);p.chmod(0o755)
+
+notice=root/'usr/share/doc/dev.tqmane.gunshot/ThirdPartyNotices.txt'
+notice.parent.mkdir(parents=True,exist_ok=True)
+notice.write_bytes(pathlib.Path('.build/ThirdPartyNotices.txt').read_bytes())

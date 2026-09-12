@@ -4,3 +4,5 @@ packages/
 *.deb
 .DS_Store
 .theos-sdk/
+
+__pycache__/

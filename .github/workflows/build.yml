@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scheme: [rootless, rootful]
+        scheme: [rootless, rootful, jailed]
     env:
       THEOS: ${{ github.workspace }}/.theos-sdk
     steps:
@@ -58,7 +58,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: gotohp-tweak-${{ matrix.scheme }}
-          path: packages/*.deb
+          path: |
+            packages/*.deb
+            packages/jailed/*.deb
+            packages/jailed/*.dylib
+            packages/jailed/ThirdPartyNotices.txt
           if-no-files-found: error
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -74,9 +78,12 @@ jobs:
         run: |
           cp artifacts/gotohp-tweak-rootless/*.deb gotohp-tweak-rootless.deb
           cp artifacts/gotohp-tweak-rootful/*.deb gotohp-tweak-rootful.deb
+          cp artifacts/gotohp-tweak-jailed/jailed/*.deb gotohp-tweak-jailed.deb
+          cp artifacts/gotohp-tweak-jailed/jailed/GunshotJailed.dylib GunshotJailed.dylib
+          cp artifacts/gotohp-tweak-jailed/jailed/ThirdPartyNotices.txt ThirdPartyNotices.txt
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" gotohp-tweak-rootless.deb gotohp-tweak-rootful.deb --generate-notes
+        run: gh release create "$RELEASE_TAG" gotohp-tweak-rootless.deb gotohp-tweak-rootful.deb gotohp-tweak-jailed.deb GunshotJailed.dylib ThirdPartyNotices.txt --generate-notes
