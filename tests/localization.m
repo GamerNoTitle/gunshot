@@ -7,9 +7,9 @@ int main(void){@autoreleasepool{
  assert([GSLanguageForPreferences(@[@"fr"])isEqual:@"en"]);
  assert([GSLanguageForPreferences(@[])isEqual:@"en"]);
  GSSetLanguage(@"ja");assert([GSL(@"Quality")isEqual:@"画質"]);
- assert([[NSString stringWithFormat:GSL(@"Upload history (%lu)"),3UL]isEqual:@"アップロード履歴（3件）"]);
+ assert(([[NSString stringWithFormat:GSL(@"Upload history (%lu)"),3UL]isEqual:@"アップロード履歴（3件）"]));
  GSSetLanguage(@"en");assert([GSL(@"Quality")isEqual:@"Quality"]);
- assert([[NSString stringWithFormat:GSL(@"Upload history (%lu)"),3UL]isEqual:@"Upload history (3)"]);
+ assert(([[NSString stringWithFormat:GSL(@"Upload history (%lu)"),3UL]isEqual:@"Upload history (3)"]));
  assert([GSL(@"unknown future key")isEqual:@"unknown future key"]);
  GSSetLanguage(@"invalid");assert([GSLanguageOverride()isEqual:@"system"]);
  GSSetLanguage(@"ja");GSSetLanguage(@"system");assert([GSLanguageOverride()isEqual:@"system"]);
