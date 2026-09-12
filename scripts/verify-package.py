@@ -28,8 +28,9 @@ with tempfile.TemporaryDirectory() as d:
         assert not any((r/'control'/n).exists() for n in ('postinst','prerm','preinst','postrm'))
         linked=subprocess.check_output(['otool','-L',str(binary)],text=True)
         assert '@rpath/GunshotJailed.dylib' in linked, linked
+        dependencies="\n".join(linked.splitlines()[2:])
         for name in ('rocketbootstrap','substrate','ellekit','Preferences.framework','/var/jb/'):
-            assert name.lower() not in linked.lower(), linked
+            assert name.lower() not in dependencies.lower(), linked
         for line in linked.splitlines()[2:]:
             assert line.strip().startswith(('/System/Library/Frameworks/','/usr/lib/')), line
         assert subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()=='arm64'

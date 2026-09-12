@@ -51,6 +51,12 @@ jobs:
           version=$(xcrun --sdk iphoneos --show-sdk-version)
           mkdir -p "$THEOS/sdks"
           ln -s "$sdk" "$THEOS/sdks/iPhoneOS${version}.sdk"
+      - name: Native routing contract
+        if: matrix.scheme == 'jailed'
+        run: |
+          mkdir -p .build
+          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/native-routing-test
+          .build/native-routing-test
       - name: Build Go archive and Debian package
         run: bash scripts/package.sh '${{ matrix.scheme }}'
       - name: Verify package layout
