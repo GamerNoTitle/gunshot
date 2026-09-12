@@ -7,4 +7,4 @@ FOUNDATION_EXPORT BOOL GSNativeRoutingAvailable(void);
 FOUNDATION_EXPORT BOOL GSNativeRoutingEnabled(void);
 FOUNDATION_EXPORT NSString *GSNativeRoutingAccount(void);
 FOUNDATION_EXPORT void GSSetNativeRouting(BOOL enabled, NSString *account);
-FOUNDATION_EXPORT void GSPresentRoutedAssets(NSArray<PHAsset *> *assets, NSString *account);
+FOUNDATION_EXPORT NSDictionary *GSNativeRoutingSnapshot(void);

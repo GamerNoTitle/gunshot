@@ -21,7 +21,9 @@ static NSBundle *FixtureMainBundle(id object,SEL selector){static GSFixtureBundl
 @end
 @implementation PHSLocalAsset
 @end
-static NSUInteger originalCount,routedCount,lastCount;
+static NSUInteger originalCount,importedCount;
+static BOOL failExport;
+static NSString *selected=@"destination@example.com";
 static NSString *lastAccount;
 @interface PHSBackupActionBehaviorImpl : NSObject
 - (void)backupLocalAssets:(id)assets;
@@ -35,11 +37,24 @@ static NSString *lastAccount;
 @implementation PHSActionsGridModel
 - (void)backupLocalAssets:(id)assets{originalCount++;}
 @end
-void GSPresentRoutedAssets(NSArray<PHAsset *> *assets,NSString *account){routedCount++;lastCount=assets.count;lastAccount=account;}
-static void Drain(NSUInteger expected){
- NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:2];
- while(routedCount<expected&&deadline.timeIntervalSinceNow>0)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
- assert(routedCount==expected);
+// A future reintroduction of the old presenter fails this test.
+void GSPresentRoutedAssets(NSArray<PHAsset *> *assets,NSString *account){assert(!"backup presented GoToHP UI");}
+#if GS_JAILED
+void GSInstallBackupRequests(void){}
+BOOL GSBackupRequestsAvailable(void){return NO;} // Exercise the compatibility path.
+NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"destination@example.com"};}
+#endif
+NSDictionary *GSRequest(NSDictionary *request,NSError **error){
+ if([request[@"op"]isEqual:@"accounts"])return @{@"selected":selected};
+ if([request[@"op"]isEqual:@"options"])return @{@"quality":@"original"};
+ return @{};
+}
+NSArray *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error){assert(!NSThread.isMainThread);return failExport?nil:@[[directory URLByAppendingPathComponent:@"original.heic"]];}
+NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDate *date,NSError **error){assert(!NSThread.isMainThread);assert([quality isEqual:@"original"]);importedCount++;lastAccount=account;return @"job";}
+static void Drain(NSUInteger queued,NSUInteger failed){
+ NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:3];
+ while(deadline.timeIntervalSinceNow>0){NSDictionary *s=GSNativeRoutingSnapshot();if([s[@"queued"]unsignedIntegerValue]==queued&&[s[@"failed"]unsignedIntegerValue]==failed)return;[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];}
+ assert(!"headless import did not finish");
 }
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)FixtureMainBundle);
@@ -50,17 +65,21 @@ int main(void){@autoreleasepool{
  PHSActionsGridModel *grid=[PHSActionsGridModel new];
  PHSLocalAsset *local=[PHSLocalAsset new];local.phAsset=[PHAsset new];
  [behavior backupLocalAssets:@[local]];[grid backupLocalAssets:@[local]];
- assert(originalCount==2&&routedCount==0);
+ assert(originalCount==2&&importedCount==0);
  GSSetNativeRouting(YES,@"destination@example.com");
- [behavior backupLocalAssets:@[local]];Drain(1);
- assert(lastCount==1&&originalCount==2&&[lastAccount isEqual:@"destination@example.com"]);
- [grid backupLocalAssets:[NSSet setWithObjects:local.phAsset,[PHAsset new],nil]];Drain(2);
- assert(lastCount==2&&originalCount==2);
- [behavior backupLocalAssets:@[local,@"unknown"]];Drain(3);
- assert(lastCount==0&&originalCount==2); // No partial handoff / no native fallback.
- local.isLocked=YES;[grid backupLocalAssets:@[local]];Drain(4);
- assert(lastCount==0&&originalCount==2);
+ [behavior backupLocalAssets:@[local]];Drain(1,0);
+ assert(importedCount==1&&originalCount==2&&[lastAccount isEqual:@"destination@example.com"]);
+ [grid backupLocalAssets:[NSSet setWithObjects:local.phAsset,[PHAsset new],nil]];Drain(3,0);
+ assert(importedCount==3&&originalCount==2);
+ [behavior backupLocalAssets:@[local,@"unknown"]];Drain(3,1);
+ local.isLocked=YES;[grid backupLocalAssets:@[local]];Drain(3,2);
+ local.isLocked=NO;selected=@"other@example.com";[behavior backupLocalAssets:@[local]];Drain(3,3);
+ selected=@"destination@example.com";failExport=YES;[behavior backupLocalAssets:@[local]];Drain(3,4);
+ assert(importedCount==3&&originalCount==2&&GSNativeRoutingSnapshot()[@"lastError"]);
+ failExport=NO;[behavior backupLocalAssets:@[local]];Drain(4,4);
+ assert(!GSNativeRoutingSnapshot()[@"lastError"]);
  GSSetNativeRouting(NO,nil);[behavior backupLocalAssets:@[local]];
- assert(originalCount==3&&routedCount==4);
+ assert(originalCount==3&&importedCount==4);
+ NSLog(@"PASS silent manual import, batch, original policy, account binding, invalid/locked assets, export failure, recovery and no native fallback");
  return 0;
 }}

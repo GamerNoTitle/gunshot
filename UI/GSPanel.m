@@ -33,8 +33,6 @@
 @property(nonatomic) NSUInteger stateGeneration;
 @property(nonatomic) BOOL nativeAuthorizationFailed;
 @property(nonatomic,strong) NSArray *sharedItems;
-@property(nonatomic,strong) NSArray *routedAssets;
-@property(nonatomic,copy) NSString *routeAccount;
 @property(nonatomic,copy) void (^activityCompletion)(void);
 @property(nonatomic,copy) NSString *statusText;
 @end
@@ -109,12 +107,8 @@
  }
 #endif
  self.statusText=[accounts[@"selected"]length]?[NSString stringWithFormat:@"%@ · %@",authorization,readiness]:@"アカウントの接続が必要です";
+ NSString *importError=GSNativeRoutingSnapshot()[@"lastError"];if(importError)self.statusText=importError;
  [self.tableView reloadData];
- if(self.routedAssets){NSArray *assets=self.routedAssets;self.routedAssets=nil;
- if(!assets.count){[self message:@"選択した写真を取得できませんでした。「アップロード」から選び直してください。バックアップは開始していません。"];return;}
- if(![self.routeAccount isEqualToString:accounts[@"selected"]]){[self message:@"送信先が変更されました。設定で手動バックアップ連携を有効にし直してください。バックアップは開始していません。"];return;}
- [self importAssets:assets];
- }
  });
  });
 }
@@ -262,6 +256,7 @@
 }
 - (void)exportUploadDiagnostics{
  NSMutableDictionary *snapshot=[GSUploadDiagnosticsSnapshot() mutableCopy];
+ snapshot[@"manualRouting"]=GSNativeRoutingSnapshot();
 #if GS_JAILED
  snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
  snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();
@@ -335,7 +330,6 @@
  __block BOOL expired=NO;__block UIBackgroundTaskIdentifier task=[UIApplication.sharedApplication beginBackgroundTaskWithExpirationHandler:^{@synchronized(self){expired=YES;}}];
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
  NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);NSDictionary *options=accounts?GSRequest(@{@"op":@"options"},&error):nil;NSUInteger queued=0;
- if(self.routeAccount&&![self.routeAccount isEqualToString:accounts[@"selected"]])error=[NSError errorWithDomain:@"Gunshot" code:1 userInfo:@{NSLocalizedDescriptionKey:@"送信先が変更されました。設定で手動バックアップ連携を有効にし直してください。"}];
  for(id item in items){@autoreleasepool{
  @synchronized(self){if(expired)break;}if(error)break;
  NSURL *dir=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
@@ -416,13 +410,3 @@ void GSInstallButton(UIWindow *window){
  return [[UINavigationController alloc]initWithRootViewController:panel];
 }
 @end
-
-void GSPresentRoutedAssets(NSArray<PHAsset *> *assets, NSString *account){
- UIViewController *host=nil;
- for(UIScene *scene in UIApplication.sharedApplication.connectedScenes)if([scene isKindOfClass:UIWindowScene.class])
-  for(UIWindow *window in ((UIWindowScene *)scene).windows)if(window.isKeyWindow&&window.windowLevel==UIWindowLevelNormal)host=window.rootViewController;
- while(host.presentedViewController)host=host.presentedViewController;
- if(!host)return; // Native upload remains suppressed; user may select again in GoToHP.
- GSPanel *panel=[[GSPanel alloc]initWithStyle:UITableViewStyleInsetGrouped];panel.routedAssets=assets;panel.routeAccount=account?:@"";
- [host presentViewController:[[UINavigationController alloc]initWithRootViewController:panel] animated:YES completion:nil];
-}
