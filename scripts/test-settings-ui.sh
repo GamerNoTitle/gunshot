@@ -35,11 +35,19 @@ if device['state']!='Booted':subprocess.run(['xcrun','simctl','boot',udid],check
 subprocess.run(['xcrun','simctl','bootstatus',udid,'-b'],check=True,timeout=180)
 app='.build/settings-smoke/GoToHPSettingsFixture.app';bundle='dev.tqmane.gunshot.settingsfixture'
 subprocess.run(['xcrun','simctl','install',udid,app],check=True,timeout=60)
-subprocess.run(['xcrun','simctl','launch','--console',udid,bundle],check=True,timeout=90)
+launch_error=None
+try:
+ subprocess.run(['xcrun','simctl','launch','--console',udid,bundle],check=True,timeout=120)
+except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+ launch_error=str(error)
+ print(launch_error)
+ subprocess.run(['xcrun','simctl','io',udid,'screenshot','.build/settings-ui-results/failure.png'],timeout=20)
+ subprocess.run(['xcrun','simctl','spawn',udid,'log','show','--last','3m','--style','compact','--predicate','process == "GoToHPSettingsFixture"'],timeout=30)
+
 container=pathlib.Path(run('xcrun','simctl','get_app_container',udid,bundle,'data'))/'Documents'
-result=(container/'result.txt').read_text()
+result=(container/'result.txt').read_text() if (container/'result.txt').exists() else 'FAIL fixture did not write a result'
 for p in container.iterdir():
  if p.suffix in ['.txt','.png']:shutil.copy2(p,pathlib.Path('.build/settings-ui-results')/p.name)
 print(result)
-if not result.startswith('PASS '):raise SystemExit(1)
+if launch_error or not result.startswith('PASS '):raise SystemExit(1)
 PY

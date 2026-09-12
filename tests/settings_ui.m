@@ -19,9 +19,11 @@ char *GunshotRequest(char *json,char *role){
  NSString *op=request[@"op"];id data=@{};
  if([op isEqual:@"conditions"])Conditions=request;
  if([op isEqual:@"account_native"]){
+  NSLog(@"Fixture: authorizing");
   dispatch_sync(dispatch_get_main_queue(),^{
    NSDictionary *snapshot=GSEmbeddedRuntimeSnapshot();
    SnapshotDuringAuthorization=[snapshot[@"authorization"]isEqual:@"checking"];
+   NSLog(@"Fixture: authorization snapshot returned");
   });
  }
  if([op isEqual:@"accounts"])data=@{@"selected":@"test@example.com",@"accounts":@[@{@"email":@"test@example.com"}]};
@@ -69,12 +71,13 @@ static GSPanel *Panel(UIViewController *host){
 @end
 @implementation GSFixtureScene
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options{
+ NSLog(@"Fixture: scene connecting");
  self.window=[[UIWindow alloc]initWithWindowScene:(UIWindowScene *)scene];
  self.window.rootViewController=[UIViewController new];self.window.rootViewController.view.backgroundColor=UIColor.systemBackgroundColor;
  [self.window makeKeyAndVisible];
 }
 - (void)sceneDidBecomeActive:(UIScene *)scene{
- if(self.started)return;self.started=YES;
+ if(self.started)return;self.started=YES;NSLog(@"Fixture: scene active");
  UIViewController *root=self.window.rootViewController;
  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:30];
  // A detached delegate controller must resolve to the active scene's root.
@@ -116,4 +119,8 @@ static GSPanel *Panel(UIViewController *host){
  UISceneConfiguration *config=[[UISceneConfiguration alloc]initWithName:@"Fixture" sessionRole:session.role];config.delegateClass=GSFixtureScene.class;return config;
 }
 @end
-int main(int argc,char **argv){@autoreleasepool{return UIApplicationMain(argc,argv,nil,NSStringFromClass(GSFixtureApp.class));}}
+int main(int argc,char **argv){@autoreleasepool{
+ NSLog(@"Fixture: main");
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,60*NSEC_PER_SEC),dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{Finish(NO,@"watchdog: no completion within 60 seconds after main");});
+ return UIApplicationMain(argc,argv,nil,NSStringFromClass(GSFixtureApp.class));
+}}
