@@ -1,10 +1,12 @@
 # GoToHP for iOS — Gunshot
 
-Jailbroken iPhone 用の Google Photos uploader。`xob0t/gotohp` の Go upload core を再利用し、Google Photos / Apple Photos の入口と常駐 daemon を分離しています。
+Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`xob0t/gotohp` の Go upload core を再利用し、jailbreak 版は Google Photos / Apple Photos の入口と常駐 daemon を分離し、jailed 版はアプリ内で実行します。
 
 **開発版です。iPhone での起動・Google 認証・実アップロード・quota 判定は未検証です。** ビルド成功と実機動作は別です。添付された Google Photos 7.92.0 の Info.plist は minimum iOS **18.0** でした。iOS 15/16 の端末では対応する旧版 Google Photos が必要です。
 
-## 構成
+**追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos 内の **GoToHP → Settings** から設定できます。[標準の手動バックアップを GoToHP へ転送](docs/native-routing.md)する設定は 7.92.0 限定・既定 OFF です。自動バックアップの置き換えではありません。
+
+## 構成（jailbreak 版）
 
 - Theos / Logos tweak: Google Photos と Apple Photos に GoToHP ボタン、対応する共有シートに `Upload with GoToHP`。
 - PhotoKit: 元の写真/動画を再エンコードせず export。Live Photo は still + pairedVideo の original resources。
@@ -18,7 +20,7 @@ Jailbroken iPhone 用の Google Photos uploader。`xob0t/gotohp` の Go upload c
 1. GitHub Actions の `gotohp-tweak-rootless` / `gotohp-tweak-rootful` から対応 `.deb` を取得。
 2. RocketBootstrap、PreferenceLoader、使用中の jailbreak の substrate-compatible tweak injection が必要です。rootless を優先、rootful は同じソースからビルドします。
 3. パッケージマネージャーでインストールし、Photos / Google Photos / Settings を再起動。
-4. **設定 → GoToHP → Open GoToHP settings → Account** で `oauth_token` または完全な gotohp credential を入力。
+4. **Google Photos → GoToHP → Settings → Account** または **設定 → GoToHP → Open GoToHP settings → Account** で `oauth_token` または完全な gotohp credential を入力。
    - 認証入力は upstream と同じ方式です。[upstream のサインイン手順](https://github.com/xob0t/gotohp#sign-in) を参照。
    - Google Photos iOS の既存ログイン状態を盗用・抽出しません。iOS アプリにログインしているだけでは uploader の認証にはなりません。
    - token binding 必須 credential は binding 情報も含めて import してください。iPhone 上の ADB 抽出はありません。
@@ -49,11 +51,13 @@ export THEOS="$HOME/theos"
 bash scripts/package.sh rootless
 # または
 bash scripts/package.sh rootful
+# サイドロード / LiveContainer
+bash scripts/package.sh jailed
 ```
 
 Go archive / daemon は arm64。tweak / Preferences は arm64 + arm64e です。arm64e プロセスへ arm64 Go archive を無理にリンクしません。端末 daemon は独立した arm64 executable で動かします。
 
-CI は Linux の Go race tests / upstream regression tests / C ABI smoke と、macOS の iOS c-archive / Theos / 両方式の package を検証します。`v*` tag の成功時には `gotohp-tweak-rootless.deb` / `gotohp-tweak-rootful.deb` を Release に添付します。
+CI は Linux の Go race tests / upstream regression tests / C ABI smoke と、macOS の iOS c-archive / Theos / 3 方式の package を検証します。`v*` tag の成功時には `gotohp-tweak-rootless.deb` / `gotohp-tweak-rootful.deb` / `gotohp-tweak-jailed.deb` / `GunshotJailed.dylib` / notices を Release に添付します。
 
 ```sh
 python3 scripts/prepare-core.py
@@ -78,7 +82,7 @@ go vet -tags cli ./...
 
 `/var/mobile/Library/Application Support/GoToHP/` は 0700、queue と credential は 0600。credential はこの開発版では private JSON ファイルに保存し、Keychain 保存は未実装です。認証通信は TLS 検証を有効にし、credential や upstream の生の error / response は UI・ログへ返しません。
 
-IPC の role は JSON から受け取りません。Settings のみ account/settings mutation、Google Photos / Photos は import/queue 操作が可能です。root / カーネル / 許可済みプロセスに別 tweak を注入できる攻撃者からの保護は提供しません。protocol は任意の filesystem path を受け付けず、daemon が生成した ID と検証済み basename だけを使います。
+IPC の role は JSON から受け取りません。Settings と許可済み Google Photos は account/settings mutation、Google Photos / Photos は import/queue 操作が可能です。root / カーネル / 許可済みプロセスに別 tweak を注入できる攻撃者からの保護は提供しません。protocol は任意の filesystem path を受け付けず、daemon が生成した ID と検証済み basename だけを使います。
 
 ## Upstream 更新
 

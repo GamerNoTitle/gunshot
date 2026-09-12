@@ -217,6 +217,10 @@ func (e *Engine) execute(ctx context.Context, snapshot Job, paths []string) {
 		j.State = "cancelled"
 		j.Error = ""
 	case e.stopped || errors.Is(err, context.Canceled):
+		// Lifecycle / network pauses do not consume the failure retry budget.
+		if j.Attempts > 0 {
+			j.Attempts--
+		}
 		j.State = "pending"
 		j.Error = "paused"
 	case j.Attempts <= e.state.Options.Retries:

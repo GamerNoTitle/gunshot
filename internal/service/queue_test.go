@@ -177,7 +177,7 @@ func TestUncertainCommitDoesNotAutoRetry(t *testing.T) {
 }
 func TestRoleCannotBeSpoofedInJSON(t *testing.T) {
 	e := newEngine(t, nil)
-	for _, r := range []struct{ role, body string }{{"unknown", `{"op":"ping","role":"settings"}`}, {"photos", `{"op":"account_add","secret":"foo"}`}, {"googlephotos", `{"op":"configure"}`}, {"settings", `{"op":"conditions","online":true}`}} {
+	for _, r := range []struct{ role, body string }{{"unknown", `{"op":"ping","role":"settings"}`}, {"photos", `{"op":"account_add","secret":"foo"}`}, {"photos", `{"op":"configure"}`}, {"settings", `{"op":"conditions","online":true}`}} {
 		var reply struct{ OK bool }
 		if err := json.Unmarshal(e.HandleJSON([]byte(r.body), r.role), &reply); err != nil || reply.OK {
 			t.Fatalf("unauthorized request accepted: %v", r)
@@ -242,5 +242,60 @@ func TestStructurallyCorruptStateRejected(t *testing.T) {
 		if _, err := Open(e.root, nil); err == nil {
 			t.Fatal("accepted invalid persisted job")
 		}
+	}
+}
+
+func TestEmbeddedBackgroundPauseAndReopen(t *testing.T) {
+	started := make(chan struct{})
+	e := newEngine(t, func(ctx context.Context, _ []string, _ string, _ string, cb func(Progress)) (string, error) {
+		cb(Progress{State: "uploading"})
+		close(started)
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+	j := importTest(t, e, "original")
+	e.HandleJSON([]byte(`{"op":"conditions","online":true,"wifi":true}`), "daemon")
+	e.Tick()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("upload did not start")
+	}
+	e.HandleJSON([]byte(`{"op":"conditions","online":false,"wifi":true}`), "daemon")
+	waitIdle(t, e)
+	if j.State != "pending" || j.Attempts != 0 {
+		t.Fatalf("background pause lost queue/retry budget: %+v", j)
+	}
+	e.Tick()
+	waitIdle(t, e) // Would panic by re-closing started if scheduling ignored suspension.
+	e.Close()
+	next, err := Open(e.root, func(context.Context, []string, string, string, func(Progress)) (string, error) {
+		return "committed", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close()
+	next.Tick()
+	waitIdle(t, next)
+	if next.find(j.ID).State != "pending" {
+		t.Fatal("reopened queue must await foreground/network conditions")
+	}
+	next.HandleJSON([]byte(`{"op":"conditions","online":true,"wifi":true}`), "daemon")
+	next.Tick()
+	waitIdle(t, next)
+	if next.find(j.ID).State != "completed" {
+		t.Fatal("foreground reopen did not finish queued upload")
+	}
+}
+
+func TestGooglePhotosSettingsRole(t *testing.T) {
+	for _, op := range []string{"configure", "account_add", "account_remove", "account_select", "begin", "append", "seal"} {
+		if !roleAllowed("googlephotos", op) {
+			t.Fatalf("in-app settings/import denied: %s", op)
+		}
+	}
+	if roleAllowed("googlephotos", "conditions") || roleAllowed("photos", "account_add") {
+		t.Fatal("expanded role crossed native boundary")
 	}
 }

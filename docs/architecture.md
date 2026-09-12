@@ -25,7 +25,7 @@ The submodule is immutable during builds. Script string anchors intentionally fa
 
 Only Photos, Google Photos, and Settings with the expected signing identifiers and executable locations are accepted, using the kernel Mach audit trailer. The signing identifier is derived from an audit-token-bound SecTask; the supplementary path check uses the token PID. PID recycling cannot substitute the signing identity. IPC fails closed if Security SPI is unavailable.
 
-Messages are simple Mach messages (no port/OOL descriptors), with a fixed maximum buffer and validated length. JSON has no filesystem path operation and cannot provide its own role. Settings can mutate accounts and options. Approved Photos clients can begin/append/seal media jobs. Daemon-only conditions updates never arrive via a client-supplied role.
+Messages are simple Mach messages (no port/OOL descriptors), with a fixed maximum buffer and validated length. JSON has no filesystem path operation and cannot provide its own role. Settings and the audit-verified Google Photos process can mutate accounts and options for the in-app settings page. Approved Photos clients can begin/append/seal media jobs. Daemon-only conditions updates never arrive via a client-supplied role.
 
 Each import reserves daemon-created random ID and explicit filename/size pairs; offset-checked 32 KiB chunks populate private files. Content hashes are accumulated while chunks arrive, so sealing a large video does not reread the file under the queue lock. Seal verifies sizes and fsyncs files before publishing a pending job. Queue state is fsynced and atomically replaced before scheduling. A write failure stops scheduling until restart; corrupt state fails initialization rather than silently resetting history. Received tokens are not persisted in queue state.
 
@@ -48,3 +48,5 @@ Read-only inspection of the main app Info.plist:
 | NSPhotoLibraryUsageDescription | Present |
 
 No Google-private class/selector assumptions or proprietary IPA contents are committed. Integration uses `UIWindow` and `UIActivityViewController`, plus public PhotoKit/PHPicker. A private class dump was unnecessary for this first integration. Actual appearance and compatibility must be checked on the target app/device combination.
+
+Jailed builds replace the Mach client/daemon with an in-process adapter; see [jailed.md](jailed.md). Version-gated native manual-backup routing is documented in [native-routing.md](native-routing.md).
