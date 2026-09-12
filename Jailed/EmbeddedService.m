@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #import <Network/Network.h>
 #import "libgotohp.h"
+#import "../UI/GSNativeAccount.h"
 
 // This adapter exposes no socket, Mach service, or external account API.
 // The caller is already inside the host sandbox; role selection stays native.
@@ -41,6 +42,7 @@ static void GSStart(void) {
  NSError *error=nil;
  if(!root||![NSFileManager.defaultManager createDirectoryAtURL:root withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700,NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:&error])return;
  [root setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
+ GunshotSetHostBearerProvider((uintptr_t)&GSNativeBearer);
  GSReady=GunshotInitialize((char *)root.path.UTF8String)==0;
  GSConditions();
  });

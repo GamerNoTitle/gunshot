@@ -32,6 +32,8 @@ func (e *Engine) accounts(r Request) (any, error) {
 	switch r.Op {
 	case "accounts":
 		return g.GetAccounts(), nil
+	case "account_native":
+		return nil, g.AddNativeAccount(r.Account, r.NativeID)
 	case "account_add":
 		if len(r.Secret) == 0 || len(r.Secret) > 32768 {
 			return nil, errRequest

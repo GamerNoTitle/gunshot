@@ -73,3 +73,12 @@ credential は sandbox 内の 0600 JSON で、Keychain は未実装です。デ�
 ## 実機検証
 
 サイドロードと LiveContainer それぞれで、起動、Settings、認証、JPEG/動画/Live Photo、複数選択、Wi-Fi/充電条件、background 中断、foreground 復帰、force kill と再起動、期限切れ credential を確認します。GoToHP を一度開くまで uploader は初期化しません。Native routing は [native-routing.md](native-routing.md) の別項目として検証してください。
+
+
+## ログイン済み Google Photos のアカウントを利用する
+
+7.92.0 の jailed 版では、プロフィール画像 → アカウントメニューの「GoToHP の設定」から開きます。ホーム上に浮くボタンは廃止しました。ログイン中のアカウントを自動接続し、Account で再接続できます。トークンの手動入力は不要です。認証が失敗した場合はエラーを表示し、別アカウントで送信しません。
+
+`Inject dylibs/frameworks` 有効時だけ本体のログインが拒否される実機報告があります。ユーザー環境では注入なしでログイン後に同じアプリへ tweak を追加すると起動できました。既存アプリは削除せず、同じ署名アカウント・アプリ識別子で更新してください。この手順や初回ログインの互換性は全環境で保証されていません。
+
+[認証経路・保存内容・検証範囲](analysis/native-account.md)を参照してください。

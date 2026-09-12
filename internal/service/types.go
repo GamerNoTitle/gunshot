@@ -60,6 +60,7 @@ type State struct {
 	Jobs    []*Job  `json:"jobs"`
 }
 type Request struct {
+	NativeID  string     `json:"nativeID,omitempty"`
 	Op        string     `json:"op"`
 	ID        string     `json:"id,omitempty"`
 	Account   string     `json:"account,omitempty"`

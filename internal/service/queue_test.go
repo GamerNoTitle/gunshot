@@ -290,7 +290,7 @@ func TestEmbeddedBackgroundPauseAndReopen(t *testing.T) {
 }
 
 func TestGooglePhotosSettingsRole(t *testing.T) {
-	for _, op := range []string{"configure", "account_add", "account_remove", "account_select", "begin", "append", "seal"} {
+	for _, op := range []string{"configure", "account_add", "account_native", "account_remove", "account_select", "begin", "append", "seal"} {
 		if !roleAllowed("googlephotos", op) {
 			t.Fatalf("in-app settings/import denied: %s", op)
 		}
