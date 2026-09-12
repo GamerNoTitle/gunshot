@@ -11,7 +11,7 @@ func roleAllowed(role, op string) bool {
 	if role == "daemon" {
 		return op == "conditions"
 	}
-	common := op == "job" || op == "ping" || op == "list" || op == "accounts" || op == "options" || op == "retry" || op == "cancel" || op == "clear_completed" || op == "retry_failed"
+	common := op == "upload_summary" || op == "job" || op == "ping" || op == "list" || op == "accounts" || op == "options" || op == "retry" || op == "cancel" || op == "clear_completed" || op == "retry_failed"
 	if role == "settings" || role == "googlephotos" {
 		return common || (role == "googlephotos" && (op == "begin" || op == "append" || op == "seal")) || op == "configure" || op == "account_add" || op == "account_native" || op == "account_remove" || op == "account_select"
 	}
@@ -55,6 +55,8 @@ func (e *Engine) handle(r Request, role string) (any, error) {
 		return map[string]any{"version": 1}, nil
 	case "options":
 		return e.state.Options, nil
+	case "upload_summary":
+		return e.uploadSummary(), nil
 	case "conditions":
 		e.online = r.Online
 		e.wifi = r.WiFi

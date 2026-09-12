@@ -56,9 +56,10 @@ type Job struct {
 	Owner           string     `json:"owner"`
 }
 type State struct {
-	Version int     `json:"version"`
-	Options Options `json:"options"`
-	Jobs    []*Job  `json:"jobs"`
+	CompletionRevision uint64  `json:"completionRevision,omitempty"`
+	Version            int     `json:"version"`
+	Options            Options `json:"options"`
+	Jobs               []*Job  `json:"jobs"`
 }
 type Request struct {
 	NativeID  string     `json:"nativeID,omitempty"`

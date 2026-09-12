@@ -45,8 +45,11 @@ Go 側の成功と純正側の再照合成功は診断で別々に数えます�
 ## オリジナル画質
 
 PhotoKit の photo / video / pairedVideo の原本リソースを使用します。
-Go commit の Quality=3、Pixel XL profile が original、Quality=1 が saver です。
-通常 quota モードも Quality=3、Pixel 8 profile を使用します。
+Go commit の field 7=3、初代 Pixel XL profile が original、field 7=1 が saver です。
+通常 quota モードも field 7=3、Pixel 8 profile を使用します。
+旧 CommitUpload スキーマでは field 7 を Quality と呼んでいますが、7.92.0 の
+正式クライアント側の名称は storagePolicy です。field 10 の uploadQuality=1 は
+OriginalBytes を意味します。1 を Storage Saver と解釈して変更してはいけません。
 テストでは実際にシリアライズした protobuf を HTTP テストサーバーで読み取ります。
 
 original は ForceUpload を指定します。旧経路は同じハッシュが既にサーバーに
@@ -60,6 +63,23 @@ Google 側が既存メディアの画質を更新するか、quota をどう計�
 `backupRouting` に intercepted / queued / reconciling / nativeReconciled /
 reconcileFailed / nativePayloadBlocked / accountMismatch / failed / unsupported
 の件数を記録します。トークン・メール・asset ID・mediaKey は出力しません。
+
+## 追加診断 4 と表示・同期の修正
+
+利用者が Web の同一写真を確認し、オリジナル画質と報告しました。今回の症状は
+送信 profile の違いではありません。[表示と同期の解析](original-quality-display.md)
+に upstream 2 実装・enum・iOS の表示判定を記録しています。
+
+旧 backupLocalAssets: フックは GoToHP 画面へ直接移譲して共通要求を迂回し、
+診断 4 の events / backupRouting 件数が空になっていました。jailed で共通要求
+フックが利用できる場合は純正 UI の要求作成を通し、その要求で GoToHP へ移譲します。
+これにより純正の delegate と完了時の fingerprint 再照合が維持されます。
+
+GoToHP 単独のアップロードを含め、永続化された完了 revision を前景で監視し、
+現在のアカウントの既存 PHSUserItemsSynchronizer.fetchData に差分同期を要求します。
+設定画面を閉じても動作します。アプリがまだ同期オブジェクトを公開していない場合は
+次の純正 fetchData / fetchDataSoft まで保留します。要求の成功とサーバーからの反映は
+同義ではなく、通信と Google の反映待ちは発生します。
 
 ネイティブ fixture は UI を経由しない自動要求も同じ start で検証し、
 アカウント不一致・二重 start・キャンセル・原本の画質指定・Go 完了後の再照合・

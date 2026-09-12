@@ -3,12 +3,14 @@
 #import <Network/Network.h>
 #import "libgotohp.h"
 #import "../UI/GSNativeAccount.h"
+#import "../UI/GSPhotosIntegration.h"
 
 // No external IPC in the jailed host. SSO can wait on main, so runtime snapshots
 // must never wait on the core queue (including when exporting diagnostics).
 static dispatch_queue_t GSCoreQueue;
 static BOOL GSReady;
 static nw_path_monitor_t GSMonitor;
+static dispatch_source_t GSCompletionMonitor;
 static NSLock *GSStateLock;
 static NSMutableDictionary *GSState;
 static void GSStateInitialize(void) {
@@ -42,6 +44,16 @@ static void GSConditions(void) {
  NSDictionary *result=GSCall(@{@"op":@"conditions",@"online":([state[@"foreground"]boolValue]&&[state[@"networkOnline"]boolValue])?@YES:@NO,@"wifi":[state[@"wifi"]boolValue]?@YES:@NO,@"charging":[state[@"charging"]boolValue]?@YES:@NO},"daemon");
  GSRecord(@{@"conditionsAccepted":result?@YES:@NO});
 }
+static void GSObserveCompletions(void) {
+ static NSNumber *lastRevision;
+ NSDictionary *state=GSEmbeddedRuntimeSnapshot();
+ if(!GSReady||![state[@"foreground"]boolValue])return;
+ NSDictionary *summary=GSCall(@{@"op":@"upload_summary"},"settings");if(!summary)return;
+ GSRecord(@{@"uploadSummary":summary});
+ if(![state[@"networkOnline"]boolValue])return;
+ NSNumber *revision=summary[@"completionRevision"];
+ if(revision&&![revision isEqual:lastRevision]){lastRevision=revision;GSRefreshNativeLibrary();}
+}
 static void GSSampleApplication(void) {
  // Scene lifecycle matters for scene-based hosts and container guests. Inactive
  // foreground scenes still count, e.g. while a system sheet is presented.
@@ -63,6 +75,11 @@ static void GSStart(void) {
  GunshotSetHostBearerProvider((uintptr_t)&GSNativeBearer);
  GSReady=GunshotInitialize((char *)root.path.UTF8String)==0;
  GSRecord(@{@"coreReady":@(GSReady)});GSConditions();
+ // Observe durable commits even when the GoToHP panel has been dismissed.
+ // Only request the host's read-only delta sync; never manufacture a success.
+ GSCompletionMonitor=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,GSCoreQueue);
+ dispatch_source_set_timer(GSCompletionMonitor,dispatch_time(DISPATCH_TIME_NOW,0),3*NSEC_PER_SEC,NSEC_PER_SEC/2);
+ dispatch_source_set_event_handler(GSCompletionMonitor,^{GSObserveCompletions();});dispatch_resume(GSCompletionMonitor);
  });
  dispatch_async(dispatch_get_main_queue(),^{
  UIDevice.currentDevice.batteryMonitoringEnabled=YES;
