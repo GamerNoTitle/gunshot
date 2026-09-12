@@ -21,6 +21,8 @@ func TestGunshotOriginalQualityWire(t *testing.T) {
    var commit generated.CommitUpload
    if err:=proto.Unmarshal(body,&commit);err!=nil{t.Error(err);return}
    if commit.GetField1().GetQuality()!=tc.quality||commit.GetField2().GetModel()!=tc.model{t.Error("wrong quality or device profile on wire")}
+   // 7.92.0 enum descriptor: upload_quality=1 means OriginalBytes, not Saver.
+   if commit.GetField1().GetField10()!=1{t.Error("original-byte upload quality missing")}
    if commit.GetField1().GetFileName()!="original.heic"{t.Error("original filename lost")}
    response,_:=proto.Marshal(&generated.CreateMediaItemsResponse{Item:[]*generated.CreateMediaItemResponseItem{{ResultItem:&generated.CreateMediaItemResult{MediaKey:"server-key"}}}})
    w.Write(response)

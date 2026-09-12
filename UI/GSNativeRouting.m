@@ -39,10 +39,18 @@ static void GSRoute(id localAssets){
 }
 static void GSBackup(id object,SEL selector,id assets){
  if(!GSNativeRoutingEnabled()){GSBackupOriginal(object,selector,assets);return;}
+#if GS_JAILED
+ // Keep the native scheduler/delegate alive. The common request hook owns the
+ // Go handoff and subsequent server reconciliation, including manual actions.
+ if(GSBackupRequestsAvailable()){GSBackupOriginal(object,selector,assets);return;}
+#endif
  GSRoute(assets);
 }
 static void GSGridBackup(id object,SEL selector,id assets){
  if(!GSNativeRoutingEnabled()){GSGridBackupOriginal(object,selector,assets);return;}
+#if GS_JAILED
+ if(GSBackupRequestsAvailable()){GSGridBackupOriginal(object,selector,assets);return;}
+#endif
  GSRoute(assets);
 }
 void GSInstallNativeRouting(void){

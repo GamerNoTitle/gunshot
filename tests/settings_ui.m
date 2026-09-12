@@ -10,6 +10,9 @@
 // A synchronous main callback models native SSO while the core queue is busy.
 
 static BOOL SnapshotDuringAuthorization;
+static NSUInteger NativeRefreshes;
+void GSRefreshNativeLibrary(void){dispatch_async(dispatch_get_main_queue(),^{NativeRefreshes++;});}
+NSDictionary *GSPhotosIntegrationSnapshot(void){return @{};}
 NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"test@example.com",@"identifier":@"fixture"};}
 char *GSNativeBearer(const char *identifier){return NULL;}
 char *GSFixtureRequest(char *json,char *role){
@@ -17,7 +20,7 @@ char *GSFixtureRequest(char *json,char *role){
  NSString *op=request[@"op"];id data=@{};
  // Runtime requests cross the real C ABI and Go JSON decoder. The previous
  // all-fake service accepted integer 1/0 via boolValue and missed this bug.
- if([op isEqual:@"conditions"]||[op isEqual:@"list"])return GunshotRequest(json,role);
+ if([op isEqual:@"conditions"]||[op isEqual:@"list"]||[op isEqual:@"upload_summary"])return GunshotRequest(json,role);
  if([op isEqual:@"account_native"]){
   NSLog(@"Fixture: authorizing");
   dispatch_sync(dispatch_get_main_queue(),^{
@@ -86,7 +89,7 @@ static GSPanel *Panel(UIViewController *host){
  Await(^BOOL{GSPanel *panel=Panel(root);return panel.settingsMode&&panel.viewIfLoaded.window&&[[panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].detailTextLabel.text isEqual:@"認証確認済み · アップロード可能"];},^{
   NSDictionary *runtime=GSEmbeddedRuntimeSnapshot();
   if(![runtime[@"conditionsAccepted"]boolValue]||!SnapshotDuringAuthorization||![runtime[@"coreReady"]boolValue]||![runtime[@"foreground"]boolValue]||![runtime[@"path"]isEqual:@"satisfied"]){Finish(NO,@"embedded runtime state or nonblocking authorization snapshot failed");return;}
-  NSSet *allowed=[NSSet setWithArray:@[@"coreReady",@"conditionsAccepted",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
+  NSSet *allowed=[NSSet setWithArray:@[@"uploadSummary",@"coreReady",@"conditionsAccepted",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
   if(![[NSSet setWithArray:runtime.allKeys]isSubsetOfSet:allowed]){Finish(NO,@"unexpected diagnostic fields");return;}
   GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=7){Finish(NO,@"settings sections missing");return;}
   Capture(self.window,@"settings-light.png");
@@ -105,7 +108,7 @@ static GSPanel *Panel(UIViewController *host){
       Capture(self.window,@"settings-dark.png");
       [root dismissViewControllerAnimated:NO completion:^{
        GSPresentSettings(nil);
-       Await(^BOOL{return Panel(root).viewIfLoaded.window!=nil;},^{Finish(YES,@"detached, nested, repeated and nil-host presentation; settings rendered; real jailed runtime online and authorization snapshot nonblocking");},deadline);
+       Await(^BOOL{return Panel(root).viewIfLoaded.window!=nil&&NativeRefreshes>0&&GSEmbeddedRuntimeSnapshot()[@"uploadSummary"]!=nil;},^{Finish(YES,@"detached, nested, repeated and nil-host presentation; settings rendered; real jailed runtime online, completion observer active and authorization snapshot nonblocking");},deadline);
       }];
      });
     },deadline);

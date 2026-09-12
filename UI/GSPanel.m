@@ -5,6 +5,7 @@
 #import "GSUploadDiagnostics.h"
 #if GS_JAILED
 #import "GSBackupRequests.h"
+#import "GSPhotosIntegration.h"
 #endif
 #import "../Shared/IPCProtocol.h"
 #import <PhotosUI/PhotosUI.h>
@@ -125,7 +126,7 @@
  if(GSIsGooglePhotos())accountRows=@[@13];
 #endif
  [groups addObject:@{@"title":@"アカウント",@"rows":accountRows,@"footer":@"接続状態と送信先を上で確認できます。"}];
- [groups addObject:@{@"title":@"アップロード設定",@"rows":@[@0,@1,@2,@3,@4,@5],@"footer":GS_QUEUED_HELP}];
+ [groups addObject:@{@"title":@"アップロード設定",@"rows":@[@0,@1,@2,@3,@4,@5],@"footer":[@"Pixel 1 は初代 Pixel XL のオリジナル・容量不使用の指定です。画質は追加時に各項目へ保存されます。Google 側の容量計上と原本の有無は別に確認します。\n" stringByAppendingString:GS_QUEUED_HELP]}];
  if(GSIsGooglePhotos())[groups addObject:@{@"title":@"Google Photos との連携",@"rows":@[@10],@"footer":GS_BACKUP_HELP}];
  [groups addObject:@{@"title":@"キューの管理",@"rows":@[@8,@9]}];
  if(GSIsGooglePhotos())[groups addObject:@{@"title":@"診断",@"rows":@[@11,@12],@"footer":@"互換性調査用です。トークンやメディア本体は記録しません。"}];
@@ -139,7 +140,7 @@
  return path.row<rows.count?[rows[path.row]integerValue]:-1;
 }
 - (NSString *)qualityTitle:(NSString *)quality{
- return @{@"original":@"オリジナル画質",@"saver":@"容量を節約",@"quota":@"通常の保存容量を使用"}[quality?:@""]?:@"未設定";
+ return @{@"original":@"オリジナル画質・Pixel 1",@"saver":@"容量を節約・Pixel 2",@"quota":@"オリジナル画質・通常の保存容量を使用"}[quality?:@""]?:@"未設定";
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{return self.queueSection+1;}
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
@@ -264,6 +265,7 @@
 #if GS_JAILED
  snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
  snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();
+ snapshot[@"photosIntegration"]=GSPhotosIntegrationSnapshot();
 #endif
  NSData *json=[NSJSONSerialization dataWithJSONObject:snapshot options:NSJSONWritingPrettyPrinted error:nil];
  NSURL *file=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gotohp-upload-diagnostics.json"]];

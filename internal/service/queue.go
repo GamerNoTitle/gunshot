@@ -211,6 +211,7 @@ func (e *Engine) execute(ctx context.Context, snapshot Job, paths []string) {
 	}
 	switch {
 	case err == nil && key != "":
+		e.state.CompletionRevision++
 		j.State = "completed"
 		j.MediaKey = key
 		j.Uploaded = j.Total

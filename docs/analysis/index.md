@@ -6,6 +6,7 @@
 
 | 対象 | 参照先 | 確認水準 |
 | --- | --- | --- |
+| 初代 Pixel の原本・iPhone の節約表示・完了後同期 | [画質表示と同期](original-quality-display.md) | upstream 2 実装、7.92.0 の enum / 表示 call path、利用者の Web 確認 |
 | 全クラス名・instance selector・encoding・static IMP | [機械可読全件索引](objc/README.md) | metadata 抽出済み |
 | 入力同定・件数・SHA-256 | [manifest](objc/manifest.json) | 対象 2 image の照合情報 |
 | upload / backup / Live Photo / account 周辺のクラス | [アップロード関連クラス索引](upload-symbols.md) | 今回参照したクラスの全 instance method |
