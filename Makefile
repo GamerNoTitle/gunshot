@@ -3,7 +3,7 @@ ARCHS = arm64 arm64e
 INSTALL_TARGET_PROCESSES = GooglePhotos MobileSlideShow Preferences
 include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = Gunshot
-Gunshot_FILES = Tweak.xm Shared/IPCClient.m UI/GSPanel.m UI/GSExporter.m UI/GSNativeRouting.m
+Gunshot_FILES = Tweak.xm Shared/IPCClient.m UI/GSPanel.m UI/GSExporter.m UI/GSNativeRouting.m UI/GSUploadDiagnostics.m
 Gunshot_CFLAGS = -fobjc-arc -IShared
 Gunshot_FRAMEWORKS = UIKit Foundation Photos PhotosUI
 Gunshot_LIBRARIES = rocketbootstrap
