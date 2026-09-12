@@ -69,7 +69,7 @@ go vet -tags cli ./...
 - `committing` 中断は `commit_outcome_unknown` として failed に保持し、自動再送しません。手動 Retry 時も hash check を行います。非公式 API に exactly-once guarantee はありません。
 - restart はファイルの先頭から再試行します。byte offset を使った Google upload session resume は未実装です。
 - cancel は best effort。Google に commit 済みの asset は削除しません。cancel と成功が競合した場合、確認できた成功を completed と表示します。
-- Wi-Fi/charging は daemon が約5秒ごとに確認。制限に反すると実行中 request を中断し pending に戻します。Wi-Fi 検出は iOS reachability の非 WWAN 判定で、接続後の Google 到達性まで保証しません。
+- Wi-Fi/charging は daemon が約5秒ごとに確認。制限に反すると実行中 request を中断し pending に戻します。Wi-Fi 検出は Network.framework の経路判定で、接続後の Google 到達性まで保証しません。
 - 同じ内容でも異なる account / quality は別 job。同一 policy の completed 履歴を消すとローカル重複履歴は消えますが、upstream remote hash check は残ります。
 - 元の写真ライブラリの asset は削除しません。completed / cancelled の daemon staging copy は削除します。
 

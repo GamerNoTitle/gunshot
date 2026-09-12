@@ -22,12 +22,12 @@ NSDictionary *GSRequest(NSDictionary *request, NSError **error) {
  id parsed=[NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:message->json length:message->length] options:0 error:nil];
  if([parsed isKindOfClass:NSDictionary.class] && [parsed[@"ok"] boolValue])result=parsed[@"data"]==NSNull.null?@{}:parsed[@"data"];
  }
- free(message);mach_port_destroy(mach_task_self(),reply);mach_port_deallocate(mach_task_self(),server);
+ free(message);mach_port_mod_refs(mach_task_self(),reply,MACH_PORT_RIGHT_RECEIVE,-1);mach_port_deallocate(mach_task_self(),server);
  if(result)return result;
  if(error)*error=[NSError errorWithDomain:@"Gunshot" code:1 userInfo:@{NSLocalizedDescriptionKey:@"GoToHP request failed. Check the daemon, account and queue."}];return nil;
  }
 fail:
- if(reply!=MACH_PORT_NULL)mach_port_destroy(mach_task_self(),reply);
+ if(reply!=MACH_PORT_NULL)mach_port_mod_refs(mach_task_self(),reply,MACH_PORT_RIGHT_RECEIVE,-1);
  if(server!=MACH_PORT_NULL)mach_port_deallocate(mach_task_self(),server);
  if(error)*error=[NSError errorWithDomain:@"Gunshot" code:kr userInfo:@{NSLocalizedDescriptionKey:@"GoToHP daemon unavailable. Check installation and RocketBootstrap."}];return nil;
 }

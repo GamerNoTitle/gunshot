@@ -4,7 +4,7 @@ TOOL_NAME = gotohpd
 gotohpd_FILES = main.mm
 gotohpd_CFLAGS = -fobjc-arc -I../Shared
 gotohpd_CCFLAGS = -std=c++17
-gotohpd_FRAMEWORKS = Foundation Security SystemConfiguration IOKit CoreFoundation
+gotohpd_FRAMEWORKS = Foundation Security Network IOKit CoreFoundation
 gotohpd_LIBRARIES = rocketbootstrap resolv
 gotohpd_LDFLAGS = $(THEOS_PROJECT_DIR)/../.build/libgotohp.a
 gotohpd_CODESIGN_FLAGS = -Sentitlements.plist

@@ -30,10 +30,10 @@ NSString *GSImportFiles(NSArray<NSURL *> *files,NSString *account,NSString *qual
  for(NSUInteger i=0;i<files.count;i++){
   NSFileHandle *f=[NSFileHandle fileHandleForReadingAtPath:files[i].path];if(!f)return nil;
   @try {unsigned long long offset=0;while(YES){@autoreleasepool{
-   NSData *chunk=[f readDataOfLength:32768];if(!chunk.length)break;
+   NSData *chunk=[f readDataUpToLength:32768 error:error];if(!chunk)return nil;if(!chunk.length)break;
    if(!GSRequest(@{@"op":@"append",@"id":identifier,@"index":@(i),@"offset":@(offset),@"data":[chunk base64EncodedStringWithOptions:0]},error))return nil;
    offset+=chunk.length;
-  }}} @finally {[f closeFile];}
+  }}} @finally {[f closeAndReturnError:nil];}
  }
  NSDictionary *sealed=GSRequest(@{@"op":@"seal",@"id":identifier},error);success=sealed!=nil;return sealed[@"id"];
  } @finally {if(!success)GSRequest(@{@"op":@"cancel",@"id":identifier},nil);}

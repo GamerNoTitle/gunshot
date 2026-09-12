@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
-#import <SystemConfiguration/SystemConfiguration.h>
+#import <Network/Network.h>
 #include <dlfcn.h>
 #include <stddef.h>
 #include <sys/stat.h>
@@ -27,11 +27,9 @@ static const char *GSRole(audit_token_t token) {
  if([bundle isEqualToString:@"com.google.photos"] && [exe hasSuffix:@"/GooglePhotos.app/GooglePhotos"] && ([exe hasPrefix:@"/private/var/containers/Bundle/Application/"]||[exe hasPrefix:@"/var/containers/Bundle/Application/"]))return "googlephotos";
  return NULL;
 }
+static BOOL GSOnline=NO, GSWiFi=NO; // Accessed only on the conditions queue.
 static void GSConditions(void) {
- SCNetworkReachabilityRef reach=SCNetworkReachabilityCreateWithName(NULL,"photos.googleapis.com");SCNetworkReachabilityFlags flags=0;
- BOOL online=reach&&SCNetworkReachabilityGetFlags(reach,&flags)&&(flags&kSCNetworkReachabilityFlagsReachable)&&!(flags&kSCNetworkReachabilityFlagsConnectionRequired);
- if(reach)CFRelease(reach);
- BOOL wifi=online&&!(flags&kSCNetworkReachabilityFlagsIsWWAN);BOOL charging=NO;
+ BOOL online=GSOnline,wifi=GSWiFi,charging=NO;
  typedef CFTypeRef (*PowerInfo)(void);typedef CFStringRef (*PowerType)(CFTypeRef);
  static PowerInfo powerInfo=(PowerInfo)dlsym(RTLD_DEFAULT,"IOPSCopyPowerSourcesInfo");
  static PowerType powerType=(PowerType)dlsym(RTLD_DEFAULT,"IOPSGetProvidingPowerSourceType");
@@ -47,7 +45,10 @@ int main(int argc,char **argv) { @autoreleasepool {
  mach_port_t port=MACH_PORT_NULL;
  if(bootstrap_check_in(bootstrap_port,GS_SERVICE,&port)!=KERN_SUCCESS)return 2;
  if(rocketbootstrap_unlock(GS_SERVICE)!=KERN_SUCCESS)return 3;
- dispatch_source_t timer=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,dispatch_get_global_queue(QOS_CLASS_UTILITY,0));
+ dispatch_queue_t conditionsQueue=dispatch_queue_create("dev.tqmane.gunshot.conditions",DISPATCH_QUEUE_SERIAL);
+ nw_path_monitor_t monitor=nw_path_monitor_create();nw_path_monitor_set_queue(monitor,conditionsQueue);
+ nw_path_monitor_set_update_handler(monitor,^(nw_path_t path){GSOnline=nw_path_get_status(path)==nw_path_status_satisfied;GSWiFi=GSOnline&&nw_path_uses_interface_type(path,nw_interface_type_wifi);GSConditions();});nw_path_monitor_start(monitor);
+ dispatch_source_t timer=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,conditionsQueue);
  dispatch_source_set_timer(timer,DISPATCH_TIME_NOW,5*NSEC_PER_SEC,NSEC_PER_SEC);
  dispatch_source_set_event_handler(timer,^{@autoreleasepool{GSConditions();}});dispatch_resume(timer);
  const size_t capacity=sizeof(GSMessage)+sizeof(mach_msg_max_trailer_t);
