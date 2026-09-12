@@ -3,12 +3,21 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 app=.build/settings-smoke/GoToHPSettingsFixture.app
 mkdir -p "$app" .build/settings-ui-results
+mkdir -p .build/runtime-fixture
+cat > .build/runtime-fixture/libgotohp.h <<'HEADER'
+#include <stdint.h>
+void GunshotSetHostBearerProvider(uintptr_t);
+int GunshotInitialize(char *);
+char *GunshotRequest(char *,char *);
+void GunshotFree(void *);
+HEADER
 sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
 architecture=$(uname -m)
 xcrun --sdk iphonesimulator clang -fobjc-arc -isysroot "$sdk" \
  -target "${architecture}-apple-ios15.0-simulator" \
- -framework UIKit -framework Foundation -framework Photos -framework PhotosUI \
- UI/GSPanel.m tests/settings_ui.m -o "$app/GoToHPSettingsFixture"
+ -DGS_JAILED=1 -I.build/runtime-fixture \
+ -framework UIKit -framework Foundation -framework Photos -framework PhotosUI -framework Network \
+ UI/GSPanel.m Jailed/EmbeddedService.m tests/settings_ui.m -o "$app/GoToHPSettingsFixture"
 python3 - <<'PY'
 import pathlib,plistlib
 info={"CFBundleIdentifier":"dev.tqmane.gunshot.settingsfixture","CFBundleExecutable":"GoToHPSettingsFixture","CFBundleName":"GoToHP Settings Fixture","CFBundlePackageType":"APPL","CFBundleVersion":"1","CFBundleShortVersionString":"1.0","MinimumOSVersion":"15.0","UIDeviceFamily":[1],"UILaunchScreen":{},"UIApplicationSceneManifest":{"UIApplicationSupportsMultipleScenes":False}}

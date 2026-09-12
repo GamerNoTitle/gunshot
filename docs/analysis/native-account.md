@@ -43,3 +43,39 @@
 - Go tests: アカウント識別子、都度の provider 呼び出し、provider 不在、エラーの秘匿、ヘッダー改行拒否、従来 credential との分離。
 - macOS native fixture: 既存 manager の取得、メインスレッド待機拒否、SSO callback、異なるアカウント、サインアウト、取得途中のアカウント切替。
 - 実機: メニュー表示・位置・既存項目、ログイン済みアカウントの自動接続、JPEG 1 枚、期限切れ後の更新、再起動、アカウント切替と retry を確認する。
+
+## 接続表示と runtime 診断（2026-09-12）
+
+`ネットワーク接続を待っています` は Google のログイン拒否ではなく、
+キューの `online` が false の場合にも出ていた表示です。旧 jailed adapter は
+`foreground && networkOnline` を一つの値にまとめていたため、アプリ状態の
+待機とネットワーク待機を区別できませんでした。メール表示だけでは現在の
+認証成功も証明できません（保存済みの送信先を表示する場合があります）。
+
+設定画面ではアカウント設定済み／今回の認証確認済みと、アップロードの
+待機理由を分離します。NWPath の通知は認証を実行する core queue とは別の
+queue で受け取り、アプリ・scene の通知および設定のポーリング時に前面状態を
+再取得します。Wi-Fi・充電・前面実行の制約を解除する変更ではありません。
+
+jailed の診断 JSON には `runtime` が追加されます。
+
+| キー | 意味 |
+| --- | --- |
+| `coreReady` | Go サービスの初期化完了 |
+| `authorization` | `not_checked` / `checking` / `validated` / `failed`（今回のプロセス内の接続検証結果） |
+| `foreground` | アプリまたは foreground scene の存在 |
+| `path` | `unknown` / `satisfied` / `requires_connection` / `unsatisfied` |
+| `networkOnline` | NWPath が satisfied か。Google エンドポイントの疎通保証ではない |
+| `wifi`, `charging` | 実行条件のサンプル |
+
+このスナップショットは認証中にも取得できます。トークン、メールアドレス、
+アカウント ID、HTTP ヘッダー、Google のレスポンス本文は含めません。
+旧診断ファイルの upload bindings が全て matched でも、認証や通信が成功した
+証拠にはなりません。今回の添付診断は観測イベント 0 件であり、実機で待機した
+原因を特定できる情報は含まれていませんでした。
+
+シミュレーターテストは実際の EmbeddedService / UIKit / NWPath を使用し、
+Go・Google 呼び出し境界だけを fixture に置換します。認証中の main callback
+から診断取得できること、前面での online 伝達、認証確認表示、秘密情報を
+含まない診断キーを検証します。実 Google アカウント認証・アップロード成功を
+このテストの合格だけで保証するものではありません。

@@ -84,7 +84,22 @@
  NSMutableArray *jobs=[NSMutableArray array];NSInteger cursor=0;NSDictionary *page=nil;
  if(options)do{page=GSRequest(@{@"op":@"list",@"cursor":@(cursor)},&error);if(!page)break;[jobs addObjectsFromArray:page[@"jobs"]?:@[]];cursor=[page[@"next"]integerValue];}while(cursor>=0);
  dispatch_async(dispatch_get_main_queue(),^{self.refreshing=NO;if(generation!=self.stateGeneration){[self refresh];return;}if(error){[self message:error.localizedDescription];return;}self.accounts=accounts;self.options=[options mutableCopy];self.jobs=jobs;
- self.statusText=[accounts[@"selected"]length]?([page[@"online"]boolValue]?@"接続済み":@"ネットワーク接続を待っています"):@"アカウントの接続が必要です";
+ NSString *readiness=@"アップロード可能";
+ if([options[@"paused"]boolValue])readiness=@"アップロードを一時停止中";
+ else if(![page[@"online"]boolValue])readiness=@"通信またはアプリの起動を待機中";
+ else if([options[@"wifiOnly"]boolValue]&&![page[@"wifi"]boolValue])readiness=@"Wi-Fi 接続を待機中";
+ else if([options[@"chargingOnly"]boolValue]&&![page[@"charging"]boolValue])readiness=@"充電を待機中";
+ NSString *authorization=@"アカウント設定済み";
+#if GS_JAILED
+ NSDictionary *runtime=GSEmbeddedRuntimeSnapshot();
+ if([runtime[@"authorization"]isEqual:@"validated"])authorization=@"認証確認済み";
+ if(![options[@"paused"]boolValue]){
+  if(![runtime[@"foreground"]boolValue])readiness=@"アプリの前面表示を待機中";
+  else if([runtime[@"path"]isEqual:@"unknown"])readiness=@"通信状態を確認中";
+  else if(![runtime[@"networkOnline"]boolValue])readiness=@"ネットワーク接続を待機中";
+ }
+#endif
+ self.statusText=[accounts[@"selected"]length]?[NSString stringWithFormat:@"%@ · %@",authorization,readiness]:@"アカウントの接続が必要です";
  [self.tableView reloadData];
  if(self.routedAssets){NSArray *assets=self.routedAssets;self.routedAssets=nil;
  if(!assets.count){[self message:@"選択した写真を取得できませんでした。「アップロード」から選び直してください。バックアップは開始していません。"];return;}
@@ -237,7 +252,11 @@
  [a addAction:[UIAlertAction actionWithTitle:@"接続" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){NSString *secret=a.textFields.firstObject.text;a.textFields.firstObject.text=@"";[self request:@{@"op":@"account_add",@"secret":secret?:@""}];}]];[self sheet:a];
 }
 - (void)exportUploadDiagnostics{
- NSData *json=[NSJSONSerialization dataWithJSONObject:GSUploadDiagnosticsSnapshot() options:NSJSONWritingPrettyPrinted error:nil];
+ NSMutableDictionary *snapshot=[GSUploadDiagnosticsSnapshot() mutableCopy];
+#if GS_JAILED
+ snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
+#endif
+ NSData *json=[NSJSONSerialization dataWithJSONObject:snapshot options:NSJSONWritingPrettyPrinted error:nil];
  NSURL *file=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gotohp-upload-diagnostics.json"]];
  if(!json||![json writeToURL:file options:NSDataWritingAtomic error:nil]){[self message:@"診断データを書き出せませんでした。"];return;}
  UIActivityViewController *share=[[UIActivityViewController alloc]initWithActivityItems:@[file] applicationActivities:nil];
@@ -259,8 +278,10 @@
  [a addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];[self sheet:a];
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path{
- [tableView deselectRowAtIndexPath:path animated:YES];if(self.busy)return;
+ [tableView deselectRowAtIndexPath:path animated:YES];
  NSInteger control=[self controlAtPath:path];
+ if(control==12){[self exportUploadDiagnostics];return;}
+ if(self.busy)return;
  if(control>=0){
   if(control==14){[self choose];return;}
   if(control==13){[self addAccount];return;}
