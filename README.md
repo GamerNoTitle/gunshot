@@ -6,6 +6,8 @@ Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`
 
 **追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos 内の **GoToHP → Settings** から設定できます。[標準の手動バックアップを GoToHP へ転送](docs/native-routing.md)する設定は 7.92.0 限定・既定 OFF です。自動バックアップの置き換えではありません。
 
+[全アップロード置換の状況と診断手順](docs/full-upload-replacement.md)：全置換はまだ未完成です。7.92.0 の native uploader を観測する opt-in 診断・JSON export を追加しています。
+
 ## 構成（jailbreak 版）
 
 - Theos / Logos tweak: Google Photos と Apple Photos に GoToHP ボタン、対応する共有シートに `Upload with GoToHP`。

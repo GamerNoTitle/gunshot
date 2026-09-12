@@ -1,6 +1,7 @@
 #import "GSPanel.h"
 #import "GSExporter.h"
 #import "GSNativeRouting.h"
+#import "GSUploadDiagnostics.h"
 #import "../Shared/IPCProtocol.h"
 #import <PhotosUI/PhotosUI.h>
 #import <objc/runtime.h>
@@ -67,14 +68,15 @@
  });
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{return 3;}
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{return section==0?1:section==1?(self.settingsMode?(GSIsGooglePhotos()?11:10):1):self.jobs.count;}
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{return section==0?1:section==1?(self.settingsMode?(GSIsGooglePhotos()?13:10):1):self.jobs.count;}
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section{return section==0?@"Status":section==1?@"Controls":@"Upload queue";}
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path{
  UITableViewCell *c=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];c.textLabel.numberOfLines=0;c.detailTextLabel.numberOfLines=0;
  if(path.section==0)c.textLabel.text=self.statusText;
  else if(path.section==1){
- NSArray *titles=@[@"Quality",@"Concurrent uploads",@"Retry count",@"Wi-Fi only",@"Charging only",@"Pause uploads",@"Select account",@"Remove account",@"Retry all failed",@"Clear completed",@"Route Google Photos backup action"];
+ NSArray *titles=@[@"Quality",@"Concurrent uploads",@"Retry count",@"Wi-Fi only",@"Charging only",@"Pause uploads",@"Select account",@"Remove account",@"Retry all failed",@"Clear completed",@"Route Google Photos backup action",@"Upload compatibility diagnostics",@"Export upload diagnostics"];
  c.textLabel.text=self.settingsMode?titles[path.row]:@"Choose photos / videos";
+ if(self.settingsMode&&path.row==11)c.detailTextLabel.text=GSUploadDiagnosticsAvailable()?(GSUploadDiagnosticsEnabled()?@"On · metadata only, last 256 events":@"Off · observation only; no upload replacement"):@"Unavailable for this app version";
  if(self.settingsMode&&path.row==10)c.detailTextLabel.text=GSNativeRoutingAvailable()?(GSNativeRoutingEnabled()?@"On · manual Back up now → GoToHP":@"Off · manual Back up now only"):@"Unavailable · requires Google Photos 7.92.0 with matching methods";
  if(self.settingsMode&&path.row<6){NSArray *keys=@[@"quality",@"concurrent",@"retries",@"wifiOnly",@"chargingOnly",@"paused"];c.detailTextLabel.text=[self.options[keys[path.row]]description];}
  }else{NSDictionary *j=self.jobs[path.row];c.textLabel.text=[NSString stringWithFormat:@"%@ · %@",j[@"resources"][0][@"name"],j[@"state"]];c.detailTextLabel.text=[NSString stringWithFormat:@"%@ · %@ / %@ bytes\n%@",j[@"quality"],j[@"uploaded"],j[@"total"],j[@"error"]?:@""];}
@@ -91,6 +93,14 @@
  [a addTextFieldWithConfigurationHandler:^(UITextField *f){f.secureTextEntry=YES;f.autocorrectionType=UITextAutocorrectionTypeNo;f.autocapitalizationType=UITextAutocapitalizationTypeNone;f.placeholder=@"oauth_token / credential";}];
  [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
  [a addAction:[UIAlertAction actionWithTitle:@"Connect" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){NSString *secret=a.textFields.firstObject.text;a.textFields.firstObject.text=@"";[self request:@{@"op":@"account_add",@"secret":secret?:@""}];}]];[self sheet:a];
+}
+- (void)exportUploadDiagnostics{
+ NSData *json=[NSJSONSerialization dataWithJSONObject:GSUploadDiagnosticsSnapshot() options:NSJSONWritingPrettyPrinted error:nil];
+ NSURL *file=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gotohp-upload-diagnostics.json"]];
+ if(!json||![json writeToURL:file options:NSDataWritingAtomic error:nil]){[self message:@"Could not export upload diagnostics."];return;}
+ UIActivityViewController *share=[[UIActivityViewController alloc]initWithActivityItems:@[file] applicationActivities:nil];
+ share.popoverPresentationController.sourceView=self.view;share.popoverPresentationController.sourceRect=CGRectMake(self.view.bounds.size.width/2,80,1,1);
+ [self presentViewController:share animated:YES completion:nil];
 }
 - (void)toggleNativeRouting{
  if(!GSNativeRoutingAvailable()){[self message:@"This Google Photos version does not have a supported backup action hook. Use GoToHP → Upload."];return;}
@@ -111,6 +121,8 @@
  if(path.section==1){
  if(!self.settingsMode){[self choose];return;}
  if(path.row==10){[self toggleNativeRouting];return;}
+ if(path.row==11){GSSetUploadDiagnostics(!GSUploadDiagnosticsEnabled());[self.tableView reloadData];return;}
+ if(path.row==12){[self exportUploadDiagnostics];return;}
  if(path.row<6){NSMutableDictionary *o=[self.options mutableCopy];if(!o)return;
  switch(path.row){case 0:{NSArray *v=@[@"original",@"saver",@"quota"];NSUInteger i=[v indexOfObject:o[@"quality"]];o[@"quality"]=v[(i+1)%3];break;}case 1:o[@"concurrent"]=@([o[@"concurrent"]integerValue]%4+1);break;case 2:o[@"retries"]=@(([o[@"retries"]integerValue]+1)%11);break;default:{NSArray *keys=@[@"wifiOnly",@"chargingOnly",@"paused"];NSString *k=keys[path.row-3];o[k]=@(![o[k]boolValue]);break;}}
  [self request:@{@"op":@"configure",@"options":o}];
@@ -171,6 +183,7 @@ void GSPresent(UIViewController *host){if(!host)return;GSPanel *panel=[[GSPanel 
 static char GSLauncherKey;
 void GSInstallButton(UIWindow *window){
  GSInstallNativeRouting();
+ GSInstallUploadDiagnostics();
  if(window.windowLevel!=UIWindowLevelNormal||!window.rootViewController||objc_getAssociatedObject(window,&GSLauncherKey))return;
  UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem];[button setTitle:@"GoToHP" forState:UIControlStateNormal];button.backgroundColor=UIColor.secondarySystemBackgroundColor;button.layer.cornerRadius=18;button.accessibilityLabel=@"Open GoToHP upload queue";
  [button addTarget:GSLauncher.class action:@selector(open:) forControlEvents:UIControlEventTouchUpInside];button.translatesAutoresizingMaskIntoConstraints=NO;[window addSubview:button];
