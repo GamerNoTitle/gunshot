@@ -1,101 +1,87 @@
 # GoToHP for iOS — Gunshot
 
-Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`xob0t/gotohp` の Go upload core を再利用し、jailbreak 版は Google Photos / Apple Photos の入口と常駐 daemon を分離し、jailed 版はアプリ内で実行します。
+[English](README.md) · [日本語](README.ja.md)
 
-**開発版です。iPhone での起動・Google 認証・実アップロード・quota 判定は未検証です。** ビルド成功と実機動作は別です。添付された Google Photos 7.92.0 の Info.plist は minimum iOS **18.0** でした。iOS 15/16 の端末では対応する旧版 Google Photos が必要です。
+A Google Photos uploader for jailbroken, sideloaded and LiveContainer apps, reusing the Go upload core from [xob0t/gotohp](https://github.com/xob0t/gotohp). Jailbreak packages use a separate `gotohpd` service. The jailed package runs the core inside the host app.
 
-**追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos 内の **GoToHP → Settings** から設定できます。[手動・自動バックアップを GoToHP へ転送](docs/analysis/backup-routing.md)する設定は jailed / 7.92.0 限定・既定 OFF です。有効化後は純正の手動バックアップを押すだけで、GoToHP 画面を開かずに保存済みの画質・送信先で処理します。Google Photos の自動バックアップをオンにし、アプリを前面で開いて使用します。実機での再照合は検証中です。
+This is a development build. CI validates builds and fixtures; compatibility and server behavior still require device testing. The audited Google Photos version is **7.92.0**, whose IPA requires **iOS 18.0**. Older iOS versions need an appropriate Google Photos version, and version-specific integration will not activate on unsupported versions.
 
-[全アップロード置換の状況と診断手順](docs/full-upload-replacement.md)：全置換はまだ未完成です。7.92.0 の native uploader を観測する opt-in 診断・JSON export を追加しています。
+## Install and use
 
-[Google Photos 7.92.0 アプリ解析結果・総合索引](docs/analysis/index.md)：全件 metadata 検索、解析済み upload 経路、根拠、未解析領域の入口です。
+### Sideloading / LiveContainer
 
-## 構成（jailbreak 版）
+Download the `gotohp-tweak-jailed` artifact from GitHub Actions. It contains the jailed `.deb`, standalone `GunshotJailed.dylib` and third-party notices. The Go core and translations are embedded; Theos is only needed on the build machine. Follow the [jailed installation guide](docs/jailed.md) for injection and LiveContainer setup.
 
-- Theos / Logos tweak: Google Photos のアカウントメニューに GoToHP 設定、Apple Photos に GoToHP ボタン、対応する共有シートに `Upload with GoToHP`。
-- PhotoKit: 元の写真/動画を再エンコードせず export。Live Photo は still + pairedVideo の original resources。
-- RocketBootstrap + Mach IPC: sandbox から daemon へ bounded chunk transfer。kernel audit token と署名 identifier / executable path で送信元を検証。
-- `gotohpd`: mobile ユーザーの launchd daemon。Go `c-archive` をリンク。UI プロセスには Go runtime を載せません。
-- Preferences: account の追加・選択・削除、画質、同時数 1–4、再試行回数、Wi-Fi/充電制限、pause、queue/retry/cancel。
-- JSON queue: atomic rename + fsync。再起動時の復旧、履歴、account/quality ごとの content fingerprint と remote hash check。
+Open **Google Photos profile menu → GoToHP settings**. The jailed integration connects the currently signed-in Google Photos account through the app's existing SSO authorizer.
 
-## インストールと使い方
+Choose **Uploads → Choose photos and videos** for the GoToHP picker. To route Google Photos backup actions, enable **Route manual and automatic backups through GoToHP** and confirm the destination once. Subsequent native backup actions enqueue without opening the GoToHP screen. Automatic backup also requires backup to be enabled in Google Photos. **Keep the app in the foreground on jailed devices**; this package cannot provide a persistent daemon after the app terminates.
 
-1. GitHub Actions の `gotohp-tweak-rootless` / `gotohp-tweak-rootful` から対応 `.deb` を取得。
-2. RocketBootstrap、PreferenceLoader、使用中の jailbreak の substrate-compatible tweak injection が必要です。rootless を優先、rootful は同じソースからビルドします。
-3. パッケージマネージャーでインストールし、Photos / Google Photos / Settings を再起動。
-4. **jailed:** Google Photos のプロフィール画像 → **GoToHP の設定** でログイン中アカウントを自動接続します。**独立 daemon:** アカウントメニューの GoToHP 設定 → Account、または **設定 → GoToHP → Open GoToHP settings → Account** で `oauth_token` または完全な gotohp credential を入力。
-   - 認証入力は upstream と同じ方式です。[upstream のサインイン手順](https://github.com/xob0t/gotohp#sign-in) を参照。
-   - Google Photos iOS の既存ログイン状態を盗用・抽出しません。iOS アプリにログインしているだけでは uploader の認証にはなりません。
-   - token binding 必須 credential は binding 情報も含めて import してください。iPhone 上の ADB 抽出はありません。
-5. Photos / Google Photos の **GoToHP → Upload** で写真ライブラリへのアクセスを許可し、写真/動画を選択。
-6. 準備が終わってキューに入るまでアプリを開いておいてください。**Queued 後**はアプリを終了しても daemon が処理します。準備中の強制終了では、その時点までに daemon に受け渡せた項目だけ継続します。
-7. 同じ画面で progress / completed / failed を確認。失敗行から Retry / Cancel。複数選択は項目単位でキューに追加します。
+See [backup routing](docs/analysis/backup-routing.md) and [replacement coverage](docs/full-upload-replacement.md) for supported paths and limitations. Full coverage of every private upload path is not guaranteed.
 
-共有シートでは `PHAsset` またはローカル file URL が得られる場合に action を表示します。共有データが image object / provider のみの場合や Google Photos 独自共有 UI では、Google Photos のアカウントメニュー → GoToHP の設定 → Upload（Apple Photos では GoToHP ボタン）から写真を選びます。URL 共有は共有元が渡したファイルそのものを使い、Google Photos 内の選択を推測しません。
+### Jailbreak
 
-画質は Preferences の Quality 行をタップして切替:
+Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` using your package manager. RocketBootstrap, PreferenceLoader and your jailbreak's substrate-compatible injection system are required.
 
-| 設定 | upstream API policy |
+Open **Settings → GoToHP → Open GoToHP settings** to manage accounts, quality, network restrictions and the queue. The independent daemon uses an imported upstream credential; see [upstream sign-in](https://github.com/xob0t/gotohp#sign-in). Keep the app open until media preparation and transfer to the daemon finish. Queued uploads then continue independently of the app.
+
+Google Photos exposes settings in its profile menu. Apple Photos has a GoToHP button. Compatible share sheets expose **Upload with GoToHP** for PhotoKit assets or local file URLs. Unsupported share providers require selecting media in the GoToHP picker.
+
+## Quality and queue
+
+| Setting | Upstream device profile / requested behavior |
 | --- | --- |
-| original | Original quality / Pixel XL profile |
-| saver | Storage Saver / Pixel 2 profile |
-| quota | Original quality / 通常 quota / Pixel 8 profile |
+| Original | First-generation Pixel XL (Pixel 1), original quality without storage usage |
+| Storage saver | Pixel 2, storage saver |
+| Account storage | Pixel 8, original quality using normal quota |
 
-設定は新規 job に固定されます。既存 job の account / quality は変更されません。Google 側に同じ内容が既に存在する場合は再送を省略し、既存 asset の画質を変更しません。API 成功だけで無料・無制限とは判定しません。
+Account and quality are saved when each item is queued. Changing settings does not alter existing jobs. Actual Google storage accounting and original-data availability must be checked separately; a successful API response alone does not prove quota treatment.
 
-## ビルド
+Original PhotoKit resources are exported without re-encoding. Live Photos use the original still and paired video. The queue supports progress, retry, cancellation and restart recovery. Retries restart the file transfer; Google upload-session byte-offset resume is not implemented. An interrupted commit with an unknown outcome requires manual review/retry, and may produce duplicates. Cancellation does not delete assets already committed to Google Photos.
 
-macOS + Xcode command line tools + Go 1.26.0 + Theos + `ldid` + `dpkg`:
+## Languages
+
+English and Japanese are included. **GoToHP settings → Appearance → Language** offers System default, Japanese and English. Unsupported device languages fall back to English. No separate translation bundle needs to be injected. See [localization](docs/localization.md) to contribute translations.
+
+## Build
+
+Use macOS, Xcode command line tools, Go 1.26.0, Theos, `ldid` and `dpkg`:
 
 ```sh
 git clone --recurse-submodules https://github.com/tqmane/gunshot.git
 cd gunshot
 export THEOS="$HOME/theos"
-bash scripts/package.sh rootless
-# または
-bash scripts/package.sh rootful
-# サイドロード / LiveContainer
 bash scripts/package.sh jailed
+# Other targets:
+bash scripts/package.sh rootless
+bash scripts/package.sh rootful
 ```
 
-Go archive / daemon は arm64。tweak / Preferences は arm64 + arm64e です。arm64e プロセスへ arm64 Go archive を無理にリンクしません。端末 daemon は独立した arm64 executable で動かします。
+The daemon/Go archive and jailed package use arm64. The jailbreak tweak and Preferences support arm64 and arm64e. The Go runtime stays out of the injected jailbreak tweak process.
 
-CI は Linux の Go race tests / upstream regression tests / C ABI smoke と、macOS の iOS c-archive / Theos / 3 方式の package を検証します。`v*` tag の成功時には `gotohp-tweak-rootless.deb` / `gotohp-tweak-rootful.deb` / `gotohp-tweak-jailed.deb` / `GunshotJailed.dylib` / notices を Release に添付します。
+CI runs Go race tests, upstream regression tests, C ABI tests, localization checks, native routing fixtures, UIKit settings tests and all three package builds. Successful `v*` tags publish packages, the jailed dylib and notices as release assets.
 
 ```sh
+python3 scripts/localization.py --check
 python3 scripts/prepare-core.py
 go test -race -tags cli ./...
 go test -tags cli app/backend
 go vet -tags cli ./...
 ```
 
-## 運用上の意味
+## Architecture and credentials
 
-- `pending → preparing → uploading → committing → completed`。`importing` はまだ端末から受け渡し中。
-- 通信失敗は指数 backoff。upstream 内部にも request retry があり、Preferences の回数は **job 単位**の追加 retry 上限です。
-- `committing` 中断は `commit_outcome_unknown` として failed に保持し、自動再送しません。original は既存 saver を省略しないため ForceUpload します。手動 Retry では再送・重複の可能性があります。非公式 API に exactly-once guarantee はありません。
-- restart はファイルの先頭から再試行します。byte offset を使った Google upload session resume は未実装です。
-- cancel は best effort。Google に commit 済みの asset は削除しません。cancel と成功が競合した場合、確認できた成功を completed と表示します。
-- Wi-Fi/charging は daemon が約5秒ごとに確認。制限に反すると実行中 request を中断し pending に戻します。Wi-Fi 検出は Network.framework の経路判定で、接続後の Google 到達性まで保証しません。
-- 同じ内容でも異なる account / quality は別 job。同一 policy の completed 履歴を消すとローカル重複履歴は消えますが、upstream remote hash check は残ります。
-- Live Photo の片方が既に remote にある場合は `remote_live_photo_component_exists` として停止します。完全なペアとして存在するかを推測せず、繰り返し自動再送しません。
-- 元の写真ライブラリの asset は削除しません。completed / cancelled の daemon staging copy は削除します。
+The jailbreak service uses RocketBootstrap/Mach IPC, validates the sender's kernel audit token and signature, and accepts bounded media chunks rather than arbitrary filesystem paths. Its mobile data directory is mode 0700; queue and credential files are mode 0600. Imported daemon credentials use private JSON storage; Keychain storage is not implemented.
 
-## セキュリティ
+The jailed native account stores the email and account identifier and delegates token retrieval/refresh to Google Photos SSO. Credentials and raw upstream responses are not logged or shown again. Diagnostic exports exclude tokens and media contents.
 
-`/var/mobile/Library/Application Support/GoToHP/` は 0700、queue と credential は 0600。独立 daemon の credential はこの開発版では private JSON ファイルに保存し、Keychain 保存は未実装です。jailed の native account は email と account ID のみ保存し、トークンの取得・更新を Google Photos の既存 SSO に任せます。認証通信は TLS 検証を有効にし、credential や upstream の生の error / response は UI・ログへ返しません。
+See the [architecture](docs/architecture.md), [Google Photos analysis index](docs/analysis/index.md) and [device validation checklist](docs/device-validation.md). Detailed analysis documents are currently in Japanese. The IPA is not included in the repository or packages.
 
-IPC の role は JSON から受け取りません。Settings と許可済み Google Photos は account/settings mutation、Google Photos / Photos は import/queue 操作が可能です。root / カーネル / 許可済みプロセスに別 tweak を注入できる攻撃者からの保護は提供しません。protocol は任意の filesystem path を受け付けず、daemon が生成した ID と検証済み basename だけを使います。
-
-## Upstream 更新
+## Upstream updates
 
 ```sh
 bash scripts/sync-upstream.sh
-# または監査済み commit を指定
+# Or pin an audited commit:
 bash scripts/sync-upstream.sh <commit>
 ```
 
-submodule の commit と `GotohpCore/UPSTREAM_REVISION` を更新し、`.build/upstream` に iOS projection を生成します。本家ファイルは直接変更しません。変更内容・差分・テストを確認してから commit。projection の境界と IPA 調査は [docs/architecture.md](docs/architecture.md)、実機チェックは [docs/device-validation.md](docs/device-validation.md)。
-
-高度な Google Photos 私有 UI hook、jailed のアプリ終了後の自動バックアップ、編集済み Live Photo の current representation、任意 device profile、Keychain、quota 自動検証はこの版に含みません。添付 IPA はリポジトリや配布物に含めていません。
+The script updates the submodule and `GotohpCore/UPSTREAM_REVISION`. `prepare-core.py` projects the pinned backend into `.build/upstream`; the upstream source is not edited directly. Keep the upstream license and generated third-party notices with distributions.

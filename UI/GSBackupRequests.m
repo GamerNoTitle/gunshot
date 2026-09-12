@@ -1,3 +1,4 @@
+#import "../Shared/GSLocalization.h"
 #import "GSBackupRequests.h"
 #import "GSNativeRouting.h"
 #import "GSNativeAccount.h"
@@ -31,7 +32,7 @@ static void GSCount(NSString *key){@synchronized(GSLock){GSCounts[key]=@([GSCoun
 BOOL GSBackupRequestsAvailable(void){return GSInstalled;}
 NSDictionary *GSBackupRequestsSnapshot(void){if(!GSInstalled)return @{@"available":@NO};@synchronized(GSLock){NSMutableDictionary *d=[GSCounts mutableCopy];d[@"available"]=@YES;d[@"enabled"]=GSNativeRoutingEnabled()?@YES:@NO;return d;}}
 static void GSFail(id request,NSInteger code){
- NSError *error=[NSError errorWithDomain:@"GoToHP.Backup" code:code userInfo:@{NSLocalizedDescriptionKey:@"GoToHP のキューで状態を確認してください。純正アップロードには切り替えていません。"}];
+ NSError *error=[NSError errorWithDomain:@"GoToHP.Backup" code:code userInfo:@{NSLocalizedDescriptionKey:GSL(@"Check the GoToHP queue for details. Native upload has not been used.")}];
  if(GSMethod(request,@"didCompleteWithSuccess:resultantMediaItem:error:","v36@0:8B16@20@28"))
   ((void(*)(id,SEL,BOOL,id,id))objc_msgSend)(request,NSSelectorFromString(@"didCompleteWithSuccess:resultantMediaItem:error:"),NO,nil,error);
  else if(GSMethod(request,@"didCompleteWithError:resultantMediaItem:","v32@0:8@16@24"))

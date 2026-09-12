@@ -1,3 +1,4 @@
+#import "../Shared/GSLocalization.h"
 #import <UIKit/UIKit.h>
 #import "../UI/GSPanel.h"
 #import "../UI/GSNativeRouting.h"
@@ -83,6 +84,7 @@ static GSPanel *Panel(UIViewController *host){
 }
 - (void)sceneDidBecomeActive:(UIScene *)scene{
  if(self.started)return;self.started=YES;NSLog(@"Fixture: scene active");
+ GSSetLanguage(@"ja");NSLog(@"Fixture: language initialized");
  UIViewController *root=self.window.rootViewController;
  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:30];
  // A detached delegate controller must resolve to the active scene's root.
@@ -92,9 +94,16 @@ static GSPanel *Panel(UIViewController *host){
   if(![runtime[@"conditionsAccepted"]boolValue]||!SnapshotDuringAuthorization||![runtime[@"coreReady"]boolValue]||![runtime[@"foreground"]boolValue]||![runtime[@"path"]isEqual:@"satisfied"]){Finish(NO,@"embedded runtime state or nonblocking authorization snapshot failed");return;}
   NSSet *allowed=[NSSet setWithArray:@[@"uploadSummary",@"coreReady",@"conditionsAccepted",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
   if(![[NSSet setWithArray:runtime.allKeys]isSubsetOfSet:allowed]){Finish(NO,@"unexpected diagnostic fields");return;}
-  GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=7){Finish(NO,@"settings sections missing");return;}
+  GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=8){Finish(NO,@"settings sections missing");return;}
   Capture(self.window,@"settings-light.png");
-  [panel.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:6] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
+  GSSetLanguage(@"en");[panel viewWillAppear:NO];
+  UITableViewCell *quality=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:2]];
+  if(![quality.textLabel.text isEqual:@"Quality"]||![panel.navigationItem.rightBarButtonItem.title isEqual:@"Reconnect"]){Finish(NO,@"English settings did not update");return;}
+  UITableViewCell *status=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+  if(![status.detailTextLabel.text isEqual:@"Authenticated · Ready to upload"]){Finish(NO,@"cached status language did not update");return;}
+  Capture(self.window,@"settings-english.png");
+  GSSetLanguage(@"ja");[panel viewWillAppear:NO];
+  [panel.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:7] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
   Capture(self.window,@"settings-history.png");
   [root dismissViewControllerAnimated:NO completion:^{
    UIViewController *menu=[UIViewController new];menu.view.backgroundColor=UIColor.secondarySystemBackgroundColor;

@@ -1,3 +1,4 @@
+#import "../Shared/GSLocalization.h"
 #import "../Shared/IPCProtocol.h"
 #import <UIKit/UIKit.h>
 #import <Network/Network.h>
@@ -112,6 +113,6 @@ NSDictionary *GSRequest(NSDictionary *request,NSError **error) {
  result=GSCall(request,[@[@"begin",@"append",@"seal"]containsObject:op]?"googlephotos":"settings");
  if(native)GSRecord(@{@"authorization":result?@"validated":@"failed"});
  });
- if(!result&&error)*error=[NSError errorWithDomain:@"Gunshot" code:1 userInfo:@{NSLocalizedDescriptionKey:@"GoToHP request failed. Check the account, storage and queue in this app."}];
+ if(!result&&error)*error=[NSError errorWithDomain:@"Gunshot" code:1 userInfo:@{NSLocalizedDescriptionKey:GSL(@"GoToHP request failed. Check the account, storage and queue in this app.")}];
  return result;
 }
