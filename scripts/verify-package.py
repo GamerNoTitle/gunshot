@@ -12,3 +12,8 @@ with tempfile.TemporaryDirectory() as d:
     assert launch['UserName']=='mobile'
     assert launch['ProgramArguments']==['/'+prefix+'usr/libexec/gotohpd']
     assert 'StandardOutPath' not in launch and 'StandardErrorPath' not in launch
+
+    info=plistlib.loads((r/'Library/PreferenceBundles/GunshotPrefs.bundle/Info.plist').read_bytes())
+    assert info['NSPrincipalClass']=='GSRootListController'
+    assert info['CFBundleExecutable']=='GunshotPrefs'
+    assert not (r/'var/jb').exists(), 'package prefix applied twice'

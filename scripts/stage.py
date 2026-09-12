@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import pathlib, plistlib, sys
 stage=pathlib.Path(sys.argv[1]);prefix=sys.argv[2].rstrip('/')
-root=stage / prefix.lstrip('/')
+# Theos adds the rootless prefix to the entire stage during internal-package.
+root=stage
 def plist(path,data):
     path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(plistlib.dumps(data))
 service={'Label':'dev.tqmane.gunshot','ProgramArguments':[prefix+'/usr/libexec/gotohpd'],'UserName':'mobile','GroupName':'mobile','RunAtLoad':True,'KeepAlive':True,'ThrottleInterval':10,'MachServices':{'dev.tqmane.gunshot.service':True},'ProcessType':'Background','Umask':63}
