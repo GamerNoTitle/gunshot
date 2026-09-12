@@ -102,6 +102,7 @@
 }
 - (void)sheet:(UIAlertController *)sheet{sheet.popoverPresentationController.sourceView=self.view;sheet.popoverPresentationController.sourceRect=CGRectMake(self.view.bounds.size.width/2,80,1,1);[self presentViewController:sheet animated:YES completion:nil];}
 - (void)primary{if(self.busy)return;if(self.settingsMode)[self addAccount];else if(self.sharedItems.count){NSArray *items=self.sharedItems;self.sharedItems=nil;if([items.firstObject isKindOfClass:PHAsset.class])[self importAssets:items];else[self importURLs:items];}else[self choose];}
+#if GS_JAILED
 - (void)connectNativeAccount{
  NSDictionary *account=GSNativeAccountSummary();
  if(!account){[self message:@"Google Photos のアカウントを取得できません。プロフィールメニューを開き直してください。"];return;}
@@ -115,6 +116,7 @@
   });
  });
 }
+#endif
 - (void)addAccount{
 #if GS_JAILED
  if(GSIsGooglePhotos()){[self connectNativeAccount];return;}
