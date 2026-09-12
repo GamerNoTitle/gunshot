@@ -61,6 +61,8 @@ jobs:
           .build/upload-diagnostics-test
           clang -fobjc-arc -framework Foundation UI/GSNativeAccount.m tests/native_account.m -o .build/native-account-test
           .build/native-account-test
+          clang -fobjc-arc -framework Foundation -Itests/menu-shims -Itests/native-shims UI/GSAccountMenu.m tests/account_menu.m -o .build/account-menu-test
+          .build/account-menu-test
       - name: Build Go archive and Debian package
         run: bash scripts/package.sh '${{ matrix.scheme }}'
       - name: Verify package layout

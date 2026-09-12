@@ -51,3 +51,4 @@
 - [診断版 CI](https://github.com/tqmane/gunshot/actions/runs/34673212132): Go / C ABI / native mock tests / 3方式の iOS build・package check 成功。実機互換性の証明ではありません。
 
 - [ログイン中アカウントの認証とアカウントメニュー](native-account.md) — jailed の SSO bridge、ログイン拒否の再現条件、メニュー移動。
+- [設定メニューのタップ処理と UI 修正](account-menu-tap.md) — dismiss 前のイベント取得、表示先の解決、設定画面の再構成。
