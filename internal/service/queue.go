@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -57,6 +58,10 @@ func (e *Engine) begin(r Request, owner string) (any, error) {
 		}
 		file.Close()
 	}
+	e.importHashes[id] = make([]hash.Hash, len(r.Resources))
+	for i := range r.Resources {
+		e.importHashes[id][i] = sha256.New()
+	}
 	e.state.Jobs = append(e.state.Jobs, j)
 	if err := e.save(); err != nil {
 		return nil, err
@@ -79,7 +84,13 @@ func (e *Engine) appendChunk(j *Job, r Request) error {
 	if st.Size() != r.Offset || r.Offset+int64(len(r.Data)) > j.Resources[r.Index].Size {
 		return errRequest
 	}
-	_, err = f.WriteAt(r.Data, r.Offset)
+	n, err := f.WriteAt(r.Data, r.Offset)
+	if n > 0 {
+		e.importHashes[j.ID][r.Index].Write(r.Data[:n])
+	}
+	if err == nil && n != len(r.Data) {
+		err = io.ErrShortWrite
+	}
 	return err // Durability is required at seal, not each IPC chunk.
 }
 func (e *Engine) seal(j *Job) (any, error) {
@@ -88,7 +99,7 @@ func (e *Engine) seal(j *Job) (any, error) {
 	}
 	h := sha256.New()
 	fmt.Fprintf(h, "%s\x00%s\x00", j.Account, j.Quality)
-	for _, res := range j.Resources {
+	for index, res := range j.Resources {
 		f, err := os.OpenFile(filepath.Join(e.jobDir(j.ID), res.Name), os.O_RDWR, 0600)
 		if err != nil {
 			return nil, err
@@ -99,10 +110,8 @@ func (e *Engine) seal(j *Job) (any, error) {
 			return nil, errRequest
 		}
 		fmt.Fprintf(h, "%d\x00", res.Size)
-		_, err = io.Copy(h, f)
-		if err == nil {
-			err = f.Sync()
-		}
+		h.Write(e.importHashes[j.ID][index].Sum(nil))
+		err = f.Sync()
 		f.Close()
 		if err != nil {
 			return nil, err
@@ -115,6 +124,7 @@ func (e *Engine) seal(j *Job) (any, error) {
 		}
 	}
 	fingerprint := hex.EncodeToString(h.Sum(nil))
+	delete(e.importHashes, j.ID)
 	for _, old := range e.state.Jobs {
 		if old.ID != j.ID && old.Fingerprint == fingerprint && old.State != "cancelled" {
 			j.State = "cancelled"

@@ -10,6 +10,7 @@
 @property(nonatomic,strong) NSTimer *timer;
 @property(nonatomic) BOOL busy;
 @property(nonatomic,strong) NSArray *sharedItems;
+@property(nonatomic,copy) void (^activityCompletion)(void);
 @property(nonatomic,copy) NSString *statusText;
 @end
 @implementation GSPanel
@@ -22,7 +23,7 @@
 }
 - (void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];__weak GSPanel *weak=self;self.timer=[NSTimer scheduledTimerWithTimeInterval:2 repeats:YES block:^(NSTimer *t){[weak refresh];}];}
 - (void)viewWillDisappear:(BOOL)animated{[super viewWillDisappear:animated];[self.timer invalidate];self.timer=nil;}
-- (void)close{if(!self.busy)[self dismissViewControllerAnimated:YES completion:nil];}
+- (void)close{if(!self.busy){if(self.activityCompletion)self.activityCompletion();else[self dismissViewControllerAnimated:YES completion:nil];}}
 - (void)message:(NSString *)message{self.statusText=message;[self.tableView reloadData];}
 - (void)refresh{
  if(self.busy)return;self.busy=YES;
@@ -144,6 +145,7 @@ void GSInstallButton(UIWindow *window){
 - (UIViewController *)activityViewController{
  GSPanel *panel=[[GSPanel alloc]initWithStyle:UITableViewStyleInsetGrouped];
  panel.sharedItems=self.items;
+ __weak GSUploadActivity *weak=self;panel.activityCompletion=^{[weak activityDidFinish:YES];};
  // Use an explicit button so opening the activity does not upload automatically.
  panel.navigationItem.prompt=@"Tap Upload to queue the shared selection.";
  return [[UINavigationController alloc]initWithRootViewController:panel];

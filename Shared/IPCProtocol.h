@@ -1,13 +1,21 @@
 #pragma once
 #import <Foundation/Foundation.h>
 #include <mach/mach.h>
-#include <servers/bootstrap.h>
+
 #define GS_SERVICE "dev.tqmane.gunshot.service"
 #define GS_MAX_JSON 60000
 #define GS_MESSAGE_ID 0x47534831
 #define GS_STATE_PATH "/var/mobile/Library/Application Support/GoToHP"
 // No complex descriptors, pointers, paths, or client-supplied identities on the wire.
 typedef struct { mach_msg_header_t header; uint32_t length; char json[GS_MAX_JSON]; } GSMessage;
-extern kern_return_t rocketbootstrap_look_up(mach_port_t,const name_t,mach_port_t *);
-extern kern_return_t rocketbootstrap_unlock(const name_t);
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern mach_port_t bootstrap_port;
+extern kern_return_t bootstrap_check_in(mach_port_t,const char *,mach_port_t *);
+extern kern_return_t rocketbootstrap_look_up(mach_port_t,const char *,mach_port_t *);
+extern kern_return_t rocketbootstrap_unlock(const char *);
+#ifdef __cplusplus
+}
+#endif
 NSDictionary *GSRequest(NSDictionary *request, NSError **error);

@@ -138,6 +138,7 @@ func (e *Engine) handle(r Request, role string) (any, error) {
 			c()
 		} else {
 			j.State = "cancelled"
+			delete(e.importHashes, j.ID)
 		}
 		err := e.save()
 		if err == nil && j.State == "cancelled" {

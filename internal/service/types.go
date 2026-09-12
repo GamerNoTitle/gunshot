@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"hash"
 	"os"
 	"path/filepath"
 	"sync"
@@ -81,6 +82,7 @@ type Progress struct {
 }
 type Runner func(context.Context, []string, string, string, func(Progress)) (string, error)
 type Engine struct {
+	importHashes           map[string][]hash.Hash
 	mu                     sync.Mutex
 	root                   string
 	state                  State
@@ -141,7 +143,7 @@ func Open(root string, runner Runner) (*Engine, error) {
 	} else if !os.IsNotExist(e) {
 		return nil, e
 	}
-	en := &Engine{root: root, state: s, active: map[string]context.CancelFunc{}, runner: runner}
+	en := &Engine{root: root, state: s, active: map[string]context.CancelFunc{}, importHashes: map[string][]hash.Hash{}, runner: runner}
 	for _, j := range s.Jobs {
 		if !validID(j.ID) {
 			return nil, errors.New("invalid job id")

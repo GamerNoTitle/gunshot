@@ -1,8 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 #import <SystemConfiguration/SystemConfiguration.h>
-#import <IOKit/ps/IOPowerSources.h>
-#import <IOKit/ps/IOPSKeys.h>
 #include <dlfcn.h>
 #include <stddef.h>
 #include <sys/stat.h>
@@ -34,7 +32,10 @@ static void GSConditions(void) {
  BOOL online=reach&&SCNetworkReachabilityGetFlags(reach,&flags)&&(flags&kSCNetworkReachabilityFlagsReachable)&&!(flags&kSCNetworkReachabilityFlagsConnectionRequired);
  if(reach)CFRelease(reach);
  BOOL wifi=online&&!(flags&kSCNetworkReachabilityFlagsIsWWAN);BOOL charging=NO;
- CFTypeRef info=IOPSCopyPowerSourcesInfo();if(info){CFStringRef source=IOPSGetProvidingPowerSourceType(info);charging=source&&CFEqual(source,CFSTR(kIOPSACPowerValue));CFRelease(info);}
+ typedef CFTypeRef (*PowerInfo)(void);typedef CFStringRef (*PowerType)(CFTypeRef);
+ static PowerInfo powerInfo=(PowerInfo)dlsym(RTLD_DEFAULT,"IOPSCopyPowerSourcesInfo");
+ static PowerType powerType=(PowerType)dlsym(RTLD_DEFAULT,"IOPSGetProvidingPowerSourceType");
+ CFTypeRef info=powerInfo?powerInfo():NULL;if(info){CFStringRef source=powerType?powerType(info):NULL;charging=source&&CFEqual(source,CFSTR("AC Power"));CFRelease(info);}
  NSData *b=[NSJSONSerialization dataWithJSONObject:@{@"op":@"conditions",@"online":@(online),@"wifi":@(wifi),@"charging":@(charging)} options:0 error:nil];
  NSString *json=[[NSString alloc]initWithData:b encoding:NSUTF8StringEncoding];
  char *out=GunshotRequest((char *)json.UTF8String,(char *)"daemon");GunshotFree(out);
