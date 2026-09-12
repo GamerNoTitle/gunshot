@@ -1,3 +1,4 @@
+#import "../Shared/GSLocalization.h"
 #import "GSAccountMenu.h"
 #import "GSPanel.h"
 #import "GSNativeAccount.h"
@@ -21,7 +22,7 @@ static BOOL GSOwnItem(id object,id controller,NSIndexPath *path){return path.sec
 static id GSMenuItem(id object,SEL selector,id controller,NSIndexPath *path){
  if(!GSOwnItem(object,controller,path))return GSItem(object,selector,controller,path);
  // itemType 1 is the native custom-action row, verified at 0x100c0ca10.
- id item=[[NSClassFromString(@"OGLAccountMenuCustomItem") alloc]initWithTitle:@"GoToHP の設定" icon:[UIImage systemImageNamed:@"gearshape"] itemType:1];
+ id item=[[NSClassFromString(@"OGLAccountMenuCustomItem") alloc]initWithTitle:GSL(@"GoToHP settings") icon:[UIImage systemImageNamed:@"gearshape"] itemType:1];
  objc_setAssociatedObject(item,&GSMenuMarker,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
  return item;
 }

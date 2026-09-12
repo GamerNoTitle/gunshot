@@ -1,3 +1,4 @@
+#import "../Shared/GSLocalization.h"
 #import <UIKit/UIKit.h>
 #import "../UI/GSPanel.h"
 #import "../UI/GSNativeRouting.h"
@@ -92,9 +93,14 @@ static GSPanel *Panel(UIViewController *host){
   if(![runtime[@"conditionsAccepted"]boolValue]||!SnapshotDuringAuthorization||![runtime[@"coreReady"]boolValue]||![runtime[@"foreground"]boolValue]||![runtime[@"path"]isEqual:@"satisfied"]){Finish(NO,@"embedded runtime state or nonblocking authorization snapshot failed");return;}
   NSSet *allowed=[NSSet setWithArray:@[@"uploadSummary",@"coreReady",@"conditionsAccepted",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
   if(![[NSSet setWithArray:runtime.allKeys]isSubsetOfSet:allowed]){Finish(NO,@"unexpected diagnostic fields");return;}
-  GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=7){Finish(NO,@"settings sections missing");return;}
+  GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=8){Finish(NO,@"settings sections missing");return;}
   Capture(self.window,@"settings-light.png");
-  [panel.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:6] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
+  GSSetLanguage(@"en");[panel viewWillAppear:NO];
+  UITableViewCell *quality=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:2]];
+  if(![quality.textLabel.text isEqual:@"Quality"]||![panel.navigationItem.rightBarButtonItem.title isEqual:@"Reconnect"]){Finish(NO,@"English settings did not update");return;}
+  Capture(self.window,@"settings-english.png");
+  GSSetLanguage(@"ja");[panel viewWillAppear:NO];
+  [panel.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:7] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
   Capture(self.window,@"settings-history.png");
   [root dismissViewControllerAnimated:NO completion:^{
    UIViewController *menu=[UIViewController new];menu.view.backgroundColor=UIColor.secondarySystemBackgroundColor;
@@ -125,7 +131,7 @@ static GSPanel *Panel(UIViewController *host){
 }
 @end
 int main(int argc,char **argv){@autoreleasepool{
- NSLog(@"Fixture: main");
+ GSSetLanguage(@"ja");NSLog(@"Fixture: main");
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,60*NSEC_PER_SEC),dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{Finish(NO,@"watchdog: no completion within 60 seconds after main");});
  return UIApplicationMain(argc,argv,nil,NSStringFromClass(GSFixtureApp.class));
 }}

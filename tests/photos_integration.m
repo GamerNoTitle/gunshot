@@ -1,3 +1,4 @@
+#import "../Shared/GSLocalization.h"
 #import "../UI/GSPhotosIntegration.h"
 #import <objc/runtime.h>
 #include <assert.h>
@@ -62,7 +63,7 @@ int main(void){@autoreleasepool{
  details.extendedPhoto=[ExtendedPhoto new];PHSServerPhoto *photo=[PHSServerPhoto new];details.extendedPhoto.serverPhoto=photo;photo.storagePolicy=1;
  for(unsigned char value=0;value<4;value++){
   photo.hasOriginalBytes=value;id result=[details getBackupStatusModelData];
-  if(value==1){assert(result!=details.original);assert([[result backupStatusSubtitle]containsString:@"オリジナル画質"]);assert([[result backupStatus]isEqual:details.original.backupStatus]);}
+  if(value==1){assert(result!=details.original);assert([[result backupStatusSubtitle]isEqual:GSL(@"Original quality (original data available)")]);assert([[result backupStatus]isEqual:details.original.backupStatus]);}
   else assert(result==details.original); // No / Unknown / Maybe can never become Original.
  }
  photo.hasOriginalBytes=1;photo.isPartialBackup=YES;assert([details getBackupStatusModelData]==details.original);

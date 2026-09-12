@@ -1,3 +1,4 @@
+#import "../Shared/GSLocalization.h"
 #import "GSExporter.h"
 #import "../Shared/IPCProtocol.h"
 NSArray<NSURL *> *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error){
@@ -6,7 +7,7 @@ NSArray<NSURL *> *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error)
  for(PHAssetResource *r in resources)if(r.type==type){[chosen addObject:r];break;}
  if(asset.mediaSubtypes&PHAssetMediaSubtypePhotoLive)for(PHAssetResource *r in resources)if(r.type==PHAssetResourceTypePairedVideo){[chosen addObject:r];break;}
  if(!chosen.count||((asset.mediaSubtypes&PHAssetMediaSubtypePhotoLive)&&chosen.count!=2)){
-  if(error)*error=[NSError errorWithDomain:@"Gunshot" code:2 userInfo:@{NSLocalizedDescriptionKey:@"Original media resources are unavailable."}];return nil;
+  if(error)*error=[NSError errorWithDomain:@"Gunshot" code:2 userInfo:@{NSLocalizedDescriptionKey:GSL(@"Original media resources are unavailable.")}];return nil;
  }
  NSMutableArray *files=[NSMutableArray array];
  for(PHAssetResource *r in chosen){

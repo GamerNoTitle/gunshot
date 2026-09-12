@@ -1,3 +1,4 @@
+#import "GSLocalization.h"
 #import "IPCProtocol.h"
 #include <stddef.h>
 NSDictionary *GSRequest(NSDictionary *request, NSError **error) {
@@ -24,10 +25,10 @@ NSDictionary *GSRequest(NSDictionary *request, NSError **error) {
  }
  free(message);mach_port_mod_refs(mach_task_self(),reply,MACH_PORT_RIGHT_RECEIVE,-1);mach_port_deallocate(mach_task_self(),server);
  if(result)return result;
- if(error)*error=[NSError errorWithDomain:@"Gunshot" code:1 userInfo:@{NSLocalizedDescriptionKey:@"GoToHP request failed. Check the daemon, account and queue."}];return nil;
+ if(error)*error=[NSError errorWithDomain:@"Gunshot" code:1 userInfo:@{NSLocalizedDescriptionKey:GSL(@"GoToHP request failed. Check the daemon, account and queue.")}];return nil;
  }
 fail:
  if(reply!=MACH_PORT_NULL)mach_port_mod_refs(mach_task_self(),reply,MACH_PORT_RIGHT_RECEIVE,-1);
  if(server!=MACH_PORT_NULL)mach_port_deallocate(mach_task_self(),server);
- if(error)*error=[NSError errorWithDomain:@"Gunshot" code:kr userInfo:@{NSLocalizedDescriptionKey:@"GoToHP daemon unavailable. Check installation and RocketBootstrap."}];return nil;
+ if(error)*error=[NSError errorWithDomain:@"Gunshot" code:kr userInfo:@{NSLocalizedDescriptionKey:GSL(@"GoToHP daemon unavailable. Check installation and RocketBootstrap.")}];return nil;
 }

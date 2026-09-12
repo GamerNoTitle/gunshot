@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.0'
+      - run: python3 scripts/localization.py --check
       - run: python3 scripts/prepare-core.py
       - run: go test -race -tags cli ./...
       - run: go test -tags cli app/backend
@@ -55,6 +56,8 @@ jobs:
         if: matrix.scheme == 'jailed'
         run: |
           mkdir -p .build
+          clang -fobjc-arc -framework Foundation tests/localization.m -o .build/localization-test
+          .build/localization-test
           clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/native-routing-test
           .build/native-routing-test
           clang -fobjc-arc -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/silent-jailed-routing-test

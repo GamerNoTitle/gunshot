@@ -1,3 +1,4 @@
+#import "../Shared/GSLocalization.h"
 #import "GSPhotosIntegration.h"
 #import "GSNativeAccount.h"
 #import "GSNativeRouting.h"
@@ -57,7 +58,7 @@ static id GSBackupStatus(id controller,SEL selector,IMP original){
  unsigned char policy=((unsigned char(*)(id,SEL))objc_msgSend)(photo,NSSelectorFromString(@"storagePolicy"));
  if(policy!=1)return status; // Only the Standard / Storage Saver label mismatch.
  NSString *backup=GSGet(status,@"backupStatus");if(![backup isKindOfClass:NSString.class])return status;
- id replacement=[(PHSOneUpInfoPanelBackupStatusData *)[NSClassFromString(@"PHSOneUpInfoPanelBackupStatusData") alloc] initWithBackupStatus:backup backupStatusSubtitle:@"オリジナル画質（原本データあり）" learnMoreLink:@"https://support.google.com/photos/answer/6220791"];
+ id replacement=[(PHSOneUpInfoPanelBackupStatusData *)[NSClassFromString(@"PHSOneUpInfoPanelBackupStatusData") alloc] initWithBackupStatus:backup backupStatusSubtitle:GSL(@"Original quality (original data available)") learnMoreLink:@"https://support.google.com/photos/answer/6220791"];
  if(replacement){GSCount(@"qualityLabelCorrected");return replacement;}
  return status;
 }
