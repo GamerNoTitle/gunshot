@@ -5,19 +5,19 @@
 #import "../UI/GSExporter.h"
 #import "../Shared/IPCProtocol.h"
 #include <stdlib.h>
-// Real jailed adapter + UIKit + NWPath; only the Go/Google boundary is a fake.
+#include "libgotohp.h"
+// Real jailed adapter + UIKit + NWPath + Go runtime. Only account operations are fake.
 // A synchronous main callback models native SSO while the core queue is busy.
-static NSDictionary *Conditions;
+
 static BOOL SnapshotDuringAuthorization;
 NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"test@example.com",@"identifier":@"fixture"};}
 char *GSNativeBearer(const char *identifier){return NULL;}
-void GunshotSetHostBearerProvider(uintptr_t provider){}
-int GunshotInitialize(char *path){return 0;}
-void GunshotFree(void *value){free(value);}
-char *GunshotRequest(char *json,char *role){
+char *GSFixtureRequest(char *json,char *role){
  NSDictionary *request=[NSJSONSerialization JSONObjectWithData:[[NSString stringWithUTF8String:json]dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
  NSString *op=request[@"op"];id data=@{};
- if([op isEqual:@"conditions"])Conditions=request;
+ // Runtime requests cross the real C ABI and Go JSON decoder. The previous
+ // all-fake service accepted integer 1/0 via boolValue and missed this bug.
+ if([op isEqual:@"conditions"]||[op isEqual:@"list"])return GunshotRequest(json,role);
  if([op isEqual:@"account_native"]){
   NSLog(@"Fixture: authorizing");
   dispatch_sync(dispatch_get_main_queue(),^{
@@ -28,7 +28,6 @@ char *GunshotRequest(char *json,char *role){
  }
  if([op isEqual:@"accounts"])data=@{@"selected":@"test@example.com",@"accounts":@[@{@"email":@"test@example.com"}]};
  if([op isEqual:@"options"])data=@{@"quality":@"original",@"concurrent":@2,@"retries":@3,@"wifiOnly":@NO,@"chargingOnly":@NO,@"paused":@NO};
- if([op isEqual:@"list"])data=@{@"jobs":@[],@"next":@(-1),@"online":Conditions[@"online"]?:@NO,@"wifi":Conditions[@"wifi"]?:@NO};
  NSData *reply=[NSJSONSerialization dataWithJSONObject:@{@"ok":@YES,@"data":data} options:0 error:nil];
  return strdup([[NSString alloc]initWithData:reply encoding:NSUTF8StringEncoding].UTF8String);
 }
@@ -84,8 +83,8 @@ static GSPanel *Panel(UIViewController *host){
  GSPresentSettings([UIViewController new]);
  Await(^BOOL{GSPanel *panel=Panel(root);return panel.settingsMode&&panel.viewIfLoaded.window&&[[panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].detailTextLabel.text isEqual:@"認証確認済み · アップロード可能"];},^{
   NSDictionary *runtime=GSEmbeddedRuntimeSnapshot();
-  if(!SnapshotDuringAuthorization||![runtime[@"coreReady"]boolValue]||![runtime[@"foreground"]boolValue]||![runtime[@"path"]isEqual:@"satisfied"]){Finish(NO,@"embedded runtime state or nonblocking authorization snapshot failed");return;}
-  NSSet *allowed=[NSSet setWithArray:@[@"coreReady",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
+  if(![runtime[@"conditionsAccepted"]boolValue]||!SnapshotDuringAuthorization||![runtime[@"coreReady"]boolValue]||![runtime[@"foreground"]boolValue]||![runtime[@"path"]isEqual:@"satisfied"]){Finish(NO,@"embedded runtime state or nonblocking authorization snapshot failed");return;}
+  NSSet *allowed=[NSSet setWithArray:@[@"coreReady",@"conditionsAccepted",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
   if(![[NSSet setWithArray:runtime.allKeys]isSubsetOfSet:allowed]){Finish(NO,@"unexpected diagnostic fields");return;}
   GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=7){Finish(NO,@"settings sections missing");return;}
   Capture(self.window,@"settings-light.png");

@@ -62,6 +62,7 @@ jailed の診断 JSON には `runtime` が追加されます。
 | キー | 意味 |
 | --- | --- |
 | `coreReady` | Go サービスの初期化完了 |
+| `conditionsAccepted` | 最後の開始条件更新を Go が受理したか |
 | `authorization` | `not_checked` / `checking` / `validated` / `failed`（今回のプロセス内の接続検証結果） |
 | `foreground` | アプリまたは foreground scene の存在 |
 | `path` | `unknown` / `satisfied` / `requires_connection` / `unsatisfied` |
@@ -75,7 +76,22 @@ jailed の診断 JSON には `runtime` が追加されます。
 原因を特定できる情報は含まれていませんでした。
 
 シミュレーターテストは実際の EmbeddedService / UIKit / NWPath を使用し、
-Go・Google 呼び出し境界だけを fixture に置換します。認証中の main callback
+実際の Go c-archive に開始条件とキュー参照を渡し、アカウント操作だけを fixture に置換します。認証中の main callback
 から診断取得できること、前面での online 伝達、認証確認表示、秘密情報を
 含まない診断キーを検証します。実 Google アカウント認証・アップロード成功を
 このテストの合格だけで保証するものではありません。
+
+### 追記：認証済みなのにキューが開始しない原因
+
+次の実機診断では `authorization=validated`、Wi-Fi / 前面 / path は正常で、
+`networkOnline` が JSON の `1`、`charging` が `0` になっていました。
+Objective-C の比較・論理式は `int` なので、`@(a && b)` は bool ではなく
+数値を生成します。conditions の `online` / `charging` にこの数値が入り、
+Go の bool フィールドへの JSON デコードが失敗していました。
+旧実装は応答を無視し、Go の online は初期値 false のままでした。
+
+修正では wire 上の bool を明示的な `@YES` / `@NO` で生成し、応答の成否を
+`conditionsAccepted` に記録します。失敗時に「アップロード可能」とは表示しません。
+前回のシミュレーター用 Go 代替処理は NSNumber の boolValue で 1/0 も許容し、
+この不一致を見逃していました。今回は開始条件・キュー参照に本物の Go を使用します。
+C ABI テストでも数値の拒否、JSON boolean の受理と online=true の反映を確認します。

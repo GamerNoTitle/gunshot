@@ -14,7 +14,7 @@ static NSMutableDictionary *GSState;
 static void GSStateInitialize(void) {
  static dispatch_once_t once;dispatch_once(&once,^{
   GSStateLock=[NSLock new];
-  GSState=[@{@"coreReady":@NO,@"foreground":@NO,@"path":@"unknown",@"networkOnline":@NO,@"wifi":@NO,@"charging":@NO,@"authorization":@"not_checked"} mutableCopy];
+  GSState=[@{@"coreReady":@NO,@"conditionsAccepted":@NO,@"foreground":@NO,@"path":@"unknown",@"networkOnline":@NO,@"wifi":@NO,@"charging":@NO,@"authorization":@"not_checked"} mutableCopy];
  });
 }
 static void GSRecord(NSDictionary *values) {
@@ -36,7 +36,11 @@ static NSDictionary *GSCall(NSDictionary *request,const char *role) {
 }
 static void GSConditions(void) {
  NSDictionary *state=GSEmbeddedRuntimeSnapshot();
- if(GSReady)GSCall(@{@"op":@"conditions",@"online":@([state[@"foreground"]boolValue]&&[state[@"networkOnline"]boolValue]),@"wifi":state[@"wifi"],@"charging":state[@"charging"]},"daemon");
+ if(!GSReady)return;
+ // ObjC relational/logical expressions have type int: @(a && b) becomes JSON
+ // 1/0, which Go correctly rejects for a bool field. Always box real booleans.
+ NSDictionary *result=GSCall(@{@"op":@"conditions",@"online":([state[@"foreground"]boolValue]&&[state[@"networkOnline"]boolValue])?@YES:@NO,@"wifi":[state[@"wifi"]boolValue]?@YES:@NO,@"charging":[state[@"charging"]boolValue]?@YES:@NO},"daemon");
+ GSRecord(@{@"conditionsAccepted":result?@YES:@NO});
 }
 static void GSSampleApplication(void) {
  // Scene lifecycle matters for scene-based hosts and container guests. Inactive
@@ -45,7 +49,7 @@ static void GSSampleApplication(void) {
  for(UIScene *scene in UIApplication.sharedApplication.connectedScenes)
   if(scene.activationState==UISceneActivationStateForegroundActive||scene.activationState==UISceneActivationStateForegroundInactive){foreground=YES;break;}
  UIDeviceBatteryState state=UIDevice.currentDevice.batteryState;
- GSRecord(@{@"foreground":@(foreground),@"charging":@(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull)});
+ GSRecord(@{@"foreground":@(foreground),@"charging":(state==UIDeviceBatteryStateCharging||state==UIDeviceBatteryStateFull)?@YES:@NO});
  dispatch_async(GSCoreQueue,^{GSConditions();});
 }
 static void GSStart(void) {
@@ -69,7 +73,7 @@ static void GSStart(void) {
  GSMonitor=nw_path_monitor_create();
  nw_path_monitor_set_update_handler(GSMonitor,^(nw_path_t path){
   nw_path_status_t status=nw_path_get_status(path);
-  GSRecord(@{@"path":status==nw_path_status_satisfied?@"satisfied":status==nw_path_status_satisfiable?@"requires_connection":@"unsatisfied",@"networkOnline":@(status==nw_path_status_satisfied),@"wifi":@(nw_path_uses_interface_type(path,nw_interface_type_wifi))});
+  GSRecord(@{@"path":status==nw_path_status_satisfied?@"satisfied":status==nw_path_status_satisfiable?@"requires_connection":@"unsatisfied",@"networkOnline":status==nw_path_status_satisfied?@YES:@NO,@"wifi":@(nw_path_uses_interface_type(path,nw_interface_type_wifi))});
   dispatch_async(GSCoreQueue,^{GSConditions();});
  });
  // Do not starve path callbacks behind SSO / Google endpoint validation.

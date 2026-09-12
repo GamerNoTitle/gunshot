@@ -94,7 +94,8 @@
  NSDictionary *runtime=GSEmbeddedRuntimeSnapshot();
  if([runtime[@"authorization"]isEqual:@"validated"])authorization=@"認証確認済み";
  if(![options[@"paused"]boolValue]){
-  if(![runtime[@"foreground"]boolValue])readiness=@"アプリの前面表示を待機中";
+  if(![runtime[@"conditionsAccepted"]boolValue])readiness=@"アップロード開始条件の反映に失敗（診断を確認）";
+  else if(![runtime[@"foreground"]boolValue])readiness=@"アプリの前面表示を待機中";
   else if([runtime[@"path"]isEqual:@"unknown"])readiness=@"通信状態を確認中";
   else if(![runtime[@"networkOnline"]boolValue])readiness=@"ネットワーク接続を待機中";
  }
