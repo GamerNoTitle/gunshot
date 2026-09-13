@@ -60,6 +60,8 @@ jobs:
           .build/mach-transport-test
           clang -fobjc-arc -framework Foundation tests/ipc_client.m -o .build/ipc-client-test
           .build/ipc-client-test
+          clang -fobjc-arc -framework Foundation -framework CoreFoundation tests/daemon_runloop.m -o .build/daemon-runloop-test
+          .build/daemon-runloop-test
       - name: Native routing contract
         if: matrix.scheme == 'jailed'
         run: |

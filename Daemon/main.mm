@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #import "../Shared/IPCProtocol.h"
+#import "GSDaemonRunLoop.h"
 #include "../.build/libgotohp.h"
 
 static const char *GSRole(audit_token_t token) {
@@ -52,6 +53,7 @@ int main(int argc,char **argv) { @autoreleasepool {
  dispatch_source_t timer=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,conditionsQueue);
  dispatch_source_set_timer(timer,DISPATCH_TIME_NOW,5*NSEC_PER_SEC,NSEC_PER_SEC);
  dispatch_source_set_event_handler(timer,^{@autoreleasepool{GSConditions();}});dispatch_resume(timer);
+ return GSRunDaemonService(^{
  const size_t capacity=sizeof(GSMessage)+sizeof(mach_msg_max_trailer_t);
  while(true){@autoreleasepool{
  GSMessage *m=(GSMessage *)calloc(1,capacity);
@@ -73,4 +75,5 @@ int main(int argc,char **argv) { @autoreleasepool {
  kr=mach_msg(&m->header,MACH_SEND_MSG|MACH_SEND_TIMEOUT,m->header.msgh_size,0,MACH_PORT_NULL,1000,MACH_PORT_NULL);
  if(kr!=KERN_SUCCESS)mach_msg_destroy(&m->header);free(m);
  }}
+ })?0:4;
  }}
