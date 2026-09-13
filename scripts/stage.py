@@ -11,8 +11,12 @@ plist(root/'Library/LaunchDaemons/dev.tqmane.gunshot.plist',service)
 # No wildcard process IDs, filesystem grants or access to unrelated services.
 profile=root/'Library/libSandy/dev.tqmane.gunshot.ipc.plist'
 plist(profile,{'AllowedProcesses':['com.google.photos','com.apple.mobileslideshow','com.apple.Preferences'],
-               'Extensions':[{'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':name}
-                             for name in ('dev.tqmane.gunshot.service','dev.tqmane.gunshot.discovery')]})
+               # Mirror sandyd's own two-class grant. A process may accept only
+               # the global-name class; a returned token alone is not access.
+               'Extensions':[{'type':'mach','extension_class':extension_class,'mach_name':name}
+                             for name in ('dev.tqmane.gunshot.service','dev.tqmane.gunshot.discovery')
+                             for extension_class in ('com.apple.app-sandbox.mach',
+                                                     'com.apple.security.exception.mach-lookup.global-name')]})
 profile.chmod(0o644)
 plist(root/'Library/PreferenceLoader/Preferences/Gunshot.plist',{'entry':{'bundle':'GunshotPrefs','cell':'PSLinkCell','detail':'GSRootListController','label':'GoToHP'}})
 control=stage/'DEBIAN';control.mkdir(parents=True,exist_ok=True)

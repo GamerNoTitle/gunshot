@@ -42,8 +42,11 @@ with tempfile.TemporaryDirectory() as d:
     assert profile.stat().st_mode & 0o777 == 0o644
     assert plistlib.loads(profile.read_bytes())=={
         'AllowedProcesses':['com.google.photos','com.apple.mobileslideshow','com.apple.Preferences'],
-        'Extensions':[{'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':name}
-                      for name in ('dev.tqmane.gunshot.service','dev.tqmane.gunshot.discovery')]}
+        'Extensions':[
+            {'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':'dev.tqmane.gunshot.service'},
+            {'type':'mach','extension_class':'com.apple.security.exception.mach-lookup.global-name','mach_name':'dev.tqmane.gunshot.service'},
+            {'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':'dev.tqmane.gunshot.discovery'},
+            {'type':'mach','extension_class':'com.apple.security.exception.mach-lookup.global-name','mach_name':'dev.tqmane.gunshot.discovery'}]}
     for p in ['usr/libexec/gotohpd','Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib','Library/PreferenceBundles/GunshotPrefs.bundle/GunshotPrefs']:
         assert (r/p).is_file(), p
     # The crashing legacy RocketBootstrap client must not be linked into apps.
