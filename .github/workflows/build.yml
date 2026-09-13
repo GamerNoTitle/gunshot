@@ -5,6 +5,12 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing v* tag to rebuild and publish (leave empty for build only)'
+        required: false
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -13,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
           submodules: recursive
       - uses: actions/setup-go@v5
         with:
@@ -38,6 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
           submodules: recursive
       - uses: actions/setup-go@v5
         with:
@@ -182,9 +190,12 @@ jobs:
             packages/jailed/ThirdPartyNotices.txt
           if-no-files-found: error
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v'))
     needs: [core, package]
     runs-on: ubuntu-latest
+    concurrency:
+      group: release-${{ inputs.release_tag || github.ref_name }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -202,5 +213,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" gotohp-tweak-rootless.deb gotohp-tweak-rootful.deb gotohp-tweak-jailed.deb GunshotJailed.dylib ThirdPartyNotices.txt --generate-notes
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          assets=(gotohp-tweak-rootless.deb gotohp-tweak-rootful.deb gotohp-tweak-jailed.deb GunshotJailed.dylib ThirdPartyNotices.txt)
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GH_REPO" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" --repo "$GH_REPO" --verify-tag --generate-notes
+          fi
