@@ -76,39 +76,82 @@ real `NSKVONotifying_OGLAccountMenuStorageCardData` instance. No runtime diagnos
 JSON accompanied the screenshot, so the device's actual class and skipped path
 are **not yet confirmed**.
 
-## Current implementation boundary
+## Device counters rule out the GM2 renderer (third report)
 
-The old Photos-source and Swift-aggregator hooks have been replaced with the
-native **card-data-to-view-item converter** hook. It operates on the display
-input regardless of which provider supplied it. Compatible subclasses are
-accepted after checking all 18 getter/setter ABIs on their actual runtime class.
-A fresh native model preserves counters, flags, callbacks and cached originals;
-only its display state, title and subtitle change. Other card types pass through.
+The supplied `gotohp-upload-diagnostics (1).json` reports version 7.92.0,
+`implementation: native-card-renderer-v3`, `available: true`, `enabled: true`,
+`status: installed`, but **mapperCalls = cellUpdates = titleCalls = 0** and both
+observed class lists empty. The old hooks installed successfully but none of
+those render callbacks ran during the captured session. This is not evidence of
+failed credential setup, missing resources, or a rejected KVO subclass. The
+v3 fixture covered a renderer that did not execute in this device session.
 
-`OGLStringResources` supplies the native unlimited title. The native card's shared
-title formatter receives that string for state 2, keeping sizing and rendering
-consistent. A passive `updateWithItem:` observer records the state reaching the
-native storage cell; it does not change the item or layout. The original converter
-and cell implementation always run. No data-source, quota, upload or feature-flag
-hook is installed by this display option.
+## Bento / SwiftUI evidence from the same IPA
 
-Diagnostic exports identify `implementation: native-card-renderer-v3` and include
-converter, projection, title and cell counts; mapped/rendered storage states;
-resource readiness; and at most 16 runtime class names per category. These are
-class names, not object descriptions: no account, title text, storage amount,
-token or media value is recorded. This distinguishes source-path assumptions from
-what actually reached the renderer on the user's device.
+| Framework location | Verified behavior |
+| --- | --- |
+| `OGLAccountMenuVCFactory.internalCreateAccountMenuVC:incognito:expanded:`, `0x12f237c` | At `0x12f23b8`, tests `bentoAccountMenuEnabled`. The true branch calls `OGLBentoAccountMenuFactory.makeBentoAccountMenuViewController` at `0x12f23d8`, returning before the collapsible/non-collapsible GM2 path. |
+| `OGLBentoAccountMenuFactory.makeBentoAccountMenuViewController`, `0x12f476c` | Objective-C factory boundary, encoding `@16@0:8`. It can be passively observed without replacing Google's controller. |
+| Swift `StorageCardContent` initializer, `0x1378b70` | Reads the ObjC card model's `storageState` at `0x1378bd8`. State 2 maps to Swift state byte `0x80` at `0x1378bf4`; state 3 maps to `0x82`. It does not call the GM2 converter. |
+| Swift title computation, `0x1378d18` | Reads the same model's `title` at `0x1378d48` and uses a non-nil value before falling back to state-based native resources. |
+| Swift minimized-card computation, `0x1379424` | States `0x80` and `0x82` return true at `0x137944c`. The compact/unlimited layout remains owned by the native Swift implementation. |
+| Embedded source-path string, `0x517a2b0` | `googlemac/iPhone/Shared/OneGoogle/Multiplatform/Cards/StorageCardContent.swift`. |
+| `OGLAccountMenuStorageCardData.encodeWithCoder:`, `0x17a3fd4` | Serializes model values through getters, including `storageState` at `0x17a4030`. Display overrides must be suppressed during encoding to avoid persisting a presentation preference as source data. |
+
+The zero counters establish that v3's callbacks did not run. The disassembly
+establishes a separate native path; v4's passive Bento factory counter is still
+needed to positively identify that path on the user's device.
+
+The attached Android APK (7.92.0.977185651) also contains `Unlimited storage` and
+`無制限ストレージ` in its Android resource string pool. This was a resource check,
+not a complete decompilation or proof of its runtime eligibility logic. Android
+code/resources are not required for the iOS fix and are not included in the repo.
+
+## Current implementation boundary (v4)
+
+The display override now targets **the native ObjC presentation model's getters**
+(`OGLAccountMenuStorageCardData.storageState` and `title`). Both the legacy
+converter and the Swift `StorageCardContent` initializer read this model, so
+support no longer depends on the legacy converter or cell executing.
+
+With the preference enabled and native resources available, reads return state 2
+and the native `OGLStringResources` unlimited title. With the preference disabled,
+reads immediately return the original implementation's current values. Setters,
+backing fields, counters, callbacks, data sources, account quota and upload
+behavior are not changed. Native updates to the same cached model are preserved.
+No Swift ABI calls, hardcoded runtime offsets, feature-flag changes, substitute
+controller, or custom unlimited label are introduced.
+
+Because the native model supports coding, `encodeWithCoder:` calls the original
+implementation with thread-local suppression of these getter overrides. Nested
+encodes and exceptions restore that suppression correctly. This prevents an
+archive created while enabled from containing the synthetic display state/title.
+
+The legacy title formatter remains an optional compatibility hook. A passive
+legacy cell observer and an optional Bento factory observer identify which menu
+actually runs. Neither observer controls availability of the common model hook.
+Version and method ABIs are checked before installing the model hooks.
+
+Diagnostics use `implementation: native-display-model-v4` and report model read /
+display override counts, native/display states, archive calls, Bento controller
+creation, legacy cell/title calls, native resource readiness, and bounded class
+names. They do not include titles, storage amounts, accounts, tokens, object
+descriptions or media. In the Bento path, zero legacy-cell calls is expected;
+model reads and the Bento observer are the relevant counters.
 
 ## Validation and remaining device check
 
-`tests/unlimited_storage.m` runs with neither of the former source classes present.
-It exercises the renderer converter, real KVO subclass, cached-source restoration,
-callback/scalar preservation, late resources, unrelated/nil data, inherited-method
-isolation, passive cell observation and ABI rejection. CI also runs the actual
-UIKit stationary-polling fixture and builds all three package schemes.
+`tests/unlimited_storage.swift` is compiled against an imported Objective-C
+fixture model, exercising **Swift-to-ObjC getter dispatch** without any GM2
+converter. The Foundation fixture runs with legacy classes present and with
+both legacy classes absent (`bento-only`). It also checks real KVO subclasses,
+late resource availability, unchanged backing fields/callbacks/counters,
+secure archive round trips, exception-safe coder suppression, and native updates
+followed by on/off restoration. A separate invocation checks incompatible ABI
+rejection. The existing UIKit polling test and all package builds remain enabled.
 
-Fixtures do not run Google's proprietary UI. On device, reopen the profile menu
-after toggling, check original/unlimited presentation and native actions, then
-export diagnostics if it remains unchanged. The new counters and observed classes
-are required to establish the remaining runtime cause rather than infer it from
-the screenshot alone.
+These fixtures do not execute Google's proprietary SwiftUI view. On device,
+reopen the profile menu after toggling and check both title/layout and native
+actions. If unchanged, export fresh diagnostics **after opening the menu**;
+`modelStateReads`, `modelTitleReads`, `bentoControllers` and resource readiness
+will distinguish the next failure without relying on another screenshot guess.
