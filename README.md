@@ -43,7 +43,7 @@ On jailed Google Photos with compatible native APIs, **Route manual and automati
 
 ### Jailbreak
 
-Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` from GitHub Actions with your package manager. RocketBootstrap, libSandy 1.1.6 or later ([opa334’s repository](https://opa334.github.io/)) and a substrate-compatible injection system are required. Install with a package manager so it resolves these dependencies. The package includes a restricted libSandy profile for the GoToHP daemon; libSandy itself is installed as a shared system dependency. **If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.**
+Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` from GitHub Actions with your package manager. libSandy 1.1.6 or later ([opa334’s repository](https://opa334.github.io/)) and a substrate-compatible injection system are required. Install with a package manager so it resolves these dependencies. The package includes a restricted libSandy profile for the GoToHP daemon; libSandy itself is installed as a shared system dependency. **RocketBootstrap is no longer required.** The daemon uses direct Mach IPC and authenticated XPC discovery; see [connection details](docs/ipc.md). **If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.**
 
 Opening **Google Photos** automatically connects the account already signed into the app. No token paste or visit to GoToHP settings is required. Use **Profile menu → GoToHP settings** to change options or retry with **Reconnect**. Jailbreak packages do not add an iOS Settings entry or require PreferenceLoader. Upload from this page, the Apple Photos GoToHP button or a supported **Upload with GoToHP** share action.
 

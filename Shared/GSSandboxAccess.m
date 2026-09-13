@@ -26,7 +26,8 @@ int GSApplyIPCSandboxProfile(void) {
   int (*apply)(const char *)=(int (*)(const char *))dlsym(library,"libSandy_applyProfile");
   if(!apply)return GS_SANDBOX_API_MISSING;
   // Do not cache a failed attempt: sandyd may be starting or restarting.
-  // The root-owned profile grants only our service to three signing IDs.
+  // The root-owned profile grants only our two services to the Photos and
+  // Google Photos signing IDs.
   int code=apply(GS_IPC_SANDBOX_PROFILE);
   // Successful token issuance does not imply that lookup redirection is active.
   // These optional provider exports let the diagnostic distinguish those cases.

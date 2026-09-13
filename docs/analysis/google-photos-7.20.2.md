@@ -62,6 +62,10 @@ CI runs both API shapes, mixed completion classes and malformed signatures, and 
 
 ## Jailbreak daemon lookup
 
+The current connection path is documented in [Jailbreak IPC without RocketBootstrap](../ipc.md). Direct lookup, the scoped libSandy profile and authenticated XPC discovery remain; RocketBootstrap startup calls and its broker/redirected lookup paths have been removed. The investigation below records earlier implementations and device reports. References to broker stages or unlocking describe that history, not a current installation requirement.
+
+### Historical crash and broker transport
+
 The 2026-09-13 17:55 crash reports `EXC_GUARD / SEND_INVALID_REPLY` in RocketBootstrap called by `GSRequest`. Choicy isolation did not eliminate this path. The client now uses a locally owned reply port marked `MPO_REPLY_PORT` on iOS 16+ for the broker lookup and daemon RPC. It first tries direct and redirected launchd lookup, then the existing RocketBootstrap broker with bounded waits and validated descriptors. Client binaries no longer link RocketBootstrap; the daemon still uses it to unlock the service. The broker's access policy and daemon audit-token authorization are preserved. Gunshot does not install global Mach hooks or change process guard settings. The scoped libSandy access adapter described below is used when the app sandbox denies lookup.
 
 The transport is based on the published [RocketBootstrap lookup protocol](https://github.com/rpetrich/RocketBootstrap/blob/master/rocketbootstrap_internal.h). Apple's [reply-port validation](https://github.com/apple-oss-distributions/xnu/blob/xnu-8792.61.2/osfmk/ipc/ipc_right.c) requires a reply-designated port for destinations enforcing reply semantics. The log identifies the failing path, but does not expose the broker's kernel port flags; this remains a device-validation target. A macOS test performs actual Mach exchanges against a reply-enforcing endpoint and checks success, denied/malformed responses, timeout and port cleanup.
