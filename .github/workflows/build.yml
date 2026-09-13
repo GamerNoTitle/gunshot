@@ -58,6 +58,9 @@ jobs:
           mkdir -p .build
           clang -fobjc-arc -framework Foundation tests/localization.m -o .build/localization-test
           .build/localization-test
+          clang -fobjc-arc -framework Foundation UI/GSUnlimitedStorage.m tests/unlimited_storage.m -o .build/unlimited-storage-test
+          .build/unlimited-storage-test
+          .build/unlimited-storage-test incompatible-abi
           clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/native-routing-test
           .build/native-routing-test
           clang -fobjc-arc -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/silent-jailed-routing-test

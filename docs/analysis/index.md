@@ -20,6 +20,8 @@
 | 実機で確認すべき項目 | [device-validation.md](../device-validation.md) | 実行待ちの検証項目 |
 | 未解析領域と限界 | [coverage.md](coverage.md) | 網羅性の境界 |
 
+- [純正の無制限ストレージ表示](unlimited-storage.md): native state / 翻訳リソース / 表示専用 hook / 既定オンの切替。
+
 ## 対象アプリ
 
 - 提供ファイル: `com.google.photos-7.92.0-eeveedecrypter.ipa`

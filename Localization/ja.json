@@ -118,5 +118,7 @@
   "Appearance": "表示",
   "Choose the GoToHP display language. The profile menu updates the next time it opens.": "GoToHP の表示言語を選択できます。プロフィールメニューの表示は次に開いたときに更新されます。",
   "Done": "完了",
-  "Japanese": "日本語"
+  "Japanese": "日本語",
+  "Show unlimited storage": "無制限ストレージを表示",
+  "Language and storage display changes apply when the profile menu reopens. Unlimited storage changes the card display only, not your account limit or upload quality.": "言語とストレージ表示の変更は、プロフィールメニューを開き直すと反映されます。無制限ストレージはカードの表示のみを変更し、アカウントの容量上限やアップロード画質には影響しません。"
 }

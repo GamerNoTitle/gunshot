@@ -2,6 +2,7 @@
 #import "GSAccountMenu.h"
 #import "GSPanel.h"
 #import "GSNativeAccount.h"
+#import "GSUnlimitedStorage.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -55,6 +56,7 @@ static void GSMenuUIAction(id object,SEL selector,NSInteger type,id path,id cont
  GSUIAction(object,selector,type,path,controller);
 }
 void GSInstallAccountMenu(void){
+ GSInstallUnlimitedStorage();
  static BOOL installed;
  if(installed||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"])return;
  Class cls=NSClassFromString(@"PHSMyAccountMenuDataSource");

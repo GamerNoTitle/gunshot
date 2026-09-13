@@ -118,5 +118,7 @@
   "Appearance": "Appearance",
   "Choose the GoToHP display language. The profile menu updates the next time it opens.": "Choose the GoToHP display language. The profile menu updates the next time it opens.",
   "Done": "Done",
-  "Japanese": "Japanese"
+  "Japanese": "Japanese",
+  "Show unlimited storage": "Show unlimited storage",
+  "Language and storage display changes apply when the profile menu reopens. Unlimited storage changes the card display only, not your account limit or upload quality.": "Language and storage display changes apply when the profile menu reopens. Unlimited storage changes the card display only, not your account limit or upload quality."
 }
