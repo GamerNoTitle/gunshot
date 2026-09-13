@@ -103,21 +103,22 @@ static IMP GSStorageReplace(Class cls,SEL selector,IMP replacement){
 void GSInstallUnlimitedStorage(void){
  if(GSStorageInstalled)return;
  if(![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||
-    GSPhotosHostProfile()==GSPhotosUnsupported){GSStorageStatus=@"unsupported-host-version";return;}
+    !GSPhotosHostSupported()){GSStorageStatus=@"unsupported-host";return;}
  Class data=NSClassFromString(@"OGLAccountMenuStorageCardData"),bundle=NSClassFromString(@"OGLBundle");
+ BOOL modelTitle=GSStorageMethod(data,@"title","@16@0:8");
  GSStorageStatus=@"incompatible-model-abi";
- if(!GSStorageMethod(data,@"storageState","q16@0:8")||(!GSPhotosLegacyHost()&&!GSStorageMethod(data,@"title","@16@0:8"))||!GSStorageMethod(data,@"encodeWithCoder:","v24@0:8@16"))return;
+ if(!GSStorageMethod(data,@"storageState","q16@0:8")||(class_getInstanceMethod(data,NSSelectorFromString(@"title"))&&!modelTitle)||!GSStorageMethod(data,@"encodeWithCoder:","v24@0:8@16"))return;
  GSStorageStatus=@"incompatible-resources-abi";
  if(!GSStorageMethod(object_getClass(bundle),@"oneGoogleResourceBundle","@16@0:8"))return;
- // 7.20.2 has no model title getter: require its native UIKit title path.
- if(GSPhotosLegacyHost()&&(!GSStorageMethod(NSClassFromString(@"OGLAccountSelectorStorageCardItem"),@"storageState","q16@0:8")||
+ // A model without a title getter requires the native UIKit title path.
+ if(!modelTitle&&(!GSStorageMethod(NSClassFromString(@"OGLAccountSelectorStorageCardItem"),@"storageState","q16@0:8")||
   !GSStorageMethod(object_getClass(NSClassFromString(@"OGLAccountSelectorStorageCardCell")),@"titleTextWithStorageItem:","@24@0:8@16")||
   !GSStorageMethod(NSClassFromString(@"OGLAccountSelectorStorageCardCell"),@"updateWithItem:","v24@0:8@16"))){GSStorageStatus=@"incompatible-legacy-cell-abi";return;}
  GSStorageLock=[NSObject new];GSObservedCardClasses=[NSMutableOrderedSet orderedSet];GSObservedControllerClasses=[NSMutableOrderedSet orderedSet];
  // UIKit and Bento share these display getters. Preserve the stored model,
  // account quota and callback identities.
  GSOriginalModelState=(void *)GSStorageReplace(data,NSSelectorFromString(@"storageState"),(IMP)GSStorageModelState);
- if(!GSPhotosLegacyHost())GSOriginalModelTitle=(void *)GSStorageReplace(data,NSSelectorFromString(@"title"),(IMP)GSStorageModelTitle);
+ if(modelTitle)GSOriginalModelTitle=(void *)GSStorageReplace(data,NSSelectorFromString(@"title"),(IMP)GSStorageModelTitle);
  GSOriginalModelEncode=(void *)GSStorageReplace(data,NSSelectorFromString(@"encodeWithCoder:"),(IMP)GSStorageModelEncode);
  // Optional: Bento does not use the legacy UIKit converter or cell.
  Class item=NSClassFromString(@"OGLAccountSelectorStorageCardItem"),cell=NSClassFromString(@"OGLAccountSelectorStorageCardCell");

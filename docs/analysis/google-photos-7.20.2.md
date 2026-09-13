@@ -1,6 +1,6 @@
 # Google Photos 7.20.2 compatibility audit
 
-This adapter targets the supplied **Google Photos 7.20.2**, build **7.20.738660793**, alongside the modern **7.92.0+** adapter. 7.20.2 and 7.92.0 are the IPA-audited reference versions, not an upper-version allowlist. Later modern releases are eligible without editing the version list; each feature still requires matching Objective-C signatures. Other releases below 7.92.0 do not use the legacy adapter. Device validation is still required; a binary audit and mocked contracts do not establish successful authentication or uploads against Google's servers.
+The supplied **Google Photos 7.20.2**, build **7.20.738660793**, and **7.92.0** are IPA-audited reference versions. Adapters are now selected per feature from the actual classes, selectors and exact Objective-C signatures, without a version-number gate. Authentication, completion callbacks, storage UI and quality UI can independently use different API generations. Device validation is still required; binary audits and mocked contracts do not establish successful authentication or uploads against Google's servers.
 
 ## Input and OS requirements
 
@@ -54,10 +54,16 @@ The macOS CI runs both 7.92.0 and 7.20.2 contracts. Legacy fixtures omit the new
 
 Real-device checks still needed on 7.20.2: login-first installation, native account refresh, settings/menu tap, unlimited display on/off after reopening the menu, original JPEG/HEIC/video/Live Photo upload, manual and automatic handoff, completion refresh without relaunch, cancellation/network loss, and upgrade/downgrade behavior. Jailed uploads require the app to remain active; this is not a background-execution entitlement change.
 
-## Later modern releases
+## Automatic API detection
 
-Version components are compared numerically: 7.92.1, 7.93, 7.100, 8.0, and higher select the modern adapter. Missing, malformed, or unrelated-host metadata is rejected. The separate `auditedHostVersion` diagnostic field is true only for the two reference releases; it does not block use of later versions.
+The host executable must be GooglePhotos. Version metadata only informs the `auditedHostVersion` diagnostic field; missing, unfamiliar, older and future version strings do not disable compatible APIs. A matching modern API is preferred; a matching legacy API can be used independently by each feature. Missing or incompatible signatures disable the affected path rather than guessing an argument type. Shared menu and routing hooks retain their own ABI checks.
 
-CI also reruns the modern native contracts with simulated version metadata 7.93.0, 7.100.0, and 8.0.0. These are compatibility tests using the reference API shape, **not analysis or real-device tests of those app releases**. Changed private API semantics can still require an adapter update even when a signature is unchanged.
+CI runs both API shapes, mixed completion classes and malformed signatures, and reruns modern and legacy contracts under unrelated version metadata. These are simulated API contracts, not device verification of uninspected app releases. Private API behavior can still change without a signature change.
+
+## Jailbreak daemon lookup
+
+The 2026-09-13 17:55 crash reports `EXC_GUARD / SEND_INVALID_REPLY` in RocketBootstrap called by `GSRequest`. Choicy isolation did not eliminate this path. The client now uses a locally owned reply port marked `MPO_REPLY_PORT` on iOS 16+ for the broker lookup and daemon RPC. It first tries direct and redirected launchd lookup, then the existing RocketBootstrap broker with bounded waits and validated descriptors. Client binaries no longer link RocketBootstrap; the daemon still uses it to unlock the service. The broker's access policy and daemon audit-token authorization are preserved. No global Mach hooks or process guard settings are changed.
+
+The transport is based on the published [RocketBootstrap lookup protocol](https://github.com/rpetrich/RocketBootstrap/blob/master/rocketbootstrap_internal.h). Apple's [reply-port validation](https://github.com/apple-oss-distributions/xnu/blob/xnu-8792.61.2/osfmk/ipc/ipc_right.c) requires a reply-designated port for destinations enforcing reply semantics. The log identifies the failing path, but does not expose the broker's kernel port flags; this remains a device-validation target. A macOS test performs actual Mach exchanges against a reply-enforcing endpoint and checks success, denied/malformed responses, timeout and port cleanup.
 
 If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.

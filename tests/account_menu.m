@@ -21,9 +21,10 @@ void GSPresentSettings(UIViewController *host){opened++;lastHost=host;}
 void GSInstallUnlimitedStorage(void){}
 void GSInstallNativeAccount(void){nativeInstalled++;}
 static NSString *version=@"unsupported";
+static BOOL host=NO;
 @interface GSFixtureBundle : NSObject @end
 @implementation GSFixtureBundle
-- (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?@"GooglePhotos":version;}
+- (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?(host?@"GooglePhotos":@"OtherApp"):version;}
 @end
 static id MainBundle(id object,SEL selector){static id bundle;if(!bundle)bundle=[GSFixtureBundle new];return bundle;}
 @interface OGLAccountMenuCustomItem : NSObject
@@ -63,7 +64,7 @@ int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)MainBundle);
  PHSMyAccountMenuDataSource *source=[PHSMyAccountMenuDataSource new];UIViewController *controller=[UIViewController new];
  GSInstallAccountMenu();assert([source numberOfCustomSectionsForAccountMenuViewController:controller]==1);
- version=GSFixtureVersion;GSInstallAccountMenu();GSInstallAccountMenu();assert(nativeInstalled==1);
+ host=YES;version=GSFixtureVersion;GSInstallAccountMenu();GSInstallAccountMenu();assert(nativeInstalled==1);
  assert([source numberOfCustomSectionsForAccountMenuViewController:controller]==2);
  assert([source accountMenuViewController:controller numberOfCustomItemsInSectionAtIndex:1]==1);
  assert([source accountMenuViewController:controller numberOfCustomItemsInSectionAtIndex:0]==3);

@@ -99,13 +99,15 @@ static void GSBindStatelessScotty(void){
 }
 void GSInstallUploadDiagnostics(void){
  // Install on the main thread. Start remains opt-in and resets each process launch.
- if(GSInstalled||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||GSPhotosHostProfile()==GSPhotosUnsupported)return;
+ if(GSInstalled||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||!GSPhotosHostSupported())return;
  GSLock=[NSObject new];GSEvents=[NSMutableArray array];GSBindings=[NSMutableArray array];
  for(NSString *name in @[@"GMUUploadRequest",@"GMUAssetUploadRequest",@"GMULivePhotoSingleUploadRequest",@"PHSLockedPhotoMediaUploadRequest",@"PHSLockedPhotoLivePhotoSingleUploadRequest"])
   GSBind(name,@"start","v16@0:8",0);
  GSBind(@"GMUUploadRequest",@"startFetcher","v16@0:8",0);
- GSBind(@"GMUUploadRequest",GSPhotosAssetCompletion(),GSPhotosAssetCompletionABI(),GSPhotosLegacyHost()?4:1);
- GSBind(@"GMUAssetUploadRequest",GSPhotosAssetCompletion(),GSPhotosAssetCompletionABI(),GSPhotosLegacyHost()?4:1);
+ for(NSString *name in @[@"GMUUploadRequest",@"GMUAssetUploadRequest"]){
+  Class cls=NSClassFromString(name);NSString *completion=GSPhotosAssetCompletion(cls);
+  if(completion)GSBind(name,completion,GSPhotosAssetCompletionABI(cls),GSPhotosCompletionForClass(cls)==GSPhotosCompletionCode?4:1);
+ }
  GSBind(@"GMULivePhotoSingleUploadRequest",@"didCompleteWithError:resultantMediaItem:","v32@0:8@16@24",2);
  GSBind(@"GMUUploadMediaRequest",@"uploadFetcherDidCompleteWithData:error:","v32@0:8@16@24",3);
  GSBindScotty();GSBindStatelessScotty();GSInstalled=YES;

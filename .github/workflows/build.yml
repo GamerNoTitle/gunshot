@@ -52,6 +52,12 @@ jobs:
           version=$(xcrun --sdk iphoneos --show-sdk-version)
           mkdir -p "$THEOS/sdks"
           ln -s "$sdk" "$THEOS/sdks/iPhoneOS${version}.sdk"
+      - name: Mach reply-port transport
+        if: matrix.scheme == 'rootless'
+        run: |
+          mkdir -p .build
+          clang -fobjc-arc -framework Foundation tests/mach_transport.m -o .build/mach-transport-test
+          .build/mach-transport-test
       - name: Native routing contract
         if: matrix.scheme == 'jailed'
         run: |
@@ -99,12 +105,12 @@ jobs:
           .build/native-account-legacy-test
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/menu-shims -Itests/native-shims UI/GSAccountMenu.m tests/account_menu.m -o .build/account-menu-legacy-test
           .build/account-menu-legacy-test
-      - name: Forward-compatible modern host contracts
+      - name: API detection independent of host version
         if: matrix.scheme == 'jailed'
         run: |
           clang -fobjc-arc -framework Foundation tests/photos_compatibility.m -o .build/photos-compatibility-test
           .build/photos-compatibility-test
-          for version in 7.93.0 7.100.0 8.0.0; do
+          for version in 7.20.1 7.50.0 7.93.0 8.0.0 unknown; do
             export GS_TEST_PHOTOS_VERSION="$version"
             .build/unlimited-storage-test
             .build/unlimited-storage-test incompatible-abi
@@ -116,6 +122,9 @@ jobs:
             .build/upload-diagnostics-test
             .build/native-account-test
             .build/account-menu-test
+            .build/backup-requests-legacy-test
+            .build/photos-integration-legacy-test
+            .build/native-account-legacy-test
           done
       - name: UIKit settings presentation smoke
         if: matrix.scheme == 'jailed'

@@ -1,16 +1,31 @@
 #import "GSLocalization.h"
 #import "IPCProtocol.h"
 #include <stddef.h>
+#import "GSMachTransport.h"
+
+static kern_return_t GSLookupDaemon(mach_port_t *server) {
+ // Prefer direct / redirected launchd lookup before the compatibility broker.
+ kern_return_t kr=bootstrap_look_up(bootstrap_port,GS_SERVICE,server);
+ if(kr==KERN_SUCCESS)return kr;
+ kr=bootstrap_look_up(bootstrap_port,"cy:rbs:" GS_SERVICE,server);
+ if(kr==KERN_SUCCESS)return kr;
+ mach_port_t broker=MACH_PORT_NULL;
+ kr=bootstrap_look_up(bootstrap_port,"com.apple.ReportCrash.SimulateCrash",&broker);
+ if(kr!=KERN_SUCCESS)return kr;
+ kr=GSLookupBroker(broker,GS_SERVICE,server,5000);
+ mach_port_deallocate(mach_task_self(),broker);return kr;
+}
 NSDictionary *GSRequest(NSDictionary *request, NSError **error) {
  NSData *data=[NSJSONSerialization dataWithJSONObject:request options:0 error:error];
  if (!data || data.length>GS_MAX_JSON) return nil;
  mach_port_t server=MACH_PORT_NULL, reply=MACH_PORT_NULL;
- kern_return_t kr=rocketbootstrap_look_up(bootstrap_port,GS_SERVICE,&server);
+ kern_return_t kr=GSLookupDaemon(&server);
  if(kr!=KERN_SUCCESS) goto fail;
- kr=mach_port_allocate(mach_task_self(),MACH_PORT_RIGHT_RECEIVE,&reply);
+ kr=GSCreateReplyPort(&reply);
  if(kr!=KERN_SUCCESS) goto fail;
  {
  GSMessage *message=calloc(1,sizeof(GSMessage)+sizeof(mach_msg_max_trailer_t));
+ if(!message){kr=KERN_RESOURCE_SHORTAGE;goto fail;}
  message->header.msgh_bits=MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND,MACH_MSG_TYPE_MAKE_SEND_ONCE);
  message->header.msgh_remote_port=server;message->header.msgh_local_port=reply;
  message->header.msgh_id=GS_MESSAGE_ID;message->length=(uint32_t)data.length;
@@ -23,12 +38,13 @@ NSDictionary *GSRequest(NSDictionary *request, NSError **error) {
  id parsed=[NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:message->json length:message->length] options:0 error:nil];
  if([parsed isKindOfClass:NSDictionary.class] && [parsed[@"ok"] boolValue])result=parsed[@"data"]==NSNull.null?@{}:parsed[@"data"];
  }
- free(message);mach_port_mod_refs(mach_task_self(),reply,MACH_PORT_RIGHT_RECEIVE,-1);mach_port_deallocate(mach_task_self(),server);
+ if(kr==KERN_SUCCESS)mach_msg_destroy(&message->header);
+ free(message);GSDestroyReplyPort(reply);mach_port_deallocate(mach_task_self(),server);
  if(result)return result;
  if(error)*error=[NSError errorWithDomain:@"Gunshot" code:1 userInfo:@{NSLocalizedDescriptionKey:GSL(@"GoToHP request failed. Check the daemon, account and queue.")}];return nil;
  }
 fail:
- if(reply!=MACH_PORT_NULL)mach_port_mod_refs(mach_task_self(),reply,MACH_PORT_RIGHT_RECEIVE,-1);
+ GSDestroyReplyPort(reply);
  if(server!=MACH_PORT_NULL)mach_port_deallocate(mach_task_self(),server);
  if(error)*error=[NSError errorWithDomain:@"Gunshot" code:kr userInfo:@{NSLocalizedDescriptionKey:GSL(@"GoToHP daemon unavailable. Check installation and RocketBootstrap.")}];return nil;
 }

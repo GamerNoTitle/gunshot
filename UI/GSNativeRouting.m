@@ -90,7 +90,7 @@ void GSInstallNativeRouting(void){
  GSInstallBackupRequests();
 #endif
  // Called on the main thread when installing the app's GoToHP launcher.
- if(GSInstalled||!GSIsGooglePhotos()||GSPhotosHostProfile()==GSPhotosUnsupported)return;
+ if(GSInstalled||!GSIsGooglePhotos()||!GSPhotosHostSupported())return;
  Class behavior=NSClassFromString(@"PHSBackupActionBehaviorImpl");
  Class grid=NSClassFromString(@"PHSActionsGridModel");
  Class local=NSClassFromString(@"PHSLocalAsset");

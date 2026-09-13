@@ -13,7 +13,7 @@ extern "C" {
 #endif
 extern mach_port_t bootstrap_port;
 extern kern_return_t bootstrap_check_in(mach_port_t,const char *,mach_port_t *);
-extern kern_return_t rocketbootstrap_look_up(mach_port_t,const char *,mach_port_t *);
+extern kern_return_t bootstrap_look_up(mach_port_t,const char *,mach_port_t *);
 extern kern_return_t rocketbootstrap_unlock(const char *);
 #ifdef __cplusplus
 }

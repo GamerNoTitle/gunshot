@@ -4,11 +4,12 @@
 #include <assert.h>
 
 static NSString *version=@"unsupported";
+static BOOL host=NO;
 @interface GSFixtureBundle : NSBundle
 @end
 @implementation GSFixtureBundle
 - (id)objectForInfoDictionaryKey:(NSString *)key {
- if([key isEqual:@"CFBundleExecutable"])return @"GooglePhotos";
+ if([key isEqual:@"CFBundleExecutable"])return host?@"GooglePhotos":@"OtherApp";
  if([key isEqual:@"CFBundleShortVersionString"])return version;
  return nil;
 }
@@ -60,7 +61,7 @@ static void Drain(NSUInteger queued,NSUInteger failed){
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)FixtureMainBundle);
  GSInstallNativeRouting();assert(!GSNativeRoutingAvailable());
- version=GSFixtureVersion;GSInstallNativeRouting();assert(GSNativeRoutingAvailable());
+ host=YES;version=GSFixtureVersion;GSInstallNativeRouting();assert(GSNativeRoutingAvailable());
  GSSetNativeRouting(NO,nil);
  PHSBackupActionBehaviorImpl *behavior=[PHSBackupActionBehaviorImpl new];
  PHSActionsGridModel *grid=[PHSActionsGridModel new];

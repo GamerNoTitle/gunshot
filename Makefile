@@ -6,7 +6,6 @@ TWEAK_NAME = Gunshot
 Gunshot_FILES = Tweak.xm Shared/IPCClient.m UI/GSPanel.m UI/GSAccountMenu.m UI/GSNativeAccount.m UI/GSExporter.m UI/GSNativeRouting.m UI/GSUploadDiagnostics.m UI/GSUnlimitedStorage.m
 Gunshot_CFLAGS = -fobjc-arc -IShared
 Gunshot_FRAMEWORKS = UIKit Foundation Photos PhotosUI
-Gunshot_LIBRARIES = rocketbootstrap
 include $(THEOS_MAKE_PATH)/tweak.mk
 SUBPROJECTS += Daemon Preferences
 include $(THEOS_MAKE_PATH)/aggregate.mk

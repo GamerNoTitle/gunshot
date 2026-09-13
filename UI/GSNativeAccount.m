@@ -41,7 +41,7 @@ BOOL GSNativeAccountMatches(id accountID){
  return [GSGet(GSGet(GSSource.manager,@"viewingAccount"),@"accountID")isEqual:accountID];
 }
 void GSInstallNativeAccount(void){
- if(GSSource||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||GSPhotosHostProfile()==GSPhotosUnsupported)return;
+ if(GSSource||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||!GSPhotosHostSupported())return;
  Class cls=NSClassFromString(@"PHSAccountManagerImpl");Method method=class_getInstanceMethod(cls,NSSelectorFromString(@"viewingAccount"));
  if(!method||strcmp(method_getTypeEncoding(method),"@16@0:8"))return;
  GSSource=[GSAccountSource new];GSViewingAccountOriginal=(void *)method_setImplementation(method,(IMP)GSViewingAccount);
@@ -57,10 +57,11 @@ char *GSNativeBearer(const char *identifier){
  @try {
  if(![GSNativeAccountSummary()[@"identifier"]isEqual:expected]){finish(nil);return;}
  id manager=GSSource.manager;id account=GSGet(manager,@"viewingAccount");id accountID=GSGet(account,@"accountID");
- BOOL legacy=GSPhotosLegacyHost();
- id service=GSGet(manager,legacy?@"ssoService":@"photosSSOService");
- NSString *factory=legacy?@"authorizationForIdentity:scopes:":@"fetcherAuthorizerForAccountID:scopes:";
- id subject=legacy?GSIdentity(account):accountID;
+ id service=GSGet(manager,@"photosSSOService");
+ NSString *factory=@"fetcherAuthorizerForAccountID:scopes:";id subject=accountID;
+ if(!GSMethod(service,factory,"@32@0:8@16@24")){
+  service=GSGet(manager,@"ssoService");factory=@"authorizationForIdentity:scopes:";subject=GSIdentity(account);
+ }
  if(!subject||!GSMethod(service,factory,"@32@0:8@16@24")){finish(nil);return;}
  id authorizer=((id(*)(id,SEL,id,id))objc_msgSend)(service,NSSelectorFromString(factory),subject,@[@"https://www.googleapis.com/auth/photos.native"]);
  if(!GSMethod(authorizer,@"authorizeRequest:completionHandler:","v32@0:8@16@?24")){finish(nil);return;}

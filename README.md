@@ -4,7 +4,7 @@
 
 A Google Photos uploader for jailbreak, sideloading and LiveContainer, using the Go core from [xob0t/gotohp](https://github.com/xob0t/gotohp). Jailbreak builds upload through a separate daemon; jailed builds run inside Google Photos.
 
-**Development build.** Supports the fixed **7.20.2** adapter and a **7.92.0+** adapter that checks the native APIs each feature needs. The versions audited from supplied IPAs are **7.20.2 (iOS 16.1+)** and **7.92.0 (iOS 18.0+)**; these are reference versions, not an upper-version limit. Later releases are enabled when their APIs match, but are not device-verified. See the [compatibility audit](docs/analysis/google-photos-7.20.2.md).
+**Development build.** Automatically selects compatible legacy or modern native APIs **per feature**, without a version-number allowlist. The IPA-audited reference versions are **7.20.2 (iOS 16.1+)** and **7.92.0 (iOS 18.0+)**. Other releases can work when their APIs match; this is not a claim of device verification. See the [compatibility audit](docs/analysis/google-photos-7.20.2.md).
 
 ## Screenshots
 
@@ -39,7 +39,7 @@ Get `gotohp-tweak-jailed` from [GitHub Actions](https://github.com/tqmane/gunsho
 
 GoToHP connects the signed-in Google Photos account. Choose **Uploads → Choose photos and videos** to upload. **Keep Google Photos in the foreground**; jailed uploads cannot continue after the app closes.
 
-On jailed Google Photos 7.20.2 and compatible 7.92.0+ releases, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/full-upload-replacement.md).
+On jailed Google Photos with compatible native APIs, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/full-upload-replacement.md).
 
 ### Jailbreak
 
