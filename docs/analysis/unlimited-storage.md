@@ -48,47 +48,67 @@ legacy card is a confirmed coverage gap explaining why changing only the Photos
 source cannot cover this mode. The fix also removes the assumption that resources
 must resolve through `bundleForClass:` at dylib initialization.
 
-## Implementation boundary
+## Rendering boundary and settings jitter (second device report)
 
-`UI/GSUnlimitedStorage.m` now handles both the Photos source and the **final
-aggregated array**, using a fresh native storage-card model for presentation.
-All 18 stored properties are copied through checked, typed getters/setters before
-changing state, title and subtitle. Cached originals, used/total counters, native
-callbacks and every non-storage card are preserved; disabling the preference
-returns the original source objects/array on the next menu build.
+The next screenshot still showed the regular meter. The accompanying 9.7-second
+recording shows the Appearance section repeatedly moving within the viewport;
+it does not establish that the row is removed from the data source. `GSPanel`
+unconditionally called `reloadData` after every two-second poll, invalidating its
+self-sizing row estimates even when all response values were unchanged.
 
-The native OneGoogle resource provider supplies the title. Resource loading is
-retried during presentation, so an early unresolved resource cannot permanently
-prevent installation. The legacy card title formatter still uses this title for
-both native sizing and rendering. Layout, icons, localization, theme and
-accessibility remain native. There is no overlay, feature-flag override or global
-`GMUQuota.isUnlimited` override.
+The settings fix compares snapshots/status before reloading, skips polls or
+completions during dragging/tracking/deceleration, and preserves the first
+visible row plus its pixel offset when a changed snapshot requires a reload.
+Repeated identical error messages also avoid reloading. The UIKit fixture waits
+through multiple real timer polls and then changes a response value, asserting
+that the switch remains visible and its position is preserved.
 
-No account token, quota response, upload policy, device profile or media metadata
-is changed. Reopen the menu after a setting change; the fix avoids private reload
-calls during sheet transitions. The host version, all 18 field ABIs, both source
-ABIs, resource provider ABI and legacy formatter ABI must match before any hook
-is installed. Inherited methods get a local override rather than changing their
-superclass implementation.
+Further binary analysis identifies a more direct display boundary:
 
-Diagnostic exports include `unlimitedStorage`: installation status, matched
-paths, resource readiness and invocation/projection/failure counts only. No
-account, title text, storage amounts, tokens or media data are recorded there.
-This lets device results distinguish an uninstalled hook from an unused source.
+| Image / address | Verified behavior |
+| --- | --- |
+| Framework `OGLGM2AccountSelectorViewController.cardSectionsWithData:`, `0x140f234` | Filters card data, then calls `+cardItemFromCardData:` for each displayed card at `0x140f2fc`. Both collapsible and non-collapsible controllers use this path. |
+| Framework `OGLGM2AccountSelectorViewModelItemUtils +cardItemFromCardData:`, `0x1411620` | Checks `dataMode`, uses an `isKindOfClass:` check for native storage data, creates a native storage item and copies `storageState` unchanged at `0x14116a0`–`0x14116ac`, followed by counters, subtitle and callbacks. |
 
-## Validation
+The previous exact `object_getClass` checks would reject a native data object
+wrapped by a KVO subclass. This is reproducible in the Foundation fixture with a
+real `NSKVONotifying_OGLAccountMenuStorageCardData` instance. No runtime diagnostic
+JSON accompanied the screenshot, so the device's actual class and skipped path
+are **not yet confirmed**.
 
-`tests/unlimited_storage.m` exercises a self-managed aggregate that never calls
-the legacy source, cached-array restoration on opt-out, account changes and
-server refresh, preservation of all three callbacks and scalar flags, late native
-resources, nil/unexpected models, inherited-method isolation, wrong host/version
-and incompatible ABI. It also checks the diagnostic field allowlist. The UIKit settings
-fixture exercises the actual switch while account operations are busy. CI builds
-all three packages. These fixtures do not execute Google's proprietary UI;
-final native layout and interactions still require device validation.
+## Current implementation boundary
 
-Device checks: open the profile menu with the default on; confirm the native
-unlimited title and cloud card, toggle off and reopen to restore quota text,
-re-enable and relaunch; repeat with dark mode, larger text and account switching.
-Confirm native storage actions still open their original destinations and upload
-quality/storage accounting remain unchanged.
+The old Photos-source and Swift-aggregator hooks have been replaced with the
+native **card-data-to-view-item converter** hook. It operates on the display
+input regardless of which provider supplied it. Compatible subclasses are
+accepted after checking all 18 getter/setter ABIs on their actual runtime class.
+A fresh native model preserves counters, flags, callbacks and cached originals;
+only its display state, title and subtitle change. Other card types pass through.
+
+`OGLStringResources` supplies the native unlimited title. The native card's shared
+title formatter receives that string for state 2, keeping sizing and rendering
+consistent. A passive `updateWithItem:` observer records the state reaching the
+native storage cell; it does not change the item or layout. The original converter
+and cell implementation always run. No data-source, quota, upload or feature-flag
+hook is installed by this display option.
+
+Diagnostic exports identify `implementation: native-card-renderer-v3` and include
+converter, projection, title and cell counts; mapped/rendered storage states;
+resource readiness; and at most 16 runtime class names per category. These are
+class names, not object descriptions: no account, title text, storage amount,
+token or media value is recorded. This distinguishes source-path assumptions from
+what actually reached the renderer on the user's device.
+
+## Validation and remaining device check
+
+`tests/unlimited_storage.m` runs with neither of the former source classes present.
+It exercises the renderer converter, real KVO subclass, cached-source restoration,
+callback/scalar preservation, late resources, unrelated/nil data, inherited-method
+isolation, passive cell observation and ABI rejection. CI also runs the actual
+UIKit stationary-polling fixture and builds all three package schemes.
+
+Fixtures do not run Google's proprietary UI. On device, reopen the profile menu
+after toggling, check original/unlimited presentation and native actions, then
+export diagnostics if it remains unchanged. The new counters and observed classes
+are required to establish the remaining runtime cause rather than infer it from
+the screenshot alone.

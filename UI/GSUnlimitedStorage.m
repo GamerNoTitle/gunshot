@@ -5,14 +5,16 @@
 #include <stdatomic.h>
 
 static NSString *const GSStoragePreference=@"GSShowUnlimitedStorage";
-static NSString *const GSAggregatorName=@"_TtC102googlemac_iPhone_Shared_OneGoogle_AccountSelector_Cards_Implementation_OGLAggregatorCardDataSourceImpl31OGLAggregatorCardDataSourceImpl";
 static const NSInteger GSNativeUnlimitedState=2;
-static BOOL GSStorageInstalled, GSLegacyInstalled, GSAggregateInstalled;
+static BOOL GSStorageInstalled;
 static NSString *GSStorageStatus=@"not-installed";
-static id (*GSOriginalStorageData)(id,SEL), (*GSOriginalCards)(id,SEL);
-static id (*GSOriginalStorageTitle)(id,SEL,id);
-static atomic_ulong GSLegacyCalls, GSAggregateCalls, GSProjectedCards, GSCopyFailures;
+static id (*GSOriginalCardItem)(id,SEL,id), (*GSOriginalStorageTitle)(id,SEL,id);
+static void (*GSOriginalCellUpdate)(id,SEL,id);
+static atomic_ulong GSMapperCalls, GSProjectedCards, GSCopyFailures, GSCellUpdates, GSTitleCalls;
+static atomic_long GSMappedState=-1, GSRenderedState=-1;
 static atomic_bool GSStringsReady;
+static NSObject *GSStorageLock;
+static NSMutableOrderedSet *GSObservedCardClasses, *GSObservedItemClasses;
 
 // Every stored property on the audited native presentation model. Copy callbacks
 // as well as scalar flags; never archive blocks or change a cached source object.
@@ -31,11 +33,17 @@ BOOL GSUnlimitedStorageEnabled(void){
 void GSSetUnlimitedStorage(BOOL enabled){[NSUserDefaults.standardUserDefaults setBool:enabled forKey:GSStoragePreference];}
 BOOL GSUnlimitedStorageAvailable(void){return GSStorageInstalled;}
 NSDictionary *GSUnlimitedStorageSnapshot(void){
- return @{@"available":@(GSStorageInstalled),@"enabled":@(GSUnlimitedStorageEnabled()),
-  @"status":GSStorageStatus,@"legacyHook":@(GSLegacyInstalled),@"aggregateHook":@(GSAggregateInstalled),
-  @"stringsReady":@(atomic_load(&GSStringsReady)),@"legacyCalls":@(atomic_load(&GSLegacyCalls)),
-  @"aggregateCalls":@(atomic_load(&GSAggregateCalls)),@"projectedCards":@(atomic_load(&GSProjectedCards)),
-  @"copyFailures":@(atomic_load(&GSCopyFailures))};
+ @synchronized(GSStorageLock){return @{@"implementation":@"native-card-renderer-v3",
+  @"available":@(GSStorageInstalled),@"enabled":@(GSUnlimitedStorageEnabled()),@"status":GSStorageStatus,
+  @"stringsReady":@(atomic_load(&GSStringsReady)),@"mapperCalls":@(atomic_load(&GSMapperCalls)),
+  @"projectedCards":@(atomic_load(&GSProjectedCards)),@"copyFailures":@(atomic_load(&GSCopyFailures)),
+  @"cellUpdates":@(atomic_load(&GSCellUpdates)),@"titleCalls":@(atomic_load(&GSTitleCalls)),
+  @"mappedStorageState":@(atomic_load(&GSMappedState)),@"renderedStorageState":@(atomic_load(&GSRenderedState)),
+  @"cardClasses":GSObservedCardClasses.array?:@[],@"itemClasses":GSObservedItemClasses.array?:@[]};}
+}
+static void GSStorageObserve(id object,NSMutableOrderedSet *classes){
+ if(!object)return;NSString *name=NSStringFromClass(object_getClass(object));
+ @synchronized(GSStorageLock){if(classes.count<16)[classes addObject:name];}
 }
 static BOOL GSStorageMethod(Class cls,NSString *name,const char *encoding){
  Method method=class_getInstanceMethod(cls,NSSelectorFromString(name));
@@ -43,6 +51,19 @@ static BOOL GSStorageMethod(Class cls,NSString *name,const char *encoding){
 }
 static NSString *GSSetter(NSString *name){
  return [NSString stringWithFormat:@"set%@%@:",[[name substringToIndex:1]uppercaseString],[name substringFromIndex:1]];
+}
+static BOOL GSStorageModelCompatible(Class cls){
+ for(NSUInteger i=0;i<sizeof(GSStorageFields)/sizeof(GSStorageFields[0]);i++){
+  NSString *name=@(GSStorageFields[i].name),*type=@(GSStorageFields[i].type);
+  NSString *getter=[NSString stringWithFormat:@"%@16@0:8",type];
+  NSString *setter=[NSString stringWithFormat:@"v%d@0:8%@16",[type isEqual:@"B"]?20:24,type];
+  if(!GSStorageMethod(cls,name,getter.UTF8String)||!GSStorageMethod(cls,GSSetter(name),setter.UTF8String))return NO;
+ }
+ return YES;
+}
+static BOOL GSStorageItem(id item){
+ return [item isKindOfClass:NSClassFromString(@"OGLAccountSelectorStorageCardItem")]&&
+  GSStorageMethod(object_getClass(item),@"storageState","q16@0:8");
 }
 static NSString *GSUnlimitedTitle(void){
  // Native OGLStringResources -> OGLResources.oneGoogleResourceBundle. In this
@@ -54,7 +75,8 @@ static NSString *GSUnlimitedTitle(void){
  atomic_store(&GSStringsReady,valid);return valid?title:nil;
 }
 static id GSStorageProjection(id original){
- if(!GSUnlimitedStorageEnabled()||object_getClass(original)!=NSClassFromString(@"OGLAccountMenuStorageCardData"))return original;
+ if(!GSUnlimitedStorageEnabled()||![original isKindOfClass:NSClassFromString(@"OGLAccountMenuStorageCardData")])return original;
+ if(!GSStorageModelCompatible(object_getClass(original))){atomic_fetch_add(&GSCopyFailures,1);return original;}
  NSString *title=GSUnlimitedTitle();if(!title)return original;
  @try {
   id copy=[[NSClassFromString(@"OGLAccountMenuStorageCardData") alloc]init];
@@ -77,22 +99,24 @@ static id GSStorageProjection(id original){
   atomic_fetch_add(&GSProjectedCards,1);return copy;
  }@catch(NSException *exception){atomic_fetch_add(&GSCopyFailures,1);return original;}
 }
-static id GSStorageData(id object,SEL selector){
- atomic_fetch_add(&GSLegacyCalls,1);return GSStorageProjection(GSOriginalStorageData(object,selector));
+static id GSStorageCardItem(id cls,SEL selector,id data){
+ atomic_fetch_add(&GSMapperCalls,1);GSStorageObserve(data,GSObservedCardClasses);
+ // This is the audited presentation boundary used by cardSectionsWithData:,
+ // including providers/cached arrays that bypass both previous source hooks.
+ id item=GSOriginalCardItem(cls,selector,GSStorageProjection(data));
+ GSStorageObserve(item,GSObservedItemClasses);
+ if(GSStorageItem(item))atomic_store(&GSMappedState,((NSInteger(*)(id,SEL))objc_msgSend)(item,NSSelectorFromString(@"storageState")));
+ return item;
 }
-static id GSStorageCards(id object,SEL selector){
- atomic_fetch_add(&GSAggregateCalls,1);id cards=GSOriginalCards(object,selector);
- if(!GSUnlimitedStorageEnabled()||![cards isKindOfClass:NSArray.class])return cards;
- NSMutableArray *result=nil;
- for(NSUInteger i=0;i<[cards count];i++){
-  id original=cards[i],projected=GSStorageProjection(original);
-  if(projected!=original){if(!result)result=[cards mutableCopy];result[i]=projected;}
- }
- return result?[result copy]:cards;
+static void GSStorageCellUpdate(id object,SEL selector,id item){
+ atomic_fetch_add(&GSCellUpdates,1);
+ if(GSStorageItem(item))atomic_store(&GSRenderedState,((NSInteger(*)(id,SEL))objc_msgSend)(item,NSSelectorFromString(@"storageState")));
+ // Observation only: UIKit retains ownership of layout, progress and actions.
+ GSOriginalCellUpdate(object,selector,item);
 }
 static id GSStorageTitle(id cls,SEL selector,id item){
- // Shared by native layout sizing and rendering in the legacy card cell.
- if(GSUnlimitedStorageEnabled()&&object_getClass(item)==NSClassFromString(@"OGLAccountSelectorStorageCardItem")&&
+ atomic_fetch_add(&GSTitleCalls,1);
+ if(GSUnlimitedStorageEnabled()&&GSStorageItem(item)&&
     ((NSInteger(*)(id,SEL))objc_msgSend)(item,NSSelectorFromString(@"storageState"))==GSNativeUnlimitedState){
   NSString *title=GSUnlimitedTitle();if(title)return title;
  }
@@ -107,25 +131,20 @@ void GSInstallUnlimitedStorage(void){
  if(GSStorageInstalled)return;
  if(![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||
     ![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"]){GSStorageStatus=@"unsupported-host-version";return;}
- Class source=NSClassFromString(@"PHSMyAccountMenuDataSource"),data=NSClassFromString(@"OGLAccountMenuStorageCardData");
- Class aggregate=NSClassFromString(GSAggregatorName),strings=NSClassFromString(@"OGLStringResources");
+ Class data=NSClassFromString(@"OGLAccountMenuStorageCardData"),strings=NSClassFromString(@"OGLStringResources");
  Class item=NSClassFromString(@"OGLAccountSelectorStorageCardItem"),cell=NSClassFromString(@"OGLAccountSelectorStorageCardCell");
- GSStorageStatus=@"incompatible-model-abi";
- for(NSUInteger i=0;i<sizeof(GSStorageFields)/sizeof(GSStorageFields[0]);i++){
-  NSString *name=@(GSStorageFields[i].name),*type=@(GSStorageFields[i].type);
-  NSString *getter=[NSString stringWithFormat:@"%@16@0:8",type];
-  NSString *setter=[NSString stringWithFormat:@"v%d@0:8%@16",[type isEqual:@"B"]?20:24,type];
-  if(!GSStorageMethod(data,name,getter.UTF8String)||!GSStorageMethod(data,GSSetter(name),setter.UTF8String))return;
- }
+ Class mapper=NSClassFromString(@"OGLGM2AccountSelectorViewModelItemUtils");
+ GSStorageStatus=@"incompatible-model-abi";if(!GSStorageModelCompatible(data))return;
  GSStorageStatus=@"incompatible-resources-abi";
  if(!GSStorageMethod(object_getClass(strings),@"sharedInstance","@16@0:8")||!GSStorageMethod(strings,@"stringForID:","@20@0:8i16"))return;
  GSStorageStatus=@"incompatible-card-abi";
- if(!GSStorageMethod(item,@"storageState","q16@0:8")||!GSStorageMethod(object_getClass(cell),@"titleTextWithStorageItem:","@24@0:8@16"))return;
- GSStorageStatus=@"incompatible-source-abi";
- // Both are present in the audited 7.92.0 build; validate before changing any IMP.
- if(!GSStorageMethod(source,@"storageCardData","@16@0:8")||!GSStorageMethod(aggregate,@"accountMenuCardData","@16@0:8"))return;
- GSOriginalStorageData=(void *)GSStorageReplace(source,NSSelectorFromString(@"storageCardData"),(IMP)GSStorageData);
- GSOriginalCards=(void *)GSStorageReplace(aggregate,NSSelectorFromString(@"accountMenuCardData"),(IMP)GSStorageCards);
+ if(!GSStorageMethod(item,@"storageState","q16@0:8")||!GSStorageMethod(object_getClass(cell),@"titleTextWithStorageItem:","@24@0:8@16")||
+    !GSStorageMethod(cell,@"updateWithItem:","v24@0:8@16"))return;
+ GSStorageStatus=@"incompatible-mapper-abi";
+ if(!GSStorageMethod(object_getClass(mapper),@"cardItemFromCardData:","@24@0:8@16"))return;
+ GSStorageLock=[NSObject new];GSObservedCardClasses=[NSMutableOrderedSet orderedSet];GSObservedItemClasses=[NSMutableOrderedSet orderedSet];
+ GSOriginalCardItem=(void *)GSStorageReplace(object_getClass(mapper),NSSelectorFromString(@"cardItemFromCardData:"),(IMP)GSStorageCardItem);
  GSOriginalStorageTitle=(void *)GSStorageReplace(object_getClass(cell),NSSelectorFromString(@"titleTextWithStorageItem:"),(IMP)GSStorageTitle);
- GSLegacyInstalled=YES;GSAggregateInstalled=YES;GSStorageInstalled=YES;GSStorageStatus=@"installed";
+ GSOriginalCellUpdate=(void *)GSStorageReplace(cell,NSSelectorFromString(@"updateWithItem:"),(IMP)GSStorageCellUpdate);
+ GSStorageInstalled=YES;GSStorageStatus=@"installed";
 }

@@ -4,7 +4,7 @@
 
 static NSString *Version=@"unsupported",*Executable=@"GooglePhotos";
 static BOOL ResourcesReady;
-static NSUInteger Calls,Actions,TitleCalls,ResourceCalls;
+static NSUInteger Actions,TitleCalls,ResourceCalls,CellCalls;
 @interface GSStorageFixtureBundle : NSObject @end
 @implementation GSStorageFixtureBundle
 - (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?Executable:Version;}
@@ -31,28 +31,30 @@ static id MainBundle(id object,SEL selector){static id bundle;if(!bundle)bundle=
 @implementation OGLAccountMenuStorageCardData @end
 @interface OGLAccountSelectorStorageCardItem : NSObject
 @property(nonatomic) NSInteger storageState;
+@property(nonatomic,strong) OGLAccountMenuStorageCardData *sourceData;
 @end
 @implementation OGLAccountSelectorStorageCardItem @end
 @interface OGLAccountSelectorStorageCardCell : NSObject
 + (id)titleTextWithStorageItem:(id)item;
+- (void)updateWithItem:(id)item;
 @end
 @implementation OGLAccountSelectorStorageCardCell
 + (id)titleTextWithStorageItem:(id)item{TitleCalls++;return @"Native regular title";}
+- (void)updateWithItem:(id)item{CellCalls++;}
 @end
-@interface GSStorageFixtureSource : NSObject
-@property(nonatomic,strong) id data;
-- (id)storageCardData;
+@interface GSStorageFixtureMapper : NSObject
++ (id)cardItemFromCardData:(id)data;
 @end
-@implementation GSStorageFixtureSource
-- (id)storageCardData{Calls++;return self.data;}
+@implementation GSStorageFixtureMapper
++ (id)cardItemFromCardData:(id)data{
+ if(![data isKindOfClass:OGLAccountMenuStorageCardData.class])return data;
+ OGLAccountSelectorStorageCardItem *item=[OGLAccountSelectorStorageCardItem new];
+ item.storageState=[data storageState];item.sourceData=data;return item;
+}
 @end
-@interface GSStorageFixtureAggregate : NSObject
-@property(nonatomic,strong) id cards;
-- (id)accountMenuCardData;
-@end
-@implementation GSStorageFixtureAggregate
-// Models the self-managed path: never calls Photos.storageCardData at all.
-- (id)accountMenuCardData{return self.cards;}
+@interface GSStorageObserver : NSObject @end
+@implementation GSStorageObserver
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context{}
 @end
 static OGLAccountMenuStorageCardData *Card(void){
  OGLAccountMenuStorageCardData *data=[OGLAccountMenuStorageCardData new];
@@ -77,49 +79,48 @@ int main(int argc,const char **argv){@autoreleasepool{
  assert(GSUnlimitedStorageEnabled());GSSetUnlimitedStorage(NO);assert(!GSUnlimitedStorageEnabled());
  GSSetUnlimitedStorage(YES);assert(GSUnlimitedStorageEnabled());
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)MainBundle);
- Class sourceClass=objc_allocateClassPair(GSStorageFixtureSource.class,"PHSMyAccountMenuDataSource",0);
- if(argc>1)class_addMethod(sourceClass,@selector(storageCardData),class_getMethodImplementation(GSStorageFixtureSource.class,@selector(storageCardData)),"q16@0:8");
- objc_registerClassPair(sourceClass);
- Class aggregateClass=objc_allocateClassPair(GSStorageFixtureAggregate.class,"_TtC102googlemac_iPhone_Shared_OneGoogle_AccountSelector_Cards_Implementation_OGLAggregatorCardDataSourceImpl31OGLAggregatorCardDataSourceImpl",0);
- objc_registerClassPair(aggregateClass);
+ Class mapper=objc_allocateClassPair(GSStorageFixtureMapper.class,"OGLGM2AccountSelectorViewModelItemUtils",0);
+ if(argc>1)class_addMethod(object_getClass(mapper),@selector(cardItemFromCardData:),class_getMethodImplementation(object_getClass(GSStorageFixtureMapper.class),@selector(cardItemFromCardData:)),"q24@0:8@16");
+ objc_registerClassPair(mapper);
  GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());
  Version=@"7.92.0";Executable=@"OtherApp";GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());
  Executable=@"GooglePhotos";
  if(argc>1){
   GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());
-  assert([GSUnlimitedStorageSnapshot()[@"status"]isEqual:@"incompatible-source-abi"]);
+  assert([GSUnlimitedStorageSnapshot()[@"status"]isEqual:@"incompatible-mapper-abi"]);
  }else{
   // Late native resource initialization must not permanently disable the hook.
   GSInstallUnlimitedStorage();assert(GSUnlimitedStorageAvailable());GSInstallUnlimitedStorage();
-  GSStorageFixtureAggregate *aggregate=[aggregateClass new];OGLAccountMenuStorageCardData *original=Card();
-  NSObject *backup=[NSObject new],*aiCard=[NSObject new];NSArray *cached=@[aiCard,original,backup];aggregate.cards=cached;
-  assert([aggregate accountMenuCardData]==cached&&!Calls);
-  ResourcesReady=YES;NSArray *shown=[aggregate accountMenuCardData];
-  assert(shown!=cached&&shown.count==3&&shown[0]==aiCard&&shown[2]==backup&&!Calls);
-  CheckProjection(shown[1],original);
-  GSSetUnlimitedStorage(NO);assert([aggregate accountMenuCardData]==cached); // Cached source restores exactly.
-  GSSetUnlimitedStorage(YES);CheckProjection([aggregate accountMenuCardData][1],original);
-  // Account replacement and an asynchronous server refresh each get a new copy.
-  OGLAccountMenuStorageCardData *next=Card();next.usedStorage=1;next.totalStorage=100;aggregate.cards=@[next];
-  CheckProjection([aggregate accountMenuCardData][0],next);
-  next.usedStorage=2;CheckProjection([aggregate accountMenuCardData][0],next);
-  aggregate.cards=@[backup];assert([aggregate accountMenuCardData]==aggregate.cards);
-  aggregate.cards=nil;assert([aggregate accountMenuCardData]==nil);
-  aggregate.cards=backup;assert([aggregate accountMenuCardData]==backup);
-  // Legacy path and inherited base classes remain independent of the aggregator.
-  GSStorageFixtureSource *source=[sourceClass new];source.data=original;
-  CheckProjection([source storageCardData],original);assert(Calls==1);
-  GSStorageFixtureSource *base=[GSStorageFixtureSource new];base.data=original;assert([base storageCardData]==original);
-  GSSetUnlimitedStorage(NO);assert([source storageCardData]==original);GSSetUnlimitedStorage(YES);
-  source.data=nil;assert([source storageCardData]==nil);source.data=backup;assert([source storageCardData]==backup);
-  OGLAccountSelectorStorageCardItem *item=[OGLAccountSelectorStorageCardItem new];item.storageState=2;
+  // Neither Photos nor the Swift aggregator fixture exists. Only the actual
+  // rendering converter sees these inputs, including a cached source object.
+  OGLAccountMenuStorageCardData *original=Card();
+  OGLAccountSelectorStorageCardItem *item=[mapper cardItemFromCardData:original];
+  assert(item.sourceData==original&&item.storageState==0);
+  ResourcesReady=YES;item=[mapper cardItemFromCardData:original];CheckProjection(item.sourceData,original);
+  assert(item.storageState==2);
+  OGLAccountSelectorStorageCardCell *cell=[OGLAccountSelectorStorageCardCell new];[cell updateWithItem:item];assert(CellCalls==1);
   assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:item]isEqual:@"Unlimited storage"]);
-  item.storageState=0;assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:item]isEqual:@"Native regular title"]&&TitleCalls==1);
-  GSSetUnlimitedStorage(NO);item.storageState=2;assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:item]isEqual:@"Native regular title"]);
-  assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:nil]isEqual:@"Native regular title"]);
-  NSDictionary *snapshot=GSUnlimitedStorageSnapshot();assert([snapshot[@"aggregateHook"]boolValue]&&[snapshot[@"legacyHook"]boolValue]&&[snapshot[@"projectedCards"]unsignedLongValue]==5&&[snapshot[@"copyFailures"]unsignedLongValue]==0&&ResourceCalls);
-  NSSet *keys=[NSSet setWithArray:@[@"available",@"enabled",@"status",@"legacyHook",@"aggregateHook",@"stringsReady",@"legacyCalls",@"aggregateCalls",@"projectedCards",@"copyFailures"]];assert([[NSSet setWithArray:snapshot.allKeys]isEqual:keys]);
+  GSSetUnlimitedStorage(NO);item=[mapper cardItemFromCardData:original];assert(item.sourceData==original&&item.storageState==0);
+  assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:item]isEqual:@"Native regular title"]);
+  GSSetUnlimitedStorage(YES);CheckProjection([[mapper cardItemFromCardData:original]sourceData],original);
+  // The previous exact-class check rejected Foundation's real KVO subclass.
+  GSStorageObserver *observer=[GSStorageObserver new];
+  [original addObserver:observer forKeyPath:@"storageState" options:0 context:NULL];
+  assert(object_getClass(original)!=OGLAccountMenuStorageCardData.class);
+  item=[mapper cardItemFromCardData:original];CheckProjection(item.sourceData,original);
+  [original removeObserver:observer forKeyPath:@"storageState"];
+  OGLAccountMenuStorageCardData *next=Card();next.usedStorage=1;next.totalStorage=100;
+  CheckProjection([[mapper cardItemFromCardData:next]sourceData],next);
+  next.usedStorage=2;CheckProjection([[mapper cardItemFromCardData:next]sourceData],next);
+  NSObject *other=[NSObject new];assert([mapper cardItemFromCardData:other]==other);assert([mapper cardItemFromCardData:nil]==nil);
+  // The superclass converter is not swizzled when a local override is added.
+  assert([[GSStorageFixtureMapper cardItemFromCardData:original]sourceData]==original);
+  NSDictionary *snapshot=GSUnlimitedStorageSnapshot();
+  assert([snapshot[@"implementation"]isEqual:@"native-card-renderer-v3"]&&[snapshot[@"projectedCards"]unsignedLongValue]==5&&[snapshot[@"copyFailures"]unsignedLongValue]==0&&ResourceCalls);
+  assert([snapshot[@"renderedStorageState"]integerValue]==2&&[snapshot[@"mappedStorageState"]integerValue]==2&&[snapshot[@"cellUpdates"]unsignedLongValue]==1);
+  assert([snapshot[@"cardClasses"]containsObject:@"NSKVONotifying_OGLAccountMenuStorageCardData"]);
+  NSSet *keys=[NSSet setWithArray:@[@"implementation",@"available",@"enabled",@"status",@"stringsReady",@"mapperCalls",@"projectedCards",@"copyFailures",@"cellUpdates",@"titleCalls",@"mappedStorageState",@"renderedStorageState",@"cardClasses",@"itemClasses"]];assert([[NSSet setWithArray:snapshot.allKeys]isEqual:keys]);
  }
  [defaults removeObjectForKey:@"GSShowUnlimitedStorage"];
- NSLog(@"PASS native storage aggregation, cached-source restoration, callbacks, late resources and ABI guard");
+ NSLog(@"PASS native card converter, KVO subclass, cached-source restoration, cell observation and ABI guard");
 }}
