@@ -66,6 +66,8 @@ jobs:
           .build/sandbox-access-rootless-test
           clang -fblocks tests/discovery.c -o .build/discovery-test
           .build/discovery-test
+          clang -fblocks Shared/GSDiscovery.c Daemon/GSDiscoveryService.c tests/discovery_launchd.c -o .build/discovery-launchd-test
+          python3 scripts/test-discovery-launchd.py .build/discovery-launchd-test
           clang -fobjc-arc -framework Foundation -framework CoreFoundation tests/daemon_runloop.m -o .build/daemon-runloop-test
           .build/daemon-runloop-test
       - name: Native routing contract

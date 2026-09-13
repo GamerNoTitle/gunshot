@@ -10,7 +10,7 @@ extern xpc_connection_t xpc_connection_create_from_endpoint(xpc_endpoint_t);
 extern xpc_object_t xpc_connection_send_message_with_reply_sync(xpc_connection_t,xpc_object_t);
 static xpc_endpoint_t Endpoint;
 static xpc_connection_t FixtureConnection(const char *name,dispatch_queue_t queue,uint64_t flags){
- assert(!strcmp(name,"dev.tqmane.gunshot.discovery")&&flags==0);
+ assert(!strcmp(name,"dev.tqmane.gunshot.discovery")&&flags==XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
  (void)queue;return Endpoint?xpc_connection_create_from_endpoint(Endpoint):NULL;
 }
 #define xpc_connection_create_mach_service FixtureConnection
@@ -29,6 +29,8 @@ static void CheckRefs(mach_port_t port,mach_port_urefs_t expected){
 }
 int main(void){
  alarm(20);
+ assert(!strcmp(GSDiscoveryErrorStage(dlsym(RTLD_DEFAULT,"_xpc_error_connection_invalid")),"discovery.invalid"));
+ assert(!strcmp(GSDiscoveryErrorStage(dlsym(RTLD_DEFAULT,"_xpc_error_connection_interrupted")),"discovery.interrupted"));
  mach_port_t server;assert(mach_port_allocate(mach_task_self(),MACH_PORT_RIGHT_RECEIVE,&server)==KERN_SUCCESS);
  assert(mach_port_insert_right(mach_task_self(),server,server,MACH_MSG_TYPE_MAKE_SEND)==KERN_SUCCESS);
  dispatch_queue_t queue=dispatch_queue_create("gunshot.discovery.test",DISPATCH_QUEUE_SERIAL);

@@ -14,6 +14,7 @@ extern const struct _xpc_type_s _xpc_type_dictionary, _xpc_type_connection;
 #define XPC_TYPE_DICTIONARY (&_xpc_type_dictionary)
 #define XPC_TYPE_CONNECTION (&_xpc_type_connection)
 #define XPC_CONNECTION_MACH_SERVICE_LISTENER (1ULL << 0)
+#define XPC_CONNECTION_MACH_SERVICE_PRIVILEGED (1ULL << 1)
 extern xpc_type_t xpc_get_type(xpc_object_t);
 extern xpc_object_t xpc_retain(xpc_object_t);
 extern void xpc_release(xpc_object_t);

@@ -3,6 +3,16 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <dlfcn.h>
+
+static const char *GSDiscoveryErrorStage(xpc_object_t response) {
+ // Compare the public singleton identities, without dumping an XPC object or
+ // retaining free-form error descriptions in diagnostics.
+ if(response&&(void *)response==dlsym(RTLD_DEFAULT,"_xpc_error_connection_invalid"))return "discovery.invalid";
+ if(response&&(void *)response==dlsym(RTLD_DEFAULT,"_xpc_error_connection_interrupted"))return "discovery.interrupted";
+ if(response&&(void *)response==dlsym(RTLD_DEFAULT,"_xpc_error_termination_imminent"))return "discovery.terminating";
+ return "discovery.error";
+}
 
 typedef struct {
  pthread_mutex_t lock;
@@ -31,7 +41,8 @@ static kern_return_t GSResolveDiscovery(xpc_connection_t connection,mach_port_t 
   // A late reply owns its descriptors through libxpc; never copy a port after
   // timeout, and never touch caller-owned stack variables from this callback.
   if(!attempt->finished){
-   if(xpc_get_type(response)==XPC_TYPE_DICTIONARY){
+   attempt->stage=GSDiscoveryErrorStage(response);
+   if(response&&xpc_get_type(response)==XPC_TYPE_DICTIONARY){
     attempt->stage="discovery.response";
     if(xpc_dictionary_get_int64(response,"version")==1){
      attempt->stage="discovery.rejected";
@@ -57,9 +68,10 @@ static kern_return_t GSResolveDiscovery(xpc_connection_t connection,mach_port_t 
 }
 kern_return_t GSDiscoverDaemon(mach_port_t *port,uint32_t timeoutMS,const char **stage) {
  *port=MACH_PORT_NULL;*stage="discovery.create";
- // User-domain service; libxpc performs endpoint lookup, so libSandy's scoped
- // iOS 16 lookup adapter can participate. No bootstrap_look_up preflight.
- xpc_connection_t connection=xpc_connection_create_mach_service(GS_DISCOVERY_SERVICE,NULL,0);
+ // This is a LaunchDaemon, even when launchctl reports its execution as
+ // user/501. Ask libxpc for the daemon namespace explicitly; an app's local
+ // namespace is not authoritative. libSandy can still mediate this lookup.
+ xpc_connection_t connection=xpc_connection_create_mach_service(GS_DISCOVERY_SERVICE,NULL,XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
  if(!connection)return KERN_FAILURE;
  kern_return_t code=GSResolveDiscovery(connection,port,timeoutMS,stage);
  xpc_release(connection);return code;

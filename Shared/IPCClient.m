@@ -33,7 +33,9 @@ static kern_return_t GSLookupDaemon(mach_port_t *server,NSMutableArray *trace,co
  // Its iOS 16 adapter also handles profiles that disallow Mach extensions.
  if(kr==1100){
   profileAttempted=YES;profileCode=GSApplyIPCSandboxProfile();
-  *stage="sandbox.profile";GSTrace(trace,*stage,profileCode);
+  *stage="sandbox.profile";
+  GSSandboxAdapterState adapter=GSGetSandboxAdapterState();
+  [trace addObject:@{@"stage":@(*stage),@"code":@(profileCode),@"adapterActive":@(adapter.active),@"uploadRedirected":@(adapter.uploadRedirected),@"discoveryRedirected":@(adapter.discoveryRedirected)}];
   if(profileCode==0){
    *stage="lookup.authorized";kr=bootstrap_look_up(bootstrap,GS_SERVICE,server);GSTrace(trace,*stage,kr);
    if(kr==KERN_SUCCESS)goto done;

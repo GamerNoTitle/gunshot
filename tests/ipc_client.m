@@ -2,10 +2,12 @@
 #include <assert.h>
 #define bootstrap_look_up GSFixtureLookup
 #define GSApplyIPCSandboxProfile GSFixtureApplyProfile
+#define GSGetSandboxAdapterState GSFixtureSandboxState
 #define GSDiscoverDaemon GSFixtureDiscover
 #import "../Shared/IPCClient.m"
 #undef bootstrap_look_up
 #undef GSApplyIPCSandboxProfile
+#undef GSGetSandboxAdapterState
 #undef GSDiscoverDaemon
 #ifndef MPO_ENFORCE_REPLY_PORT_SEMANTICS
 #define MPO_ENFORCE_REPLY_PORT_SEMANTICS 0x2000
@@ -17,6 +19,7 @@ static NSUInteger ProfileCalls;
 static NSUInteger Discoveries;
 static BOOL ProfileApplied;
 int GSFixtureApplyProfile(void){ProfileCalls++;ProfileApplied=ProfileCode==0;return ProfileCode;}
+GSSandboxAdapterState GSFixtureSandboxState(void){return (GSSandboxAdapterState){1,1,1};}
 kern_return_t GSFixtureDiscover(mach_port_t *port,uint32_t timeoutMS,const char **stage){
  Discoveries++;assert(ProfileApplied&&timeoutMS==5000);
  if(Route!=7){*stage="discovery.connection";return KERN_FAILURE;}
@@ -76,6 +79,8 @@ static void Exchange(NSUInteger route,BOOL malformed){
  if(route>=5){
   assert([snapshot[@"steps"][1][@"code"]intValue]==1100);
   assert([snapshot[@"steps"][2][@"stage"]isEqual:@"sandbox.profile"]);
+  assert([snapshot[@"steps"][2][@"adapterActive"]intValue]==1);
+  assert([snapshot[@"steps"][2][@"discoveryRedirected"]intValue]==1);
   assert([snapshot[@"steps"][3][@"stage"]isEqual:@"lookup.authorized"]);
  }
  if(route==4){assert(!response&&error&&[snapshot[@"stage"]isEqual:@"broker.service-unavailable"]);assert(![snapshot[@"reachable"]boolValue]);}
