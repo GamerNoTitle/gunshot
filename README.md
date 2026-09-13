@@ -6,7 +6,40 @@ A Google Photos uploader for jailbroken, sideloaded and LiveContainer apps, reus
 
 This is a development build. CI validates builds and fixtures; compatibility and server behavior still require device testing. The audited Google Photos version is **7.92.0**, whose IPA requires **iOS 18.0**. Older iOS versions need an appropriate Google Photos version, and version-specific integration will not activate on unsupported versions.
 
+## Screenshots
+
+Device screenshots from Google Photos 7.92.0, provided by a user with account details obscured.
+
+<p>
+  <img src="docs/images/unlimited-storage.png" width="240" alt="Google Photos profile menu showing the native Unlimited storage card">
+  <img src="docs/images/profile-menu.png" width="240" alt="GoToHP settings entry in the Google Photos profile menu">
+</p>
+<p>
+  <img src="docs/images/upload-settings.png" width="240" alt="Signed-in account and original-quality Pixel 1 upload settings">
+  <img src="docs/images/backup-routing.png" width="240" alt="Manual and automatic backup routing and queue management settings">
+  <img src="docs/images/appearance-settings.png" width="240" alt="Language and Show unlimited storage settings">
+</p>
+
+**Show unlimited storage** is on by default and can be turned off in **GoToHP settings → Appearance**. It reuses the native storage-card UI and changes its display only; the screenshot is not proof of an unlimited account entitlement or actual storage accounting.
+
+## Disclaimer
+
+This is an independent, unofficial project, not affiliated with or endorsed by Google or Apple. Google Photos and other product names and marks belong to their respective owners.
+
+The software is provided **as is, without warranties** of functionality, data integrity or continued availability. It uses unofficial APIs and private app interfaces; Google or app updates may break login, uploads or compatibility, and account restrictions are possible. Original-quality uploads and storage-free treatment are requests, not guarantees. The unlimited-storage display does not change your account limit, subscription or upload quality.
+
+Use it at your own risk, assess possible account restrictions, data loss and storage charges, and keep a separate copy of your original media. This repository does not distribute Google Photos IPAs, APKs, signing certificates or account credentials.
+
 ## Install and use
+
+> [!IMPORTANT]
+> **Sign in to Google Photos before installing/enabling the tweak or installing an injected IPA.** In a reported Sideloadly setup, Google rejected login with **Inject dylibs/frameworks** enabled; signing in without injection first, then updating the same app with the tweak, worked.
+>
+> 1. Install and open Google Photos **without tweak injection**, then finish Google sign-in and verify that the account is available in Google Photos.
+> 2. Close the app. On jailbreak, install/enable the tweak. For sideloading, inject the jailed package and install the resulting IPA **as an update to that same app**, preserving its data and using the same signing account and bundle identifier. In LiveContainer, sign in in the same guest/data container before enabling its tweak folder or updating it with an injected IPA.
+> 3. Open Google Photos and go to **profile menu → GoToHP settings** to connect the signed-in account.
+>
+> **Do not delete the logged-in app/guest or create a fresh data container between these steps.** Login state may be lost. An App Store installation is not automatically interchangeable with a separately signed sideload. Session retention and this workaround are not guaranteed on every signing setup or in LiveContainer. See the [detailed installation guide](docs/jailed.md).
 
 ### Sideloading / LiveContainer
 

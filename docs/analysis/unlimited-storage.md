@@ -155,3 +155,12 @@ reopen the profile menu after toggling and check both title/layout and native
 actions. If unchanged, export fresh diagnostics **after opening the menu**;
 `modelStateReads`, `modelTitleReads`, `bentoControllers` and resource readiness
 will distinguish the next failure without relying on another screenshot guess.
+
+## User-confirmed device display (2026-09-13)
+
+After installing v4, the user confirmed that the unlimited card appeared and
+provided the [native card screenshot](../images/unlimited-storage.png) and
+[enabled appearance setting](../images/appearance-settings.png), now included in
+the READMEs. This confirms the displayed result in that user's setup. It does not
+establish account entitlement, quota treatment, all signing environments, or a
+complete on/off and native-action device test matrix.
