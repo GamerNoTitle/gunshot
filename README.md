@@ -90,6 +90,15 @@ go vet -tags cli ./...
 
 CI runs tests and builds all three packages. Successful `v*` tags publish release assets. To update the pinned upstream, run `bash scripts/sync-upstream.sh [commit]`; keep its license and generated notices with distributions.
 
+## License
+
+Gunshot is licensed under [GNU GPL v3.0 or later](LICENSE).
+Copyright (C) 2026 tqmane.
+
+The bundled [gotohp upstream](GotohpCore/upstream/LICENSE) remains MIT-licensed,
+Copyright (c) 2024 xob0t. Other third-party components retain their own licenses.
+Distribution packages include these notices in `ThirdPartyNotices.txt`.
+
 ## Development docs
 
 - [Architecture, credentials and upstream integration](docs/architecture.md)
