@@ -29,7 +29,7 @@ Pixel XL は Pixel 2 ではなく初代 Pixel 系です。今回 profile や課�
 
 ## 表示補正の条件
 
-jailed のバックアップ連携が有効で、純正の詳細画面が既にバックアップ済みと判断し、
+jailed / jailbreak のバックアップ連携が有効で、純正の詳細画面が既にバックアップ済みと判断し、
 サーバーモデルが hasOriginalBytes=Yes、storagePolicy=Standard、部分バックアップでは
 ない場合だけ、詳細画面の subtitle を「オリジナル画質（原本データあり）」にします。
 容量を示す backupStatus は純正の値をそのまま維持します。
@@ -41,7 +41,7 @@ No / Unknown / Maybe、未バックアップ、部分バックアップは変更
 ## 診断
 
 - photosIntegration: qualityAvailable / syncAvailable、原本 enum の観測件数、画質表示補正件数、差分同期要求件数。
-- runtime.uploadSummary: デフォルト画質、各ジョブの画質別・状態別件数と対応 profile、完了 revision。
+- completionMonitor.uploadSummary（jailed では runtime.uploadSummary にも表示）: デフォルト画質、各ジョブの画質別・状態別件数と対応 profile、完了 revision。
 - uploadSummary の profile は送信ポリシーです。実メディアのサーバー側品質を一括で検証した意味ではありません。
 - アカウント、ファイル名、mediaKey、ハッシュ、トークンは追加診断に含めません。
 

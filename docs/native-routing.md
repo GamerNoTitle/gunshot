@@ -1,34 +1,37 @@
 # Google Photos の標準バックアップ操作を GoToHP へ転送
 
-**jailed 7.92.0 の新しい手動・自動バックアップ経路は [共通要求の連携](analysis/backup-routing.md) を参照してください。以下は rootful/rootless に残る従来の手動 UI フックの説明です。**
+jailed / rootless / rootful で、対応する純正の手動・自動バックアップ要求を
+GoToHP に渡します。IPA の解析基準は **7.20.2 / 7.92.0** で、版番号を固定せず、
+各機能が必要とする class / selector / 引数の型を実行時に照合します。
+[処理と診断の詳細](analysis/backup-routing.md)。
 
-**対応範囲は Google Photos 7.92.0 の手動「今すぐバックアップ」操作です。自動バックアップを含む全アップロードの置き換えは未実装です。実機未検証。**
+1. Google Photos を起動し、ログイン中のアカウントへの自動接続を待ちます。
+2. プロフィールメニュー → **GoToHP の設定**で画質を選び、
+   **手動・自動バックアップを GoToHP へ送る**を有効化して送信先を確認します。
+   この切替は既定 OFF です。
+3. Google Photos の通常のバックアップボタンを使います。対応する操作は
+   GoToHP の画面や毎回の確認を出さずにキューへ送ります。
+4. 自動バックアップには Google Photos 本体のバックアップも ON にします。
 
-Google Photos → **GoToHP → Settings** に account、quality、queue の設定ページがあります。そこで account を追加・選択してから **Route Google Photos backup action** を有効にします。有効化時に GoToHP の送信先メールアドレスと対象範囲を表示します。Google Photos の automatic backup は別途 OFF にし、独立した標準アップロードとの重複を避けてください。
+元のスケジューラーと delegate を維持し、共通の `GMUAssetUploadRequest` /
+`GMULivePhotoSingleUploadRequest` で PhotoKit 原本を転送します。Go の実際の
+完了後に純正の fingerprint 照合を再開し、成功を確認します。GoToHP 単独の
+アップロードも前景の完了監視で検知し、純正のアカウント別 fetchData による
+表示更新を要求します。設定を開いたままにする必要や、毎回の再起動はありません。
+通信とサーバー反映に時間がかかる場合はあります。
 
-以後、対象となる Google Photos の標準バックアップ操作は選択 asset を画面なしで GoToHP の永続 queue に追加します。元の標準アップロード関数を呼びません。失敗時に標準アップロードへ戻す fallback はありません。成功・失敗と progress は GoToHP queue で確認します。Google Photos 内部の backup DB、サーバーのレスポンス、完了 callback を偽装しません。画質と送信先は GoToHP の設定を使用します。アカウント変更時は転送設定を OFF/ON して送信先を再確認する必要があります。
+アカウント不一致・書出し失敗・再照合失敗では純正のデータ送信に戻しません。
+Google Photos の DB、バックアップフラグ、成功結果を直接作り替えません。
+画質と送信先は GoToHP の設定を使用します。送信先を変更した場合は転送設定を
+OFF/ON して再確認してください。新規要求から有効なので、導入・切替前にすでに
+始まっていた純正送信は対象外です。
 
-## 調査根拠
+jailed / LiveContainer では Google Photos を前面で開いてください。jailbreak では
+原本が daemon のキューに渡るまで開き、その後は認証が利用できる間 daemon が
+続行します。Google Photos が終了すると純正の新しい自動要求は作られません。
+認証の更新にはホストが必要です。[認証の制約](analysis/native-account.md)。
 
-提供 IPA のメイン executable と GooglePhotos_GeneratedFramework の Mach-O Objective-C metadata を読み、次の method type を確認しました。バイナリ/逆コンパイル結果そのものは同梱しません。
-
-| クラス | selector | encoding |
-| --- | --- | --- |
-| PHSBackupActionBehaviorImpl | backupLocalAssets: | v24@0:8@16 |
-| PHSActionsGridModel | backupLocalAssets: | v24@0:8@16 |
-| PHSLocalAsset | phAsset | @16@0:8 |
-| PHSLocalAsset | isLocked | B16@0:8 |
-
-実行時にも version、class、selector、encoding を全て照合し、一致したときだけ Objective-C method replacement を行います。未知の型・取得できない asset・locked asset は 画面を開かず取込を止め、GoToHP 設定画面と診断にエラーを記録します。NSSet/NSArray の全件を解決してから処理するため、未対応 item の混在で一部だけ native へ送ることはありません。
-
-これは公開 API の保証ではありません。別バージョンでは転送設定は unavailable になり、標準操作は Google Photos 本来のものです。更新後は routing が働くと想定せず、GoToHP の Upload を利用してください。自動バックアップ、共有時に発生する upload、locked folder、編集の保存、新規生成コンテンツなど、上記 action を通らない経路は対象外です。全経路を置換するには Swift/Scotty uploader と完了 model の実機解析が別途必要です。
-
-## 実機 gate
-
-- OFF 時に手動バックアップが本来の動作をする。
-- ON 時、単一/複数選択と grid/one-up の対象 action で標準送信が開始されず、GoToHP に一度だけ queue される。
-- credential 未設定/失効、daemon 停止、PhotoKit 拒否、disk full で標準経路へ再送されない。
-- account 切替では旧送信先に送らずエラーになる。
-- 未対応 version / selector では unavailable 表示になる。
-- completed までは Google Photos のサーバー asset/backup 状態を勝手に更新しない。
-- 自動バックアップ OFF の状態で、実際の Google quota と作成 asset を確認する。
+旧手動 `backupLocalAssets:` の互換処理はソースに残りますが、共通要求の ABI が
+不適合なら設定から手動・自動連携を新たに有効化できません。
+locked folder・編集専用・共有専用など、任意の全経路の置換は保証しません。
+[対応範囲と検証項目](full-upload-replacement.md)。

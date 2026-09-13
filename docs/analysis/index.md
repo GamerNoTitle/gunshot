@@ -11,7 +11,7 @@
 | 全クラス名・instance selector・encoding・static IMP | [機械可読全件索引](objc/README.md) | metadata 抽出済み |
 | 入力同定・件数・SHA-256 | [manifest](objc/manifest.json) | 対象 2 image の照合情報 |
 | upload / backup / Live Photo / account 周辺のクラス | [アップロード関連クラス索引](upload-symbols.md) | 今回参照したクラスの全 instance method |
-| jailed の手動・自動バックアップ要求 | [backup-routing.md](backup-routing.md) | 要求の移譲・サーバー再照合・画質の送信テスト。実機確認待ち |
+| jailed / jailbreak の手動・自動バックアップ要求 | [backup-routing.md](backup-routing.md) | 要求の移譲・サーバー再照合・画質の送信テスト。実機確認待ち |
 | 手動バックアップ action | [native-routing.md](../native-routing.md) | host / ABI 確認、hook 実装、mock test |
 | 自動バックアップ・Scotty・legacy の境界 | [full-upload-replacement.md](../full-upload-replacement.md) | metadata・一部 call path 確認、実機は未確認 |
 | native completion の内部依存 | [completion-analysis.md](completion-analysis.md) | 限定した関数の逆アセンブル追跡 |
@@ -39,12 +39,12 @@
 
 | 境界 | 主なクラス・selector | 実装での扱い |
 | --- | --- | --- |
-| 手動 backup | PHSBackupActionBehaviorImpl / PHSActionsGridModel → backupLocalAssets: | 7.92.0 / encoding 一致時のみ opt-in 転送 |
+| 手動 backup | PHSBackupActionBehaviorImpl / PHSActionsGridModel → backupLocalAssets: | 共通要求がある場合は純正スケジューラーへ渡す。API 適合時のみ opt-in 転送 |
 | 選択 asset | PHSLocalAsset → phAsset / isLocked | PhotoKit asset を解決、locked を転送対象にしない |
-| native asset request | GMUAssetUploadRequest → start / completion | 診断のみ。全置換は未実装 |
-| native Live Photo | GMULivePhotoSingleUploadRequest | 診断のみ。native 完了モデルの互換性未確定 |
-| Swift transport | ScottyUploadServiceImpl → uploadWithAsset:… / statelessUploadWithAsset:… | 前景 / 背景 / stateless の受動診断 |
-| legacy transport | GMUUploadRequest → startFetcher | 受動診断 |
+| native asset request | GMUAssetUploadRequest → start / completion | 両方式で GoToHP へ移譲し、完了後に純正の fingerprint 再照合 |
+| native Live Photo | GMULivePhotoSingleUploadRequest | PHAsset 原本ペアを転送。純正完了は実サーバー再照合で判定 |
+| Swift transport | ScottyUploadServiceImpl → uploadWithAsset:… / statelessUploadWithAsset:… | 適合する API の payload fallback を転送有効時に停止 |
+| legacy transport | GMUUploadRequest → startFetcher | 転送有効時と再照合中の native payload を停止 |
 | native result | resultantMediaItem / metadata / dedupInfo | 空 object や mediaKey string で成功を偽装しない |
 | UIKit 入口 | UIWindow / UIActivityViewController | 常設ボタン・共有 action。実機 UI 検証待ち |
 
@@ -52,6 +52,7 @@
 
 - [PR #1](https://github.com/tqmane/gunshot/pull/1): daemon / bridge / queue / UI の初期実装。
 - [PR #2](https://github.com/tqmane/gunshot/pull/2): jailed / LiveContainer 用成果物、アプリ内設定、手動 action 転送。
+- [PR #8](https://github.com/tqmane/gunshot/pull/8) / [PR #9](https://github.com/tqmane/gunshot/pull/9): 共通要求の手動・自動転送、原本表示と完了後の同期。現在は jailbreak にも組込み、[診断 7](backup-routing.md) の欠落を修正。
 - [PR #3](https://github.com/tqmane/gunshot/pull/3): 全置換に必要な native uploader の受動診断。
 - [診断版 CI](https://github.com/tqmane/gunshot/actions/runs/34673212132): Go / C ABI / native mock tests / 3方式の iOS build・package check 成功。実機互換性の証明ではありません。
 

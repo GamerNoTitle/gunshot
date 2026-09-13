@@ -4,6 +4,7 @@
 #import "GSNativeRouting.h"
 #import "GSNativeAccount.h"
 #import "GSExporter.h"
+#import "GSUploadMonitor.h"
 #import "../Shared/IPCProtocol.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -16,6 +17,7 @@
 @property(atomic) BOOL reconciling;
 @property(atomic,copy) NSString *jobID;
 @property(nonatomic,copy) NSString *account;
+@property(nonatomic,copy) NSString *nativeID;
 @property(nonatomic,copy) NSString *localID;
 @end
 @implementation GSBackupTransfer @end
@@ -42,8 +44,18 @@ static void GSFail(id request,NSInteger code){
   ((void(*)(id,SEL,id,id))objc_msgSend)(request,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"),error,nil);
 }
 static BOOL GSCanPrepare(NSDictionary *options){
+#if GS_JAILED
  NSDictionary *runtime=GSEmbeddedRuntimeSnapshot();
  return options&&[runtime[@"conditionsAccepted"]boolValue]&&[runtime[@"foreground"]boolValue]&&[runtime[@"networkOnline"]boolValue]&&![options[@"paused"]boolValue]&&(![options[@"wifiOnly"]boolValue]||[runtime[@"wifi"]boolValue])&&(![options[@"chargingOnly"]boolValue]||[runtime[@"charging"]boolValue]);
+#else
+ // The daemon owns upload conditions. PhotoKit export still needs the host;
+ // after seal, daemon execution must not depend on host foreground state.
+ NSDictionary *conditions=GSRequest(@{@"op":@"upload_summary"},nil)[@"conditions"];
+ return options&&GSUploadHostForeground()&&[conditions[@"online"]boolValue]&&![conditions[@"paused"]boolValue]&&(![options[@"wifiOnly"]boolValue]||[conditions[@"wifi"]boolValue])&&(![options[@"chargingOnly"]boolValue]||[conditions[@"charging"]boolValue]);
+#endif
+}
+static BOOL GSStillAuthorized(GSBackupTransfer *transfer){
+ return !transfer.cancelled&&GSNativeRoutingEnabled()&&[GSNativeRoutingAccount()isEqual:transfer.account]&&GSNativeAccountMatches(transfer.nativeID);
 }
 static void GSStart(id request,SEL selector,IMP original){
  GSBackupTransfer *existing=objc_getAssociatedObject(request,&GSTransferKey);
@@ -60,7 +72,7 @@ static void GSStart(id request,SEL selector,IMP original){
   NSDictionary *account=GSNativeAccountSummary();NSString *destination=GSNativeRoutingAccount();
   if(transfer.cancelled)return;
   if(![destination isEqual:account[@"email"]]||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSCount(@"accountMismatch");GSFail(request,2);return;}
-  transfer.account=destination;
+  transfer.account=destination;transfer.nativeID=account[@"identifier"];
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
    NSError *error=nil;
    NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);
@@ -71,10 +83,14 @@ static void GSStart(id request,SEL selector,IMP original){
     [NSThread sleepForTimeInterval:1];options=GSRequest(@{@"op":@"options"},&error);
    }
    if(!GSCanPrepare(options))error=[NSError errorWithDomain:@"GoToHP.Backup" code:5 userInfo:nil];
+   __block BOOL authorized=NO;
+   dispatch_sync(dispatch_get_main_queue(),^{authorized=GSStillAuthorized(transfer);});
+   if(!authorized)error=[NSError errorWithDomain:@"GoToHP.Backup" code:2 userInfo:nil];
    NSURL *directory=[NSURL fileURLWithPath:[NSTemporaryDirectory()stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
    NSArray *files=nil;
    if(!error&&[NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:&error])files=GSExportAsset(asset,directory,&error);
-   NSString *job=(!transfer.cancelled&&files)?GSImportFiles(files,destination,options[@"quality"]?:@"original",asset.creationDate,&error):nil;
+   dispatch_sync(dispatch_get_main_queue(),^{authorized=GSStillAuthorized(transfer);});
+   NSString *job=(authorized&&files)?GSImportFiles(files,destination,options[@"quality"]?:@"original",asset.creationDate,&error):nil;
    [NSFileManager.defaultManager removeItemAtURL:directory error:nil];transfer.jobID=job;
    if(job&&transfer.cancelled&&transfer.cancelGo)GSRequest(@{@"op":@"cancel",@"id":job},nil);
    if(job)GSCount(@"queued");
@@ -90,7 +106,7 @@ static void GSStart(id request,SEL selector,IMP original){
    dispatch_async(dispatch_get_main_queue(),^{
     if(transfer.cancelled)return;
     if(!completed){GSCount(@"failed");GSFail(request,3);return;}
-    if(!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSFail(request,2);return;}
+    if(!GSNativeAccountMatches(transfer.nativeID)||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSFail(request,2);return;}
     // Refresh native backup state from the server; GSGuard blocks re-upload.
     transfer.reconciling=YES;@synchronized(GSLock){[GSReconciling addObject:transfer.localID];}
     GSCount(@"reconciling");((void(*)(id,SEL))original)(request,selector);
@@ -120,7 +136,7 @@ static void GSBindStart(Class c){
  GSReplace(c,timeout,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled?NO:((BOOL(*)(id,SEL))oldTimeout)(request,timeout);}));
  SEL cancel=NSSelectorFromString(@"cancel");IMP oldCancel=method_getImplementation(class_getInstanceMethod(c,cancel));
  GSReplace(c,cancel,imp_implementationWithBlock(^(id request){
-  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);t.cancelGo=[GSEmbeddedRuntimeSnapshot()[@"foreground"]boolValue];t.cancelled=YES;
+  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);t.cancelGo=GSUploadHostForeground();t.cancelled=YES;
   if(t.localID)@synchronized(GSLock){[GSReconciling removeObject:t.localID];}
   // Background cancellation preserves the Go job for foreground resumption.
   if(t.jobID&&t.cancelGo)dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{GSRequest(@{@"op":@"cancel",@"id":t.jobID},nil);});

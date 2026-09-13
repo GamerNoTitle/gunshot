@@ -47,6 +47,8 @@ Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` from GitHub
 
 Opening **Google Photos** automatically connects the account already signed into the app. No token paste or visit to GoToHP settings is required. Use **Profile menu → GoToHP settings** to change options or retry with **Reconnect**. Jailbreak packages do not add an iOS Settings entry or require PreferenceLoader. Upload from this page, the Apple Photos GoToHP button or a supported **Upload with GoToHP** share action.
 
+**Route manual and automatic backups through GoToHP** is also available on jailbreak builds, including the audited 7.20.2 APIs. Enable it once in GoToHP settings and confirm the destination; native backup buttons then enqueue silently, and automatic backup works when Google Photos backup is on. After a committed upload, the app requests its own server sync without opening settings or restarting. [Routing and completion details](docs/analysis/backup-routing.md).
+
 Keep Google Photos open until media reaches the queue. The daemon can continue using its in-memory authorization after the app closes. Native authorization is refreshed by Google Photos while it runs; the daemon retains each bearer for at most five minutes. When authorization is unavailable or the daemon restarts, pending jobs wait for Google Photos to reopen and refresh it without consuming retries. This does not provide indefinite authentication refresh while the host is closed. [Authentication details](docs/analysis/native-account.md).
 
 ## Quality and queue

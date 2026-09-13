@@ -121,5 +121,6 @@
   "Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged.": "Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged.",
   "GoToHP daemon connection failed.": "GoToHP daemon connection failed.",
   "Queued uploads continue while authorization is available. Reopen Google Photos to refresh authorization when needed.": "Queued uploads continue while authorization is available. Reopen Google Photos to refresh authorization when needed.",
-  "Open Google Photos and reconnect to refresh authorization.": "Open Google Photos and reconnect to refresh authorization."
+  "Open Google Photos and reconnect to refresh authorization.": "Open Google Photos and reconnect to refresh authorization.",
+  "Enable Google Photos backup for automatic uploads. GoToHP controls the quality. Keep the app open until the originals are queued; the daemon then uploads while authorization is available.": "Enable Google Photos backup for automatic uploads. GoToHP controls the quality. Keep the app open until the originals are queued; the daemon then uploads while authorization is available."
 }

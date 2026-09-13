@@ -11,12 +11,18 @@ else:
 assert debs, 'no packages'
 deb=max(debs,key=lambda p:p.stat().st_mtime)
 prefix='var/jb/' if scheme=='rootless' else ''
+def verify_backup_integration(binary):
+    # Prevent packaging a build with the original jailed-only source omissions.
+    symbols=subprocess.check_output(['nm','-gU',str(binary)],text=True)
+    for function in ('GSStartBackupIntegration','GSInstallBackupRequests','GSInstallPhotosIntegration','GSSetUploadHostForeground','GSUploadMonitorSnapshot'):
+        assert '_'+function in symbols, f'{binary}: missing {function}'
 with tempfile.TemporaryDirectory() as d:
     subprocess.run(['dpkg-deb','-x',str(deb),d],check=True)
     if scheme=='jailed':
         r=Path(d)
         binary=r/'Library/MobileSubstrate/DynamicLibraries/GunshotJailed.dylib'
         assert binary.is_file()
+        verify_backup_integration(binary)
         assert binary.read_bytes()==Path('packages/jailed/GunshotJailed.dylib').read_bytes()
         assert sorted(str(p.relative_to(r)) for p in r.rglob('*') if p.is_file())==[
             'Library/MobileSubstrate/DynamicLibraries/GunshotJailed.dylib',
@@ -55,6 +61,7 @@ with tempfile.TemporaryDirectory() as d:
     # The crashing legacy RocketBootstrap client must not be linked into apps.
     # Only the daemon uses RocketBootstrap to unlock its registered service.
     for p in ['Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib']:
+        verify_backup_integration(r/p)
         linked=subprocess.check_output(['otool','-L',str(r/p)],text=True)
         assert 'rocketbootstrap' not in linked.lower(), linked
         symbols=subprocess.check_output(['nm','-u',str(r/p)],text=True)

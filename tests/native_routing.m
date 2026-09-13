@@ -41,11 +41,9 @@ static NSString *lastAccount;
 @end
 // A future reintroduction of the old presenter fails this test.
 void GSPresentRoutedAssets(NSArray<PHAsset *> *assets,NSString *account){assert(!"backup presented GoToHP UI");}
-#if GS_JAILED
 void GSInstallBackupRequests(void){}
 BOOL GSBackupRequestsAvailable(void){return NO;} // Exercise the compatibility path.
 NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"destination@example.com"};}
-#endif
 NSDictionary *GSRequest(NSDictionary *request,NSError **error){
  if([request[@"op"]isEqual:@"accounts"])return @{@"selected":selected};
  if([request[@"op"]isEqual:@"options"])return @{@"quality":@"original"};

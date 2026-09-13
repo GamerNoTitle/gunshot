@@ -108,6 +108,15 @@ jobs:
           .build/native-account-test
           clang -fobjc-arc -framework Foundation -Itests/menu-shims -Itests/native-shims UI/GSAccountMenu.m tests/account_menu.m -o .build/account-menu-test
           .build/account-menu-test
+      - name: Jailbreak backup routing and shared completion monitor
+        if: matrix.scheme == 'rootless'
+        run: |
+          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/daemon-backup-test
+          .build/daemon-backup-test
+          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/native-shims UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/daemon-backup-legacy-test
+          .build/daemon-backup-legacy-test
+          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSUploadMonitor.m UI/GSPhotosIntegration.m tests/upload_monitor.m -o .build/upload-monitor-test
+          .build/upload-monitor-test
       - name: Google Photos 7.20.2 native contracts
         if: matrix.scheme == 'jailed'
         run: |

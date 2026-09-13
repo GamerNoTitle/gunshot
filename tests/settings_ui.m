@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #import "../UI/GSPanel.h"
 #import "../UI/GSAccountConnection.h"
+#import "../UI/GSUploadMonitor.h"
 #import "../UI/GSNativeRouting.h"
 #import "../UI/GSUploadDiagnostics.h"
 #import "../UI/GSExporter.h"
@@ -32,6 +33,8 @@ static NSUInteger NativeRefreshes;
 void GSRefreshNativeLibrary(void){dispatch_async(dispatch_get_main_queue(),^{NativeRefreshes++;});}
 NSDictionary *GSPhotosIntegrationSnapshot(void){return @{};}
 NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"test@example.com",@"identifier":@"fixture"};}
+BOOL GSNativeAccountMatches(id identifier){return [identifier isEqual:@"fixture"];}
+void GSInstallPhotosIntegration(void){}
 void GSInstallNativeAccount(void){}
 char *GSNativeBearer(const char *identifier){return NULL;}
 char *GSFixtureRequest(char *json,char *role){
@@ -134,6 +137,7 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:30];
  // Authenticate at app activation, before any GoToHP settings are presented.
  GSStartAccountConnection();
+ GSStartBackupIntegration();
  Await(^BOOL{return [GSAccountConnectionSnapshot()[@"state"]isEqual:@"connected"];},^{
  if(root.presentedViewController||atomic_load(&FixtureNativeConnections)!=1){Finish(NO,@"launch authorization required UI or connected more than once");return;}
  // A detached delegate controller must resolve to the active scene's root.
@@ -183,7 +187,10 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
       Capture(self.window,@"settings-dark.png");
       [root dismissViewControllerAnimated:NO completion:^{
        GSPresentSettings(nil);
-       Await(^BOOL{return Panel(root).viewIfLoaded.window!=nil&&NativeRefreshes>0&&GSEmbeddedRuntimeSnapshot()[@"uploadSummary"]!=nil;},^{Finish(YES,@"detached, nested, repeated and nil-host presentation; stationary polling and changed-snapshot anchor retained; settings rendered; real jailed runtime online, completion observer active and authorization snapshot nonblocking");},deadline);
+       Await(^BOOL{return Panel(root).viewIfLoaded.window!=nil&&[GSUploadMonitorSnapshot()[@"reachable"]boolValue]&&GSEmbeddedRuntimeSnapshot()[@"uploadSummary"]!=nil;},^{
+        // An empty queue has revision zero and must not manufacture completion.
+        if(NativeRefreshes){Finish(NO,@"empty queue incorrectly announced completion");return;}
+        Finish(YES,@"detached, nested, repeated and nil-host presentation; stationary polling and changed-snapshot anchor retained; settings rendered; real jailed runtime online, launch completion observer active and authorization snapshot nonblocking");},deadline);
       }];
      });
     },deadline);

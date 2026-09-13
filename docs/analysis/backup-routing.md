@@ -1,4 +1,4 @@
-# Google Photos 7.92.0 の手動・自動バックアップ連携
+# Google Photos の手動・自動バックアップ連携（jailed / jailbreak）
 
 ## 実機診断と変更理由
 
@@ -7,7 +7,7 @@ GMUUploadMediaRequest.uploadFetcherDidCompleteWithData:error: → native complet
 が観測されました。旧フックは PHSBackupActionBehaviorImpl / PHSActionsGridModel
 の backupLocalAssets: だけで、別の手動操作と自動バックアップを捕まえていません。
 
-jailed ではアプリ起動時に GMUAssetUploadRequest.start と
+jailed / rootless / rootful ともアプリ起動時に GMUAssetUploadRequest.start と
 GMULivePhotoSingleUploadRequest.start を捕まえます。両者の asset は、7.92.0 の
 ivar メタデータで PHAsset と確認済みです。credentials は
 GMUUploadRequestCredentials → PHSBaseWithAccountID.accountID を通して、現在の
@@ -41,7 +41,7 @@ Go 側の成功と純正側の再照合成功は診断で別々に数えます�
   ものではないので、切替後にアプリを起動し直して検証する。
 - jailed / LiveContainer ではアプリが停止・終了すると独立 daemon としては
   動作しない。Google Photos を前面で開くと永続キューを再開する。
-- rootful/rootless は従来の手動 UI 連携を維持。今回の共通要求置換は jailed 対象。
+- rootful/rootless も同じ共通要求置換を使用する。原本がキューへ渡るまでアプリを開く。その後の送信は daemon が担当し、認証が利用できる間はホスト終了後も続行する。
 
 ## オリジナル画質
 
@@ -72,7 +72,7 @@ reconcileFailed / nativePayloadBlocked / accountMismatch / failed / unsupported
 に upstream 2 実装・enum・iOS の表示判定を記録しています。
 
 旧 backupLocalAssets: フックは GoToHP 画面へ直接移譲して共通要求を迂回し、
-診断 4 の events / backupRouting 件数が空になっていました。jailed で共通要求
+診断 4 の events / backupRouting 件数が空になっていました。両方式で共通要求
 フックが利用できる場合は純正 UI の要求作成を通し、その要求で GoToHP へ移譲します。
 これにより純正の delegate と完了時の fingerprint 再照合が維持されます。
 
@@ -84,10 +84,10 @@ GoToHP 単独のアップロードを含め、永続化された完了 revision 
 
 ## 画面なしの手動操作
 
-旧互換経路（共通要求フックが使えない jailed と rootful/rootless の手動 UI）も、
+旧互換経路（共通要求フックが使えない場合の手動 UI）も、
 GoToHP 画面を生成する処理を廃止しました。PhotoKit の原本を書き出し、保存済みの
 アカウント・画質で永続キューへ直接追加します。ファイル処理は専用の直列キューで
-行い、画面を塞ぎません。通常の jailed 共通要求では純正の進捗・完了経路を維持します。
+行い、画面を塞ぎません。通常の共通要求では純正の進捗・完了経路を維持します。
 
 アカウント不一致、未対応/ロック済み写真、書出し失敗は純正送信に切り替えません。
 取込前の失敗は GoToHP 設定画面の状態と診断 manualRouting.lastError に表示し、
@@ -101,3 +101,37 @@ failed は互換経路の累計で、個人情報や原本の内容を含みま�
 アカウント不一致・二重 start・キャンセル・原本の画質指定・Go 完了後の再照合・
 再照合時の native payload ブロックを確認します。実 Google サーバーでの完了、
 HEIC / MOV / Live Photo のサーバー再照合と画質表示は端末での確認が必要です。
+
+## 診断 7：7.20.2 jailbreak の欠落と修正
+
+診断 7(1) は `appVersion=7.20.2`、IPC 接続成功、native authorization の
+`refreshed` を示しています。一方、手動取込の件数は 0、純正の
+`GMUAssetUploadRequest.start → startFetcher → uploadFetcherDidCompleteWithData:error:`
+が観測され、共通要求の `backupRouting` と `photosIntegration` 自体がありません。
+PR #8/#9 の処理が jailed のソース一覧と起動経路だけに入り、jailbreak には
+組み込まれていなかったことと一致します。
+
+rootless/rootful にも `GSBackupRequests` と `GSPhotosIntegration` を組み込み、
+起動時の `GSStartBackupIntegration` を両方式で共有します。新しいバージョン
+制限は設けず、7.20.2 の数値 errorCode と 7.92.0 の NSError completion を
+クラス・selector・ABI で自動選択します。[両 IPA の監査](google-photos-7.20.2.md)。
+
+- 共通要求フックがある場合、手動 UI は純正スケジューラーを通し、GoToHP の
+  設定画面を生成しません。自動スケジューラーも同じ start で移譲します。
+- jailbreak の PhotoKit 取込は daemon の online / Wi-Fi / charging / paused を
+  読み、前景で条件を満たしてから実行します。原本書出し後もアカウントを再照合します。
+  条件の変更権限は daemon のままです。
+- native request がバックグラウンド移行でキャンセルされても、取り込み済みの
+  daemon ジョブは維持します。前景でのキャンセルは Go ジョブにも伝えます。
+- 共通の `GSUploadMonitor` は前景で約 3 秒ごとに永続 completionRevision を
+  監視します。単独の GoToHP アップロードも対象です。新しい完了を検知すると
+  現在のアカウントの純正 fetchData を要求します（約 1 秒の集約待ち）。
+- 設定画面を開かず起動直後から監視し、背景での完了も前景復帰で読み直します。
+  オフライン・IPC 失敗・別アカウントの古い応答で revision を消費しません。
+  revision 0 を完了と扱わず、同じ前景セッションの同じ revision は集約します。
+- 診断は両方式で backupRouting / photosIntegration / completionMonitor を出力。
+  uploadSummary.conditions は状態の bool 値だけで、アカウントや token は含みません。
+
+純正の fingerprint 再照合と fetchData が実際のバックアップ表示を更新します。
+GoToHP の completed だけで純正の成功フラグを書き換えません。ネットワークや
+サーバー反映に時間がかかる場合があり、実端末での表示更新時間は別途確認が必要です。

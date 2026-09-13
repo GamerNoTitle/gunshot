@@ -3,10 +3,8 @@
 #import "GSNativeRouting.h"
 #import "GSExporter.h"
 #import "../Shared/IPCProtocol.h"
-#if GS_JAILED
 #import "GSBackupRequests.h"
 #import "GSNativeAccount.h"
-#endif
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -25,12 +23,12 @@ static void GSImportResult(NSString *error,NSUInteger queued){
 }
 NSDictionary *GSNativeRoutingSnapshot(void){GSInitializeImport();@synchronized(GSImportLock){NSMutableDictionary *s=[GSImportStatus mutableCopy];s[@"presentation"]=@"silent";return s;}}
 BOOL GSIsGooglePhotos(void){return [[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqualToString:@"GooglePhotos"];}
-BOOL GSNativeRoutingAvailable(void){return GSInstalled;}
-BOOL GSNativeRoutingEnabled(void){return GSInstalled&&[NSUserDefaults.standardUserDefaults boolForKey:GSEnabledKey];}
+BOOL GSNativeRoutingAvailable(void){return GSInstalled||GSBackupRequestsAvailable();}
+BOOL GSNativeRoutingEnabled(void){return GSNativeRoutingAvailable()&&[NSUserDefaults.standardUserDefaults boolForKey:GSEnabledKey];}
 NSString *GSNativeRoutingAccount(void){return [NSUserDefaults.standardUserDefaults stringForKey:GSAccountKey];}
 void GSSetNativeRouting(BOOL enabled, NSString *account){
  [NSUserDefaults.standardUserDefaults setObject:account?:@"" forKey:GSAccountKey];
- [NSUserDefaults.standardUserDefaults setBool:enabled&&GSInstalled forKey:GSEnabledKey];
+ [NSUserDefaults.standardUserDefaults setBool:enabled&&GSNativeRoutingAvailable() forKey:GSEnabledKey];
 }
 static void GSRoute(id localAssets){
  NSMutableArray *assets=[NSMutableArray array];BOOL valid=[localAssets isKindOfClass:NSArray.class]||[localAssets isKindOfClass:NSSet.class];
@@ -49,9 +47,7 @@ static void GSRoute(id localAssets){
  if(!valid||!assets.count){GSImportResult(@"The selected photos could not be retrieved.",0);return;}
  NSString *account=[GSNativeRoutingAccount()copy];NSArray *selection=[assets copy];
  dispatch_async(dispatch_get_main_queue(),^{
-#if GS_JAILED
   if(![account isEqual:GSNativeAccountSummary()[@"email"]]){GSImportResult(@"The signed-in account does not match the upload destination.",0);return;}
-#endif
   dispatch_async(GSImportQueue,^{@autoreleasepool{
    NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);
    if(!account.length||![accounts[@"selected"]isEqual:account]){GSImportResult(@"The destination has changed. Check the backup integration settings.",0);return;}
@@ -72,23 +68,17 @@ static void GSRoute(id localAssets){
 }
 static void GSBackup(id object,SEL selector,id assets){
  if(!GSNativeRoutingEnabled()){GSBackupOriginal(object,selector,assets);return;}
-#if GS_JAILED
  // Preserve the native scheduler; the shared request hook handles the transfer.
  if(GSBackupRequestsAvailable()){GSBackupOriginal(object,selector,assets);return;}
-#endif
  GSRoute(assets);
 }
 static void GSGridBackup(id object,SEL selector,id assets){
  if(!GSNativeRoutingEnabled()){GSGridBackupOriginal(object,selector,assets);return;}
-#if GS_JAILED
  if(GSBackupRequestsAvailable()){GSGridBackupOriginal(object,selector,assets);return;}
-#endif
  GSRoute(assets);
 }
 void GSInstallNativeRouting(void){
-#if GS_JAILED
  GSInstallBackupRequests();
-#endif
  // Called on the main thread when installing the app's GoToHP launcher.
  if(GSInstalled||!GSIsGooglePhotos()||!GSPhotosHostSupported())return;
  Class behavior=NSClassFromString(@"PHSBackupActionBehaviorImpl");
