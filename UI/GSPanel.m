@@ -2,6 +2,7 @@
 #import "GSPanel.h"
 #import "GSExporter.h"
 #import "GSNativeAccount.h"
+#import "GSAccountConnection.h"
 #if !GS_JAILED
 #import "GSNativeRelay.h"
 #endif
@@ -62,7 +63,6 @@
  self.tableView.backgroundColor=UIColor.systemGroupedBackgroundColor;
  self.tableView.tintColor=[UIColor colorWithRed:0.10 green:0.45 blue:0.91 alpha:1];
  self.navigationController.navigationBar.tintColor=self.tableView.tintColor;
- if(GSIsGooglePhotos()&&GSNativeAccountSummary()){[self connectNativeAccount];return;}
  [self refresh];
 }
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];[self updateNavigationLabels];[self reloadTablePreservingPosition];}
@@ -305,6 +305,7 @@
  NSMutableDictionary *snapshot=[GSUploadDiagnosticsSnapshot() mutableCopy];
  snapshot[@"manualRouting"]=GSNativeRoutingSnapshot();
  snapshot[@"unlimitedStorage"]=GSUnlimitedStorageSnapshot();
+ snapshot[@"accountConnection"]=GSAccountConnectionSnapshot();
 #if !GS_JAILED
  snapshot[@"ipc"]=GSIPCDiagnosticsSnapshot();
  snapshot[@"nativeAuthentication"]=GSNativeRelaySnapshot();

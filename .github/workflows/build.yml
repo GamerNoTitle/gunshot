@@ -73,10 +73,14 @@ jobs:
       - name: Jailbreak native account relay
         if: matrix.scheme == 'rootless'
         run: |
-          clang -fobjc-arc -DGS_TEST_DAEMON_RELAY=1 -framework Foundation UI/GSNativeAccount.m UI/GSNativeRelay.m tests/native_account.m -o .build/native-relay-test
+          clang -fobjc-arc -DGS_TEST_DAEMON_RELAY=1 -DGS_TEST_AUTOCONNECT=1 -framework Foundation UI/GSNativeAccount.m UI/GSNativeRelay.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-relay-test
           .build/native-relay-test
-          clang -fobjc-arc -DGS_TEST_DAEMON_RELAY=1 -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m UI/GSNativeRelay.m tests/native_account.m -o .build/native-relay-legacy-test
+          clang -fobjc-arc -DGS_TEST_DAEMON_RELAY=1 -DGS_TEST_AUTOCONNECT=1 -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m UI/GSNativeRelay.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-relay-legacy-test
           .build/native-relay-legacy-test
+          clang -fobjc-arc -DGS_JAILED=1 -DGS_TEST_AUTOCONNECT=1 -framework Foundation UI/GSNativeAccount.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-autoconnect-jailed-test
+          .build/native-autoconnect-jailed-test
+          clang -fobjc-arc -DGS_JAILED=1 -DGS_TEST_AUTOCONNECT=1 -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-autoconnect-jailed-legacy-test
+          .build/native-autoconnect-jailed-legacy-test
       - name: Native routing contract
         if: matrix.scheme == 'jailed'
         run: |

@@ -27,7 +27,7 @@
 
 1. `PHSAccountManagerImpl.viewingAccount` の戻り値を変えず、既存 manager を weak 参照する。
 2. `PHSAccount._ssoIdentity` の型を検証し、`hasValidAuth`、`userID`、`userEmail` から現在のアカウントのメタデータを取得する。
-3. Google Photos内のGoToHPを開くと `account_native` でこのアカウントを接続する。入力欄にトークンを貼り付ける必要はない。
+3. Google Photosを起動してログイン情報が利用可能になると、jailed / jailbreakとも `account_native` でこのアカウントを自動接続する。GoToHP画面を開く必要はない。入力欄にトークンを貼り付ける必要はない。
 4. Go core の `Api.BearerToken` は、native binding に対して C ABI provider を呼ぶ。
 5. `photosSSOService.fetcherAuthorizerForAccountID:scopes:` から `photos.native` scope の既存 SSO authorizer を取得し、`authorizeRequest:completionHandler:` に Google Photos の HTTPS URL のリクエストを渡す。このリクエスト自体は送信しない。
 6. native authorizer が更新した Authorization ヘッダーから bearer を受け取り、gotohp の API 呼び出しに使う。アカウント接続時は既存のリモート hash lookup により API が受け付けることを検証してから binding を保存する。
@@ -100,7 +100,7 @@ C ABI テストでも数値の拒否、JSON boolean の受理と online=true の
 
 診断6では `lookup.direct=0`、`request.send=0`、`request.receive=0`、`stage=connected`。ユーザーもdaemon接続の成功を確認した。残っていたのは認証取得UIの `GS_JAILED` 制限と、daemonにSSO providerがないことだった。
 
-- Google Photos内の設定を開くと、旧版/新版で利用可能なSSO APIからログイン中アカウントの認証を取得する。接続・更新操作でトークン入力を求めない。
+- Google Photos起動時に、旧版/新版で利用可能なSSO APIからログイン中アカウントの認証を自動取得する。接続・更新操作でトークン入力を求めない。
 - `account_native` で短期bearerをdaemonへ送り、Photosのhash lookupで検証してからemail/native IDを保存する。更新の `native_bearer` は既存bindingとIDが一致する場合のみ受理する。これらと消去操作は監査済みGoogle Photosプロセスだけに許可する。
 - SSO取得はworkerから開始し、native APIとcallbackはmainで動かす。接続と更新を直列化し、IDの一致を取得前後で検証する。SSO取得失敗・サインアウトなどではリレーを消去し、別アカウントのbearerを流用しない。
 - Google Photosの前面復帰と、実行中の60秒タイマーで更新する。daemon側はbearerをメモリ内に最大5分だけ保持する。5分は保持上限であり、Google側の有効期限を保証する値ではない。Googleによる期限切れ・拒否は別途起こり得る。
@@ -109,3 +109,9 @@ C ABI テストでも数値の拒否、JSON boolean の受理と online=true の
 - iOSの「設定」への登録とPreferences bundleのビルド、PreferenceLoader依存を削除。設定はGoogle Photos内で行う。libSandyの許可対象とdaemonの監査判定からSettingsも外す。
 
 検証対象: 本物のnative account adapterを使った新版/旧版SSO fixtureと認証リレー、接続拒否、取得中のアカウント変更、更新の重複抑止。Go側はローカルTLS endpointによる接続検証、権限境界、非保存、期限・再起動後の待機/再開を確認する。実Googleアカウントを使うiPhone上の認証・アップロードは実機確認が必要。
+
+### 起動時の自動接続（jailed / jailbreak共通）
+
+`GSAccountConnection` を両方の起動フックから開始する。SSO manager/identityがまだ利用できなければ2秒のmetadataポーリングで待つ。ログイン前には認証要求を送らず、identityが利用可能になるとworkerから `account_native` を実行する。成功後の通常ポーリングは認証RPCを送らない。失敗後は60秒間隔、前面復帰では再確認し、5秒以内の重複通知を抑止する。サインアウト・identity変更も検出し、古い取得結果を新しいアカウントの接続成功として扱わない。
+
+GoToHP画面の `viewDidLoad` から自動接続を開始する処理は削除。「再接続」は明示的な再試行として残す。設定画面を開かないnative fixtureをjailed/jailbreak × 新旧APIで実行する。UIKit fixtureも設定を提示する前に自動接続が完了していることを確認する。診断の `accountConnection` は状態だけで、アカウントIDやトークンを含めない。

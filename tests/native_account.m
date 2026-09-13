@@ -4,19 +4,31 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#if GS_TEST_DAEMON_RELAY
+#if GS_TEST_DAEMON_RELAY || GS_TEST_AUTOCONNECT
 #import "../UI/GSNativeRelay.h"
+#import "../UI/GSAccountConnection.h"
 static NSUInteger relayConnections,relayRefreshes,relayClears;
 static BOOL relayReject;
 NSDictionary *GSRequest(NSDictionary *request,NSError **error){
  assert(!NSThread.isMainThread);
+#if GS_JAILED
+ if([request[@"op"]isEqual:@"account_native"]){
+  char *token=GSNativeBearer([request[@"nativeID"]UTF8String]);
+  if(!token){if(error)*error=[NSError errorWithDomain:@"fixture" code:1 userInfo:nil];return nil;}
+  assert(!strcmp(token,"test-native-access-token"));free(token);
+ }
+#endif
  __block NSDictionary *result=nil;
  dispatch_sync(dispatch_get_main_queue(),^{
   NSString *op=request[@"op"];
   if([op isEqual:@"accounts"]){result=@{@"selected":@"test@example.com",@"nativeAuthorization":@"waiting"};return;}
   if([op isEqual:@"native_bearer_clear"]){relayClears++;result=@{};return;}
   assert([op isEqual:@"account_native"]||[op isEqual:@"native_bearer"]);
+#if GS_JAILED
+  assert(request[@"secret"]==nil);
+#else
   assert([request[@"secret"]isEqual:@"test-native-access-token"]);
+#endif
   assert([request[@"nativeID"]isEqual:@"123"]&&[request[@"account"]isEqual:@"test@example.com"]);
   if([op isEqual:@"account_native"])relayConnections++;else relayRefreshes++;
   if(!relayReject)result=@{};
@@ -29,6 +41,7 @@ static void AwaitRelay(BOOL(^ready)(void)){
  while(!ready()&&deadline.timeIntervalSinceNow>0)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
  assert(ready());
 }
+#if GS_TEST_DAEMON_RELAY
 static BOOL ConnectRelay(void){
  NSDictionary *account=GSNativeAccountSummary();__block BOOL done=NO,success=NO;
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
@@ -37,6 +50,7 @@ static BOOL ConnectRelay(void){
  });
  AwaitRelay(^BOOL{return done;});return success;
 }
+#endif
 #endif
 @interface GSFixtureBundle : NSObject
 @end
@@ -134,6 +148,24 @@ int main(void){@autoreleasepool{
  beforeCompletion=^{manager.viewingAccount=nil;};
  assert(!ConnectRelay());assert(relayConnections==previous&&relayClears>0);
  assert([GSNativeRelaySnapshot()[@"authorization"]isEqual:@"waiting"]);
+#endif
+#if GS_TEST_AUTOCONNECT
+ // Start before the native manager has a signed-in identity. No settings view
+ // or account menu is ever created by this fixture.
+ beforeCompletion=nil;manager.viewingAccount=nil;
+ GSStartAccountConnection();
+ NSUInteger count=relayConnections;
+ assert([GSAccountConnectionSnapshot()[@"state"]isEqual:@"waiting_for_account"]);
+ manager.viewingAccount=account;
+ AwaitRelay(^BOOL{return [GSAccountConnectionSnapshot()[@"state"]isEqual:@"connected"];});
+ assert(relayConnections==count+1);
+ GSStartAccountConnection();GSResumeAccountConnection();GSResumeAccountConnection();
+ assert(relayConnections==count+1); // No duplicate reconnect from launch events.
+ manager.viewingAccount=nil;
+ AwaitRelay(^BOOL{return [GSAccountConnectionSnapshot()[@"state"]isEqual:@"waiting_for_account"];});
+ manager.viewingAccount=account;
+ AwaitRelay(^BOOL{return [GSAccountConnectionSnapshot()[@"state"]isEqual:@"connected"];});
+ assert(relayConnections==count+2);
 #endif
  return 0;
 }}

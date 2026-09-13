@@ -1,6 +1,7 @@
 #import "../Shared/GSLocalization.h"
 #import <UIKit/UIKit.h>
 #import "../UI/GSPanel.h"
+#import "../UI/GSAccountConnection.h"
 #import "../UI/GSNativeRouting.h"
 #import "../UI/GSUploadDiagnostics.h"
 #import "../UI/GSExporter.h"
@@ -14,6 +15,7 @@
 
 static BOOL SnapshotDuringAuthorization;
 static atomic_ulong FixtureAccountReads;
+static atomic_ulong FixtureNativeConnections;
 static atomic_int FixtureConcurrent=2;
 @interface GSPanel (GSFixturePolling)
 - (void)refresh;
@@ -30,6 +32,7 @@ static NSUInteger NativeRefreshes;
 void GSRefreshNativeLibrary(void){dispatch_async(dispatch_get_main_queue(),^{NativeRefreshes++;});}
 NSDictionary *GSPhotosIntegrationSnapshot(void){return @{};}
 NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"test@example.com",@"identifier":@"fixture"};}
+void GSInstallNativeAccount(void){}
 char *GSNativeBearer(const char *identifier){return NULL;}
 char *GSFixtureRequest(char *json,char *role){
  NSDictionary *request=[NSJSONSerialization JSONObjectWithData:[[NSString stringWithUTF8String:json]dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
@@ -38,6 +41,7 @@ char *GSFixtureRequest(char *json,char *role){
  // all-fake service accepted integer 1/0 via boolValue and missed this bug.
  if([op isEqual:@"conditions"]||[op isEqual:@"list"]||[op isEqual:@"upload_summary"])return GunshotRequest(json,role);
  if([op isEqual:@"account_native"]){
+  atomic_fetch_add(&FixtureNativeConnections,1);
   NSLog(@"Fixture: authorizing");
   dispatch_sync(dispatch_get_main_queue(),^{
    NSDictionary *snapshot=GSEmbeddedRuntimeSnapshot();
@@ -128,6 +132,10 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
  GSSetLanguage(@"ja");NSLog(@"Fixture: language initialized");
  UIViewController *root=self.window.rootViewController;
  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:30];
+ // Authenticate at app activation, before any GoToHP settings are presented.
+ GSStartAccountConnection();
+ Await(^BOOL{return [GSAccountConnectionSnapshot()[@"state"]isEqual:@"connected"];},^{
+ if(root.presentedViewController||atomic_load(&FixtureNativeConnections)!=1){Finish(NO,@"launch authorization required UI or connected more than once");return;}
  // A detached delegate controller must resolve to the active scene's root.
  GSPresentSettings([UIViewController new]);
  Await(^BOOL{GSPanel *panel=Panel(root);return panel.settingsMode&&panel.viewIfLoaded.window&&[[panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].detailTextLabel.text isEqual:@"認証確認済み · アップロード可能"];},^{
@@ -182,6 +190,7 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
    }];
   }];
   });
+ },deadline);
  },deadline);
 }
 @end
