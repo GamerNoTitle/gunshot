@@ -30,11 +30,11 @@ The main image yielded 6,780 classes / 64,988 instance methods; ModuleFramework 
 
 ### Backup handoff and completion
 
-The same explicit action and native request families provide manual/automatic handoff. In jailed mode the native request waits for the Go queue and then runs its original fingerprint/server lookup. Success is only observed from native reconciliation; the adapter does not manufacture a successful native media item or write native backup flags.
+The same explicit action and native request families provide manual/automatic handoff. In both jailed and jailbreak modes the native request waits for the Go queue and then runs its original fingerprint/server lookup. Success is only observed from native reconciliation; the adapter does not manufacture a successful native media item or write native backup flags.
 
 The legacy base completion at `0x10c3318` constructs `NSError` in `com.google.photos.upload.error.asset` via `0x10ca478` on failure, forwarding the integer error code. The BOOL success argument controls success independently of that integer. Hook blocks and calls therefore use **NSInteger**, not an Objective-C object, for this version. Live Photo keeps its separate object-error callback. Diagnostics also use the correct signature and report the actual host version.
 
-7.20.2 has no audited 7.92.0 Swift `ScottyUploadServiceImpl` class. Its optional probes may be unmatched. The shared `GMUUploadRequest.startFetcher` and `GMUUploadMediaRequest.startCNDEUpload` payload guards remain active. Edited Live Photo data is handed to a native data-upload request in `startEditedBytesUploadWithData:isPhotoUpload:`; this audit does not establish complete locked-folder/edited-media coverage. See [coverage boundaries](../full-upload-replacement.md). As before, complete native request interception is a jailed feature; jailbreak builds retain the existing explicit-action/daemon behavior.
+7.20.2 has no audited 7.92.0 Swift `ScottyUploadServiceImpl` class. Its optional probes may be unmatched. The shared `GMUUploadRequest.startFetcher` and `GMUUploadMediaRequest.startCNDEUpload` payload guards remain active. Edited Live Photo data is handed to a native data-upload request in `startEditedBytesUploadWithData:isPhotoUpload:`; this audit does not establish complete locked-folder/edited-media coverage. See [coverage boundaries](../full-upload-replacement.md). Both builds install the common request hooks; jailbreak hands media to gotohpd through the existing authenticated import protocol. The shared completion monitor requests native library sync without a settings page. [Diagnostic 7 and the integration fix](backup-routing.md#診断-77202-jailbreak-の欠落と修正).
 
 ### Native unlimited display
 

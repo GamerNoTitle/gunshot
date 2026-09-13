@@ -57,4 +57,4 @@ Read-only inspection of the main app Info.plist:
 
 The initial integration used UIKit and public PhotoKit/PHPicker. Subsequent work added version/ABI-checked private manual-backup hooks and passive uploader diagnostics. The [application analysis index](analysis/index.md) links the complete extracted instance-method metadata, selected static call-path findings and unverified areas. No IPA executable or raw disassembly is distributed. Actual appearance and runtime compatibility still require device checks.
 
-Jailed builds replace the Mach client/daemon with an in-process adapter; see [jailed.md](jailed.md). Version-gated native manual-backup routing is documented in [native-routing.md](native-routing.md).
+Jailed builds replace the Mach client/daemon with an in-process adapter; see [jailed.md](jailed.md). Shared API-detected native manual/automatic backup routing and the host completion monitor are documented in [native-routing.md](native-routing.md).

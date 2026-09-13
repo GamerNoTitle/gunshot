@@ -16,5 +16,6 @@ func (e *Engine) uploadSummary() map[string]any {
 		}
 		modes[mode.name] = map[string]any{"model": mode.model, "storagePolicy": mode.policy, "uploadQuality": 1, "states": counts}
 	}
-	return map[string]any{"completionRevision": e.state.CompletionRevision, "defaultQuality": e.state.Options.Quality, "profiles": modes, "serverQualityVerified": false}
+	conditions := map[string]bool{"online": e.online, "wifi": e.wifi, "charging": e.charging, "paused": e.state.Options.Paused}
+	return map[string]any{"completionRevision": e.state.CompletionRevision, "defaultQuality": e.state.Options.Quality, "profiles": modes, "conditions": conditions, "serverQualityVerified": false}
 }

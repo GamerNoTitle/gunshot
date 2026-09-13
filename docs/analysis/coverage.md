@@ -5,7 +5,7 @@
 | App Info.plist | bundle / executable / version / minimum OS / Photos permission key 確認 |
 | 2 image の ObjC class / instance method | metadata 全件索引あり。存在確認のみの項目が大半 |
 | 手動 backup action | class / selector / encoding 確認、転送実装と mock test。実機未検証 |
-| 自動 backup / legacy / Scotty | entry と一部 completion を追跡、受動診断実装。全置換は未完成 |
+| 自動 backup / legacy / Scotty | 対応する共通要求を両方式で転送し純正の再照合を実行。任意の全経路の網羅は未確認 |
 | Native completion | 限定した 4 関数の selector call 追跡。完全な result schema 未確定 |
 | Live Photo | gotohp source と PhotoKit export を実装。native pairing/commit/再生は実機未検証 |
 | gotohp auth / API / quality | upstream source と projection を調査。実認証・quota は未検証 |

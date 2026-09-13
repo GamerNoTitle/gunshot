@@ -49,6 +49,8 @@ GitHub Actions の `gotohp-tweak-rootless` または `gotohp-tweak-rootful` の 
 
 **Google Photosを起動**すると、ログイン中アカウントへ自動接続します。トークンの貼り付けやGoToHP設定を開く操作は不要です。画質などの変更や失敗時の「再接続」は、**プロフィールメニュー → GoToHP の設定**から行えます。jailbreak版もiOSの「設定」には項目を追加せず、PreferenceLoaderも不要です。この設定画面、Apple PhotosのGoToHPボタン、対応する共有シートの **Upload with GoToHP** からアップロードできます。
 
+jailbreak版も、7.20.2を含む対応APIで**手動・自動バックアップを GoToHP へ送る**を利用できます。最初にGoToHP設定で有効化して送信先を確認すれば、純正ボタンから画面を開かずキューへ送ります。自動送信にはGoogle Photos本体のバックアップもオンにしてください。アップロード完了後は、設定画面を開いたり再起動したりせず、純正のサーバー同期で表示更新を要求します。[転送と完了処理の詳細](docs/analysis/backup-routing.md)。
+
 キューへの受け渡し完了まではGoogle Photosを開いてください。その後は、daemon内の認証が利用できる間、アプリを閉じても送信を続けます。認証の更新はGoogle Photos自身が行い、daemonでのトークン保持は最大5分です。認証がなくなった場合やdaemon再起動後は、Google Photosを開いて認証が更新されるまで、再試行回数を消費せず待機します。アプリ終了中に認証を無期限で更新できる仕組みではありません。[認証の詳細](docs/analysis/native-account.md)。
 
 ## 画質とキュー

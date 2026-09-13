@@ -1,45 +1,44 @@
-# 全アップロード置換の実装状況と次の実機確認
+# バックアップ転送の対応範囲と実機確認
 
-**全置換は未完成です。この変更は対応可否を確認する診断機能で、標準アップロードを GoToHP に切り替えません。** 手動 action の転送は従来どおり別設定です。
+**通常の手動・自動バックアップの共通要求は jailed / rootless / rootful とも
+GoToHP へ転送します。任意の全アップロード経路を網羅した保証はありません。**
+API の解析基準は 7.20.2 と 7.92.0。版番号ではなく機能ごとの ABI で判定します。
+[使い方](native-routing.md) / [解析と診断](analysis/backup-routing.md)。
 
-## 静的に確認できた境界
+| 経路 | 現在の扱い |
+| --- | --- |
+| GMUAssetUploadRequest.start | 手動・自動の PHAsset 原本を GoToHP の永続キューへ転送 |
+| GMULivePhotoSingleUploadRequest.start | 写真・pairedVideo を一組で転送し、純正のサーバー再照合で完了判定 |
+| 純正の完了 callback | 旧版の数値 errorCode / 新版の NSError を自動選択。成功結果を捏造しない |
+| GMUUploadRequest.startFetcher / startCNDEUpload | 転送有効時・再照合中の native payload fallback を停止 |
+| Swift Scotty / statelessUpload | 対応 ABI が存在する場合に payload fallback を停止。7.20.2 では該当 Swift class は未検出 |
+| GoToHP の設定から直接送信 | 共通の完了監視が純正 fetchData に表示更新を要求 |
+| locked folder / 編集専用 / 共有専用 / 既存 background URLSession | 全経路の移譲を検証できていない。通常の PHAsset バックアップと同等とは扱わない |
 
-提供された Google Photos 7.92.0 IPA の Objective-C metadata に、次の経路がありました。
+Go の completed / mediaKey は、純正のバックアップ成功そのものではありません。
+対応する要求では Go の完了後に元の fingerprint 照合を再開し、純正の delegate が
+サーバー結果を処理します。別途、前景の完了監視が現在のアカウントの差分同期を
+要求します。ネイティブ DB や成功フラグは書き換えません。
 
-| 層 | entry / completion | 全置換で必要なこと |
-| --- | --- | --- |
-| Asset request | GMUAssetUploadRequest.start | PHAsset と native request の関連付け、キャンセルと retry の同期 |
-| Live Photo | GMULivePhotoSingleUploadRequest.start | ペア単位の完了と内部モデルの受け渡し |
-| Swift Scotty | ScottyUploadServiceImpl.uploadWithAsset:… | foreground/background 経路、NSData/NSError completion の互換性 |
-| Stateless Scotty | statelessUploadWithAsset:… | 通常 request と異なる経路の網羅 |
-| Legacy fetcher | GMUUploadRequest.startFetcher | 新経路以外から native 送信が漏れないこと |
-| Native commit | didCompleteWithSuccess:resultantMediaItem:error: | 成功状態と実際の resultantMediaItem の整合 |
-| Locked folder | PHSLockedPhotoMediaUploadRequest / PHSLockedPhotoLivePhotoSingleUploadRequest | 保存先・暗号化・公開範囲を変えないこと |
+## 実機での確認
 
-gotohp の `parseCreateMediaItemsResponse` は、確認済みの mediaKey だけを Go 側へ返します。native `resultantMediaItem` の完全な互換オブジェクトは返しません。native 成功 callback に単に mediaKey や空オブジェクトを渡して成功を宣言する実装はありません。
+- 切替 OFF で標準の手動／自動バックアップが元の動作をする。
+- ON で単一・複数選択・自動バックアップが一度だけ GoToHP へ渡り、画面を開かない。
+- JPEG / HEIC / 動画 / Live Photo の実データ・画質・quota を別々に確認する。
+- GoToHP 直接送信と純正からの送信の両方で、設定を閉じたまま完了後に表示が更新される。
+- ネットワーク切断、一時停止、Wi-Fi 限定、充電限定で待機し、条件回復後に再開する。
+- account 切替、認証失効、PhotoKit 拒否、disk full、再照合失敗時に純正へ再送しない。
+- jailbreak では原本取込後のホスト終了でキューを保持し、再度開くと表示が同期される。
+  jailed は前景実行が必要で、閉じている間の継続は提供しない。
 
-Scotty のみに hook しても legacy/background reconnect を網羅した証明にはなりません。逆に native 送信を一括拒否すると、未対応経路の写真がアップロードされなくなります。この診断版ではいずれの変更もしていません。
+## 診断
 
-## 診断ビルドの使い方
+GoToHP 設定の **Upload diagnostics** を有効にし、標準操作を試して
+**Export diagnostics** を使います。`backupRouting` の intercepted / queued /
+nativeReconciled、`photosIntegration` の syncRequested、`completionMonitor` の
+syncSignals / uploadSummary を確認できます。
 
-rootless / rootful / jailed の同じビルドから使用できます。Google Photos **7.92.0** が対象です。
-
-1. **GoToHP → Settings** で **Route Google Photos backup action** を OFF にします。GoToHP 手動転送を有効にしたままでは標準経路を観測できません。
-2. **Upload compatibility diagnostics** を ON にします。ON にするごとにメモリ内の履歴をクリアします。プロセス再起動時は OFF です。
-3. 標準の手動バックアップと自動バックアップを、それぞれ小さいテスト画像で実行します。これは Google Photos 本来の送信であり、GoToHP の容量 policy は適用されません。写真・動画・Live Photo は別々に調べます。
-4. アプリを強制終了せず、**Export upload diagnostics** で JSON を Files に保存します。診断を OFF にしても取得済み履歴は export できます。
-5. JSON と、どの操作を試したか・成功/失敗・iOS/LiveContainer のバージョンを提供してください。token や credential の添付は不要です。
-
-記録はメモリ内の直近 256 件と累計イベント数です。binding 名、適合した ABI、result の Objective-C クラス名、failure の有無だけを含みます。写真、ファイル名、URL、HTTP header/body、account、token、mediaKey、NSError 本文は読み取りません。`description` も呼びません。export した JSON 以外の永続ログを作らず、外部送信もしません。
-
-診断は loader が GoToHP ボタンを設置した後の既知 entry を観測するもので、起動直後や任意の別経路を全て捕捉できる保証はありません。`bindings[].matched=false` は当該 method の ABI 不一致/未ロードを示します。成功イベントがゼロなら互換性が確認できたとは扱いません。
-
-## 残る実装と gate
-
-- native completion model の型・schema・サーバー結果への対応を確定する。
-- native Google account と GoToHP destination の一致を確認する。
-- upload request と GoToHP durable job の ID を関連付け、native cancel/retry/progress を同期する。
-- 既存 background URLSession、Scotty stateless、legacy、Live Photo、編集済みコンテンツ、共有、locked folder の各経路を対応または明示的に扱う。
-- native 送信が並走しないこと、成功していない asset を backed up と表示しないことを実機で検証する。
-
-現時点で iPhone / LiveContainer の実行環境は接続されていません。CI の mock tests とビルド成功だけでは、これらの gate を通過したとは判断できません。
+標準経路そのものを調べるときだけ転送を OFF にします。その場合は純正送信となり、
+GoToHP の画質 policy は適用されません。診断はトークン・写真・account ID・mediaKey・
+HTTP 本文を記録しません。CI は API fixture、Go queue、パッケージ構成を検証しますが、
+Google サーバーの再照合や端末での表示時間を証明するものではありません。

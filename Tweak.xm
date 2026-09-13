@@ -4,6 +4,7 @@
 #import "UI/GSNativeAccount.h"
 #import "UI/GSNativeRelay.h"
 #import "UI/GSAccountConnection.h"
+#import "UI/GSUploadMonitor.h"
 %hook UIWindow
 - (void)becomeKeyWindow {
  %orig;
@@ -25,6 +26,7 @@
   GSInstallNativeAccount();GSInstallAccountMenu();
   if(![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"])return;
   GSStartAccountConnection();
+  GSStartBackupIntegration();
   [NSTimer scheduledTimerWithTimeInterval:60 repeats:YES block:^(NSTimer *timer){GSRefreshDaemonAccount();}];
   [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note){GSResumeAccountConnection();}];
  });

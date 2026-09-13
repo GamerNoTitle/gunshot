@@ -9,23 +9,20 @@
 #import "GSNativeRouting.h"
 #import "GSUploadDiagnostics.h"
 #import "GSUnlimitedStorage.h"
-#if GS_JAILED
 #import "GSBackupRequests.h"
 #import "GSPhotosIntegration.h"
-#endif
+#import "GSUploadMonitor.h"
 #import "../Shared/IPCProtocol.h"
 #import <PhotosUI/PhotosUI.h>
 #import <objc/runtime.h>
-#if GS_JAILED
-#define GS_ACCOUNT_HELP GSL(@"Connect or refresh your account.")
 #define GS_BACKUP_TITLE GSL(@"Route manual and automatic backups through GoToHP")
+#define GS_ACCOUNT_HELP GSL(@"Connect or refresh your account.")
+#if GS_JAILED
 #define GS_BACKUP_HELP GSL(@"Enable Google Photos backup for automatic uploads. GoToHP controls the quality. Keep the app in the foreground.")
 #define GS_QUEUED_HELP GSL(@"Keep the app open while uploading. Pending uploads resume next time.")
 #define GS_AUTH_HELP GSL(@"Paste an EmbeddedSetup oauth_token or complete gotohp credential. Stored privately in this app, sent to Google, and hidden after saving.")
 #else
-#define GS_BACKUP_TITLE GSL(@"Route manual backups through GoToHP")
-#define GS_BACKUP_HELP GSL(@"Applies to the manual Back up now action.")
-#define GS_ACCOUNT_HELP GSL(@"Connect or refresh your account.")
+#define GS_BACKUP_HELP GSL(@"Enable Google Photos backup for automatic uploads. GoToHP controls the quality. Keep the app open until the originals are queued; the daemon then uploads while authorization is available.")
 #define GS_QUEUED_HELP GSL(@"Queued uploads continue while authorization is available. Reopen Google Photos to refresh authorization when needed.")
 #define GS_AUTH_HELP GSL(@"Paste an EmbeddedSetup oauth_token or complete gotohp credential. Sent only to gotohpd and Google, and hidden after saving.")
 #endif
@@ -306,14 +303,15 @@
  snapshot[@"manualRouting"]=GSNativeRoutingSnapshot();
  snapshot[@"unlimitedStorage"]=GSUnlimitedStorageSnapshot();
  snapshot[@"accountConnection"]=GSAccountConnectionSnapshot();
+ snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();
+ snapshot[@"photosIntegration"]=GSPhotosIntegrationSnapshot();
+ snapshot[@"completionMonitor"]=GSUploadMonitorSnapshot();
 #if !GS_JAILED
  snapshot[@"ipc"]=GSIPCDiagnosticsSnapshot();
  snapshot[@"nativeAuthentication"]=GSNativeRelaySnapshot();
 #endif
 #if GS_JAILED
  snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
- snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();
- snapshot[@"photosIntegration"]=GSPhotosIntegrationSnapshot();
 #endif
  NSData *json=[NSJSONSerialization dataWithJSONObject:snapshot options:NSJSONWritingPrettyPrinted error:nil];
  NSURL *file=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gotohp-upload-diagnostics.json"]];
@@ -323,11 +321,9 @@
  [self presentViewController:share animated:YES completion:nil];
 }
 - (void)toggleNativeRouting{
-#if GS_JAILED
- if(!GSBackupRequestsAvailable()){[self message:GSL(@"Backup integration is unavailable in this version. Choose photos from Uploads.")];return;}
-#endif
- if(!GSNativeRoutingAvailable()){[self message:GSL(@"Backup integration is unavailable in this version. Choose photos from Uploads.")];return;}
  if(GSNativeRoutingEnabled()){GSSetNativeRouting(NO,nil);[self reloadTablePreservingPosition];return;}
+ if(!GSBackupRequestsAvailable()){[self message:GSL(@"Backup integration is unavailable in this version. Choose photos from Uploads.")];return;}
+ if(!GSNativeRoutingAvailable()){[self message:GSL(@"Backup integration is unavailable in this version. Choose photos from Uploads.")];return;}
  NSString *account=self.accounts[@"selected"];
  if(!account.length){[self message:GS_ACCOUNT_HELP];return;}
  UIAlertController *a=[UIAlertController alertControllerWithTitle:GS_BACKUP_TITLE message:[NSString stringWithFormat:GSL(@"Destination: %@\n%@\nCheck failures and retries in the GoToHP queue. No native upload fallback."),account,GS_BACKUP_HELP] preferredStyle:UIAlertControllerStyleAlert];
