@@ -4,13 +4,48 @@
 
 Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`xob0t/gotohp` の Go upload core を再利用し、jailbreak 版は Google Photos / Apple Photos の入口と常駐 daemon を分離し、jailed 版はアプリ内で実行します。
 
-**開発版です。iPhone での起動・Google 認証・実アップロード・quota 判定は未検証です。** ビルド成功と実機動作は別です。添付された Google Photos 7.92.0 の Info.plist は minimum iOS **18.0** でした。iOS 15/16 の端末では対応する旧版 Google Photos が必要です。
+**開発版です。** Sideloadly 環境でのログイン後の起動・アップロード・無制限ストレージ表示について利用者から動作報告があります。すべての端末・署名方式・LiveContainer・画質や容量判定を検証済みという意味ではありません。ビルド成功と実機動作は別です。解析対象の Google Photos **7.92.0** の最低 iOS は **18.0** です。旧 iOS では対応する Google Photos が必要で、未対応バージョンではバージョン固有の連携は有効になりません。
 
-**追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos 内の **GoToHP → Settings** から設定できます。[手動・自動バックアップを GoToHP へ転送](docs/analysis/backup-routing.md)する設定は jailed / 7.92.0 限定・既定 OFF です。有効化後は純正の手動バックアップを押すだけで、GoToHP 画面を開かずに保存済みの画質・送信先で処理します。Google Photos の自動バックアップをオンにし、アプリを前面で開いて使用します。実機での再照合は検証中です。
+**追加モード:** [サイドロード / LiveContainer の導入と jailed ビルド](docs/jailed.md)。Google Photos のプロフィールメニュー内の **GoToHP の設定** から設定できます。[手動・自動バックアップを GoToHP へ転送](docs/analysis/backup-routing.md)する設定は jailed / 7.92.0 限定・既定 OFF です。有効化後は純正の手動バックアップを押すだけで、GoToHP 画面を開かずに保存済みの画質・送信先で処理します。Google Photos の自動バックアップをオンにし、アプリを前面で開いて使用します。実機での再照合は検証中です。
 
 [全アップロード置換の状況と診断手順](docs/full-upload-replacement.md)：全置換はまだ未完成です。7.92.0 の native uploader を観測する opt-in 診断・JSON export を追加しています。
 
 [Google Photos 7.92.0 アプリ解析結果・総合索引](docs/analysis/index.md)：全件 metadata 検索、解析済み upload 経路、根拠、未解析領域の入口です。
+
+## スクリーンショット
+
+Google Photos 7.92.0 の実機画面です。利用者提供の画像を掲載しています。アカウント情報の一部は画像内で伏せられています。
+
+<p>
+  <img src="docs/images/unlimited-storage.png" width="240" alt="Google Photos 純正の無制限ストレージ表示">
+  <img src="docs/images/profile-menu.png" width="240" alt="プロフィールメニュー内の GoToHP の設定">
+</p>
+<p>
+  <img src="docs/images/upload-settings.png" width="240" alt="ログイン中アカウントと Pixel 1 のオリジナル画質設定">
+  <img src="docs/images/backup-routing.png" width="240" alt="手動・自動バックアップの転送とキュー管理の設定">
+  <img src="docs/images/appearance-settings.png" width="240" alt="表示言語と無制限ストレージ表示の切り替え">
+</p>
+
+**無制限ストレージを表示**はデフォルト ON です。**GoToHP の設定 → 表示**で切り替えられます。純正カードの UI を再利用した表示変更であり、このスクリーンショットはアカウントの無制限特典や実際の容量不使用を証明するものではありません。
+
+## 免責事項 / Disclaimer
+
+本プロジェクトは Google・Apple とは無関係の非公式プロジェクトであり、両社の承認・サポートを受けていません。Google Photos などの名称・商標は各権利者に帰属します。
+
+本ソフトウェアは**現状のまま、無保証で提供**します。動作、データの保全、継続利用を保証しません。非公式 API・アプリの内部実装を使用するため、Google 側の変更やアプリ更新によってログイン・アップロード・互換性が失われる場合があり、アカウント制限の可能性もあります。オリジナル画質・容量不使用はリクエストする動作であり、結果を保証しません。「無制限ストレージ」の表示はアカウントの容量上限、契約、アップロード画質を変更しません。
+
+アカウント制限、データ損失、保存容量に伴う費用等のリスクを理解したうえで、自己責任で利用してください。元の写真・動画は別途バックアップしてください。このリポジトリでは Google Photos の IPA・APK、署名証明書、アカウント認証情報を配布しません。
+
+## 導入前の重要な注意：先にログインする
+
+> [!IMPORTANT]
+> **tweak のインストール・有効化、注入済み IPA の導入より先に、Google Photos 本体でログインを済ませてください。** Sideloadly の **Inject dylibs/frameworks** を有効にすると Google のログインが拒否され、注入なしで先にログインしてから同じアプリへ tweak を追加すると利用できた実機報告があります。
+>
+> 1. **tweak を注入していない Google Photos** をインストール・起動し、Google アカウントにログインできたことを確認します。
+> 2. アプリを終了します。Jailbreak ではここで tweak をインストール・有効化します。サイドロードでは jailed 版を注入した IPA を、**同じ署名アカウント・Bundle ID を使い、データを維持したまま同じアプリへ上書き導入**します。LiveContainer では同じ guest / データコンテナで先にログインし、その後に tweak フォルダを有効化するか、注入済み IPA へ更新します。
+> 3. Google Photos を起動し、**プロフィールメニュー → GoToHP の設定**でログイン済みアカウントへ接続します。
+>
+> **途中でログイン済みアプリ・guest を削除したり、新しいデータコンテナを作ったりしないでください。** ログイン状態が失われる場合があります。App Store 版から別署名のサイドロード版へ、そのままログイン状態を引き継げるとは限りません。署名条件による引き継ぎや、この回避手順の LiveContainer を含む全環境での成功は保証されません。[詳細な導入手順](docs/jailed.md)も確認してください。
 
 ## 構成（jailbreak 版）
 
@@ -22,6 +57,8 @@ Jailbreak / サイドロード / LiveContainer 向け Google Photos uploader。`
 - JSON queue: atomic rename + fsync。再起動時の復旧、履歴、account/quality ごとの content fingerprint と remote hash check。
 
 ## インストールと使い方
+
+事前に[ログインに関する注意](#導入前の重要な注意先にログインする)の順序を確認してください。以下は jailbreak 版の手順です。サイドロード / LiveContainer は[専用ガイド](docs/jailed.md)を参照してください。
 
 1. GitHub Actions の `gotohp-tweak-rootless` / `gotohp-tweak-rootful` から対応 `.deb` を取得。
 2. RocketBootstrap、PreferenceLoader、使用中の jailbreak の substrate-compatible tweak injection が必要です。rootless を優先、rootful は同じソースからビルドします。
