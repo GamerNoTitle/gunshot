@@ -32,6 +32,8 @@
 5. `photosSSOService.fetcherAuthorizerForAccountID:scopes:` から `photos.native` scope の既存 SSO authorizer を取得し、`authorizeRequest:completionHandler:` に Google Photos の HTTPS URL のリクエストを渡す。このリクエスト自体は送信しない。
 6. native authorizer が更新した Authorization ヘッダーから bearer を受け取り、gotohp の API 呼び出しに使う。アカウント接続時は既存のリモート hash lookup により API が受け付けることを検証してから binding を保存する。
 
+`GSNativeAccountSummary().identifier` は SSO の userID 文字列で、純正の `accountID` オブジェクトとは別型です。非同期処理前後の SSO 確認には `GSNativeIdentityMatches`、要求と同期オブジェクトの accountID 確認には `GSNativeAccountMatches` を使用します。[両版の転送回帰と修正](backup-routing.md#診断-8両版のキュー追加前失敗id-型の混同)。
+
 永続化するのは email と `gunshot_native_id` のみ。access token、refresh token、Cookie、Keychain の内容はファイルや診断ログに保存しない。Android master token への変換・ログインセッション全件抽出・認証 URL の書き換えは行わない。
 
 トークン取得前後で現在の account ID とログイン状態を確認する。アカウント切り替え・サインアウト時には以前のキューを別のアカウントに送らず失敗させる。元のアカウントへ戻して GoToHP を開き、失敗したジョブを retry する。SSO はメインスレッドで呼び、Go の worker は最大 30 秒待つ。メインスレッドを待機させない。native token を得られなくても Android 認証へフォールバックしない。

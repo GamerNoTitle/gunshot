@@ -17,7 +17,8 @@
 @property(atomic) BOOL reconciling;
 @property(atomic,copy) NSString *jobID;
 @property(nonatomic,copy) NSString *account;
-@property(nonatomic,copy) NSString *nativeID;
+// SSO userID string; native request credentials.accountID is a separate object.
+@property(nonatomic,copy) NSString *identityIdentifier;
 @property(nonatomic,copy) NSString *localID;
 @end
 @implementation GSBackupTransfer @end
@@ -55,7 +56,7 @@ static BOOL GSCanPrepare(NSDictionary *options){
 #endif
 }
 static BOOL GSStillAuthorized(GSBackupTransfer *transfer){
- return !transfer.cancelled&&GSNativeRoutingEnabled()&&[GSNativeRoutingAccount()isEqual:transfer.account]&&GSNativeAccountMatches(transfer.nativeID);
+ return !transfer.cancelled&&GSNativeRoutingEnabled()&&[GSNativeRoutingAccount()isEqual:transfer.account]&&GSNativeIdentityMatches(transfer.identityIdentifier);
 }
 static void GSStart(id request,SEL selector,IMP original){
  GSBackupTransfer *existing=objc_getAssociatedObject(request,&GSTransferKey);
@@ -72,7 +73,7 @@ static void GSStart(id request,SEL selector,IMP original){
   NSDictionary *account=GSNativeAccountSummary();NSString *destination=GSNativeRoutingAccount();
   if(transfer.cancelled)return;
   if(![destination isEqual:account[@"email"]]||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSCount(@"accountMismatch");GSFail(request,2);return;}
-  transfer.account=destination;transfer.nativeID=account[@"identifier"];
+  transfer.account=destination;transfer.identityIdentifier=account[@"identifier"];
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
    NSError *error=nil;
    NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);
@@ -85,11 +86,12 @@ static void GSStart(id request,SEL selector,IMP original){
    if(!GSCanPrepare(options))error=[NSError errorWithDomain:@"GoToHP.Backup" code:5 userInfo:nil];
    __block BOOL authorized=NO;
    dispatch_sync(dispatch_get_main_queue(),^{authorized=GSStillAuthorized(transfer);});
-   if(!authorized)error=[NSError errorWithDomain:@"GoToHP.Backup" code:2 userInfo:nil];
+   if(!authorized){if(!error&&!transfer.cancelled)GSCount(@"authorizationChanged");error=[NSError errorWithDomain:@"GoToHP.Backup" code:2 userInfo:nil];}
    NSURL *directory=[NSURL fileURLWithPath:[NSTemporaryDirectory()stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
    NSArray *files=nil;
    if(!error&&[NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:&error])files=GSExportAsset(asset,directory,&error);
    dispatch_sync(dispatch_get_main_queue(),^{authorized=GSStillAuthorized(transfer);});
+   if(files&&!authorized&&!transfer.cancelled)GSCount(@"authorizationChanged");
    NSString *job=(authorized&&files)?GSImportFiles(files,destination,options[@"quality"]?:@"original",asset.creationDate,&error):nil;
    [NSFileManager.defaultManager removeItemAtURL:directory error:nil];transfer.jobID=job;
    if(job&&transfer.cancelled&&transfer.cancelGo)GSRequest(@{@"op":@"cancel",@"id":job},nil);
@@ -106,7 +108,7 @@ static void GSStart(id request,SEL selector,IMP original){
    dispatch_async(dispatch_get_main_queue(),^{
     if(transfer.cancelled)return;
     if(!completed){GSCount(@"failed");GSFail(request,3);return;}
-    if(!GSNativeAccountMatches(transfer.nativeID)||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSFail(request,2);return;}
+    if(!GSNativeIdentityMatches(transfer.identityIdentifier)||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSCount(@"authorizationChanged");GSFail(request,2);return;}
     // Refresh native backup state from the server; GSGuard blocks re-upload.
     transfer.reconciling=YES;@synchronized(GSLock){[GSReconciling addObject:transfer.localID];}
     GSCount(@"reconciling");((void(*)(id,SEL))original)(request,selector);

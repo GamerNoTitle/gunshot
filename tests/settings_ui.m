@@ -33,7 +33,7 @@ static NSUInteger NativeRefreshes;
 void GSRefreshNativeLibrary(void){dispatch_async(dispatch_get_main_queue(),^{NativeRefreshes++;});}
 NSDictionary *GSPhotosIntegrationSnapshot(void){return @{};}
 NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"test@example.com",@"identifier":@"fixture"};}
-BOOL GSNativeAccountMatches(id identifier){return [identifier isEqual:@"fixture"];}
+BOOL GSNativeIdentityMatches(NSString *identifier){return [identifier isEqual:@"fixture"];}
 void GSInstallPhotosIntegration(void){}
 void GSInstallNativeAccount(void){}
 char *GSNativeBearer(const char *identifier){return NULL;}

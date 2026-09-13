@@ -12,7 +12,7 @@
 #import "host_profile.h"
 #import "../UI/GSBackupRequests.h"
 #import "../UI/GSNativeRouting.h"
-#import "../UI/GSNativeAccount.h"
+#import "native_account_fixture.h"
 #import "../Shared/IPCProtocol.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -22,15 +22,13 @@ static BOOL remoteMatch=YES;
 static atomic_ulong queued,conditionReads,cancelRequests;
 static NSUInteger nativeStarts,nativePayload,successes,failures;
 static atomic_bool foreground=YES,online=YES,wifi=YES,charging=YES,paused=NO,holdJob=NO,failJob=NO,switchDuringExport=NO;
-static NSString *viewingID=@"id";
+static PHSAccount *primaryAccount,*otherAccount;
 @implementation PHAsset @end
 @interface GSFixtureBundle : NSBundle @end
 @implementation GSFixtureBundle
 - (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?@"GooglePhotos":GSFixtureVersion;}
 @end
 static id Bundle(id self,SEL s){return [GSFixtureBundle new];}
-NSDictionary *GSNativeAccountSummary(void){assert(NSThread.isMainThread);return @{@"email":@"test@example.com",@"identifier":viewingID};}
-BOOL GSNativeAccountMatches(id account){assert(NSThread.isMainThread);return [account isEqual:viewingID];}
 BOOL GSUploadHostForeground(void){return atomic_load(&foreground);}
 NSDictionary *GSEmbeddedRuntimeSnapshot(void){conditionReads++;return @{@"foreground":@(atomic_load(&foreground)),@"conditionsAccepted":@YES,@"networkOnline":@(atomic_load(&online)),@"wifi":@(atomic_load(&wifi)),@"charging":@(atomic_load(&charging))};}
 NSDictionary *GSRequest(NSDictionary *request,NSError **error){
@@ -42,10 +40,10 @@ NSDictionary *GSRequest(NSDictionary *request,NSError **error){
  if([request[@"op"]isEqual:@"cancel"])cancelRequests++;
  return @{};
 }
-NSArray *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error){assert(!NSThread.isMainThread);if(atomic_load(&switchDuringExport))dispatch_sync(dispatch_get_main_queue(),^{viewingID=@"switched";});return @[[directory URLByAppendingPathComponent:@"original.heic"]];}
+NSArray *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error){assert(!NSThread.isMainThread);if(atomic_load(&switchDuringExport))dispatch_sync(dispatch_get_main_queue(),^{GSFixtureSelectAccount(otherAccount);});return @[[directory URLByAppendingPathComponent:@"original.heic"]];}
 NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDate *date,NSError **error){assert([quality isEqual:@"original"]);@synchronized(PHAsset.class){queued++;}return @"job";}
 @interface Credentials : NSObject
-@property(nonatomic,strong) NSString *accountID;
+@property(nonatomic,strong) id accountID;
 @end
 @implementation Credentials @end
 @interface GMUUploadRequest : NSObject
@@ -87,7 +85,7 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)cancel{}
 - (void)didCompleteWithError:(id)error resultantMediaItem:(id)item{if(item&&!error)successes++;else failures++;}
 @end
-static id Request(Class c,NSString *account){id r=[c new];PHAsset *asset=[PHAsset new];asset.localIdentifier=NSUUID.UUID.UUIDString;[r setAsset:asset];Credentials *cred=[Credentials new];cred.accountID=account;[r setCredentials:cred];return r;}
+static id Request(Class c,id account){id r=[c new];PHAsset *asset=[PHAsset new];asset.localIdentifier=NSUUID.UUID.UUIDString;[r setAsset:asset];Credentials *cred=[Credentials new];cred.accountID=account;[r setCredentials:cred];return r;}
 @interface PHSLocalAsset : NSObject
 @property(nonatomic,strong) PHAsset *phAsset;
 @property(nonatomic) _Bool isLocked;
@@ -98,7 +96,7 @@ static id lastManualRequest;
 - (void)backupLocalAssets:(id)assets;
 @end
 @implementation PHSBackupActionBehaviorImpl
-- (void)backupLocalAssets:(id)assets{lastManualRequest=Request(GMUAssetUploadRequest.class,@"id");[lastManualRequest start];}
+- (void)backupLocalAssets:(id)assets{lastManualRequest=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[lastManualRequest start];}
 @end
 @interface PHSActionsGridModel : PHSBackupActionBehaviorImpl @end
 @implementation PHSActionsGridModel
@@ -111,6 +109,15 @@ static void Scotty(id object,SEL selector,id asset,BOOL cellular,BOOL background
 static void Stateless(id object,SEL selector,id asset,BOOL cellular,id progress,void(^done)(id,id)){nativePayload++;if(done)done(@"native-result",nil);}
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)Bundle);
+ primaryAccount=GSFixtureMakeAccount(@"fixture-user-A",@"test@example.com");
+ otherAccount=GSFixtureMakeAccount(@"fixture-user-B",@"other@example.com");GSFixtureSelectAccount(primaryAccount);
+ assert([GSNativeAccountSummary()[@"identifier"]isEqual:@"fixture-user-A"]);
+ assert(GSNativeAccountMatches(primaryAccount.accountID));
+ assert(!GSNativeAccountMatches(@"fixture-user-A")); // A native ID is never the SSO string.
+ assert(GSNativeIdentityMatches(@"fixture-user-A"));
+ assert(!GSNativeIdentityMatches(@"fixture-user-B")&&!GSNativeIdentityMatches(nil)&&!GSNativeIdentityMatches(@""));
+ assert(!GSNativeIdentityMatches((NSString *)primaryAccount.accountID));
+
 
 #ifndef GS_TEST_LEGACY
  Class sc=objc_allocateClassPair(NSObject.class,"_TtC84googlemac_iPhone_Shared_Photos_Upload_Request_Scotty_ScottyUploadServiceImpl_ImplLib23ScottyUploadServiceImpl",0);
@@ -121,14 +128,14 @@ int main(void){@autoreleasepool{
 #endif
 
  GSInstallNativeRouting();assert(GSBackupRequestsAvailable()&&GSNativeRoutingAvailable());GSSetNativeRouting(NO,nil);
- id plain=Request(GMUAssetUploadRequest.class,@"id");[plain start];assert(nativeStarts==1&&queued==0);
+ id plain=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[plain start];assert(nativeStarts==1&&queued==0);
  GSSetNativeRouting(YES,@"test@example.com");[[PHSBackupActionBehaviorImpl new]backupLocalAssets:@[[PHAsset new]]];id manual=lastManualRequest;[manual start];assert([manual didStart]&&![manual shouldTimeout]);assert(nativeStarts==1);Drain(2);assert(queued==1&&nativeStarts==2&&nativePayload==0);
  // The automatic scheduler uses this same asset request, with no UI action.
- id automatic=Request(GMUAssetUploadRequest.class,@"id");[automatic start];Drain(3);assert(queued==2&&nativePayload==0);
- id wrong=Request(GMUAssetUploadRequest.class,@"other-account");[wrong start];Drain(4);assert(queued==2&&failures==1);
- remoteMatch=NO;id missing=Request(GMUAssetUploadRequest.class,@"id");[missing start];Drain(5);assert(queued==3&&nativePayload==0&&failures==2);
- id live=Request(GMULivePhotoSingleUploadRequest.class,@"id");[live start];Drain(6);assert(queued==4&&successes==4);
- id cancel=Request(GMUAssetUploadRequest.class,@"id");[cancel start];[cancel cancel];[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];assert(queued==4);
+ id automatic=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[automatic start];Drain(3);assert(queued==2&&nativePayload==0);
+ id wrong=Request(GMUAssetUploadRequest.class,otherAccount.accountID);[wrong start];Drain(4);assert(queued==2&&failures==1);
+ remoteMatch=NO;id missing=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[missing start];Drain(5);assert(queued==3&&nativePayload==0&&failures==2);
+ id live=Request(GMULivePhotoSingleUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[live start];Drain(6);assert(queued==4&&successes==4);
+ id cancel=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[cancel start];[cancel cancel];[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];assert(queued==4);
 #ifndef GS_TEST_LEGACY
  __block NSUInteger released=0,denied=0;
  ((void(*)(id,SEL,id,BOOL,BOOL,id,id,id,id))objc_msgSend)([sc new],upload,nil,NO,YES,nil,nil,^{released++;},^(id data,id error){assert(!data&&error);denied++;});
@@ -145,20 +152,31 @@ int main(void){@autoreleasepool{
  for(NSUInteger i=0;i<4;i++){
   NSUInteger before=queued,reads=conditionReads,finished=successes+failures;
   atomic_store(conditions[i],i==3?YES:NO);
-  id waiting=Request(GMUAssetUploadRequest.class,@"id");[waiting start];
+  id waiting=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[waiting start];
   Await(^BOOL{return conditionReads>reads;});assert(queued==before);
   atomic_store(conditions[i],i==3?NO:YES);Drain(finished+1);assert(queued==before+1&&nativePayload==0);
  }
  // No native success until Go reports a committed item. Daemon jobs survive
  // the native scheduler cancelling its request as the app backgrounds.
  holdJob=YES;NSUInteger before=queued,finished=successes+failures,starts=nativeStarts;
- id background=Request(GMUAssetUploadRequest.class,@"id");[background start];Await(^BOOL{return queued==before+1;});
+ id background=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[background start];Await(^BOOL{return queued==before+1;});
  assert(successes+failures==finished&&nativeStarts==starts);foreground=NO;[background cancel];
  [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];assert(cancelRequests==0);
- foreground=YES;id cancelled=Request(GMUAssetUploadRequest.class,@"id");[cancelled start];Await(^BOOL{return queued==before+2;});[cancelled cancel];Await(^BOOL{return cancelRequests==1;});holdJob=NO;
- failJob=YES;id failed=Request(GMUAssetUploadRequest.class,@"id");[failed start];Drain(finished+1);assert(nativeStarts==starts&&nativePayload==0);failJob=NO;
+ foreground=YES;id cancelled=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[cancelled start];Await(^BOOL{return queued==before+2;});[cancelled cancel];Await(^BOOL{return cancelRequests==1;});holdJob=NO;
+ failJob=YES;id failed=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[failed start];Drain(finished+1);assert(nativeStarts==starts&&nativePayload==0);failJob=NO;
  before=queued;finished=successes+failures;switchDuringExport=YES;
- id switched=Request(GMUAssetUploadRequest.class,@"id");[switched start];Drain(finished+1);assert(queued==before&&nativeStarts==starts);switchDuringExport=NO;viewingID=@"id";
+ id switched=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[switched start];Drain(finished+1);assert(queued==before&&nativeStarts==starts);switchDuringExport=NO;GSFixtureSelectAccount(primaryAccount);
+ // A raw SSO string with the right value is still not native credentials.
+ before=queued;finished=successes+failures;
+ id stringCredential=Request(GMUAssetUploadRequest.class,@"fixture-user-A");
+ [stringCredential start];Drain(finished+1);assert(queued==before&&nativeStarts==starts);
+ // Signing out while preserving the account object also blocks transfer.
+ ((GSFixtureIdentity *)primaryAccount->_ssoIdentity).hasValidAuth=NO;finished=successes+failures;
+ assert(!GSNativeIdentityMatches(@"fixture-user-A"));
+ id invalidAuth=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
+ [invalidAuth start];Drain(finished+1);assert(queued==before&&nativeStarts==starts);
+ ((GSFixtureIdentity *)primaryAccount->_ssoIdentity).hasValidAuth=YES;
+ assert(GSNativeIdentityMatches(@"fixture-user-A"));
  NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, original resources, account binding, duplicate start, cancellation and native fallback blocking");
  return 0;
 }}

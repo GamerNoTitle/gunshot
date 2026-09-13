@@ -40,6 +40,10 @@ BOOL GSNativeAccountMatches(id accountID){
  if(!NSThread.isMainThread||!accountID)return NO;
  return [GSGet(GSGet(GSSource.manager,@"viewingAccount"),@"accountID")isEqual:accountID];
 }
+BOOL GSNativeIdentityMatches(NSString *identifier){
+ if(!NSThread.isMainThread||![identifier isKindOfClass:NSString.class]||!identifier.length)return NO;
+ return [GSNativeAccountSummary()[@"identifier"]isEqualToString:identifier];
+}
 void GSInstallNativeAccount(void){
  if(GSSource||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||!GSPhotosHostSupported())return;
  Class cls=NSClassFromString(@"PHSAccountManagerImpl");Method method=class_getInstanceMethod(cls,NSSelectorFromString(@"viewingAccount"));

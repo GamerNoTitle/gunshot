@@ -11,7 +11,7 @@
 | 全クラス名・instance selector・encoding・static IMP | [機械可読全件索引](objc/README.md) | metadata 抽出済み |
 | 入力同定・件数・SHA-256 | [manifest](objc/manifest.json) | 対象 2 image の照合情報 |
 | upload / backup / Live Photo / account 周辺のクラス | [アップロード関連クラス索引](upload-symbols.md) | 今回参照したクラスの全 instance method |
-| jailed / jailbreak の手動・自動バックアップ要求 | [backup-routing.md](backup-routing.md) | 要求の移譲・サーバー再照合・画質の送信テスト。実機確認待ち |
+| jailed / jailbreak の手動・自動バックアップ要求 | [backup-routing.md](backup-routing.md) | 要求の移譲・再照合・画質。診断 8 の ID 型混同と回帰修正を記録 |
 | 手動バックアップ action | [native-routing.md](../native-routing.md) | host / ABI 確認、hook 実装、mock test |
 | 自動バックアップ・Scotty・legacy の境界 | [full-upload-replacement.md](../full-upload-replacement.md) | metadata・一部 call path 確認、実機は未確認 |
 | native completion の内部依存 | [completion-analysis.md](completion-analysis.md) | 限定した関数の逆アセンブル追跡 |

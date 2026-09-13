@@ -135,3 +135,41 @@ rootless/rootful にも `GSBackupRequests` と `GSPhotosIntegration` を組み�
 純正の fingerprint 再照合と fetchData が実際のバックアップ表示を更新します。
 GoToHP の completed だけで純正の成功フラグを書き換えません。ネットワークや
 サーバー反映に時間がかかる場合があり、実端末での表示更新時間は別途確認が必要です。
+
+## 診断 8：両版のキュー追加前失敗（ID 型の混同）
+
+PR #18 の最初の修正版について、7.20.2 jailbreak / 7.92.0 jailed の両方で
+純正の手動・自動バックアップが失敗する報告がありました。
+
+| 診断 | 観測 |
+| --- | --- |
+| 7.20.2 / 診断 8 | intercepted=7、failed=6、accountMismatch=1、queued なし。daemon 接続・認証更新は成功 |
+| 7.92.0 / 診断 2 (2) | intercepted=5、failed=5、queued なし。認証済み、前景・Wi-Fi・online=true |
+| 両版の completionMonitor | reachable=true でも uploadSummary がなく、syncSignals=0 |
+| 7.92.0 の embedded runtime | completionRevision=4 の summary が存在。キューの取得自体は成功 |
+
+原因は、追加した途中のアカウント照合と完了監視で、SSO の文字列 userID を
+`GSNativeAccountMatches` に渡したことです。この関数は純正の
+`viewingAccount.accountID`（`GIPGaiaAccountID` オブジェクト）と比較するため、
+同じアカウントでも文字列とは一致しません。取込前に失敗し、完了監視でも
+通信に成功した応答をアカウント不一致として捨てていました。
+
+両 IPA には `GIPGaiaAccountID` の `initWithGaiaID:`、`gaiaID`、`identifier`、
+`isEqual:`、`copyWithZone:` があり、単なる NSString とは異なるオブジェクトです。
+SSO の userID と native accountID は用途ごとに分けて照合します。
+
+| 入力 | 使用する比較 |
+| --- | --- |
+| credentials.accountID / 同期オブジェクトの accountID | GSNativeAccountMatches：純正オブジェクト同士の isEqual: |
+| summary.identifier / 保存した SSO userID | GSNativeIdentityMatches：有効なログイン中 SSO userID の文字列比較 |
+
+修正では型の変換やアカウント判定の省略を行わず、比較する ID の種類を揃えます。
+SSO のサインアウト・期限切れ・アカウント変更、純正要求のアカウント不一致は
+引き続き停止します。監視の `identityMatched` は bool だけ、転送の
+`authorizationChanged` は件数だけを追加し、ID や token を診断へ出しません。
+
+従来の転送・監視テストは accountID と SSO userID を同じ文字列で代用し、
+この回帰を見逃しました。現在は別型の native accountID オブジェクトを用い、
+実際の `GSNativeAccount.m` をリンクして、手動／自動のキュー追加・再照合・
+監視・アカウント切替を検証します。純正 API の差分は従来どおり機能ごとに検出し、
+7.20.2 の整数 completion と新版の NSError completion を維持します。
