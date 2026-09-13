@@ -1,6 +1,6 @@
 # Google Photos 7.20.2 compatibility audit
 
-This adapter targets the supplied **Google Photos 7.20.2**, build **7.20.738660793**, alongside the existing 7.92.0 adapter. It does not enable arbitrary older releases. Host identification and exact Objective-C signatures are both checked before hooks are installed. Device validation is still required; a binary audit and mocked contracts do not establish successful authentication or uploads against Google's servers.
+This adapter targets the supplied **Google Photos 7.20.2**, build **7.20.738660793**, alongside the modern **7.92.0+** adapter. 7.20.2 and 7.92.0 are the IPA-audited reference versions, not an upper-version allowlist. Later modern releases are eligible without editing the version list; each feature still requires matching Objective-C signatures. Other releases below 7.92.0 do not use the legacy adapter. Device validation is still required; a binary audit and mocked contracts do not establish successful authentication or uploads against Google's servers.
 
 ## Input and OS requirements
 
@@ -40,7 +40,7 @@ The legacy base completion at `0x10c3318` constructs `NSError` in `com.google.ph
 
 `PHSMyAccountMenuDataSource.storageCardData` at main `0x10036adc4` assigns native state **2** for unlimited reason 1. `OGLStringResources.stringForID:` at ModuleFramework `0x12d10c` indexes the resource table at `0x6f285b0`; index **0x79** resolves to `OneGoogleStorageCardUnlimitedTitle`. The native UIKit cell already has the relevant layout/state path.
 
-The legacy adapter requires the cell's exact ABI, changes the display getter, and supplies the native localized title. It never adds the absent model `title` getter. On/off remains available, default on. Missing resources retain the native display. Encoding suppresses display overrides so saved quota/state values stay native. This changes only the card, not the account's actual quota or upload policy.
+Both adapters now resolve `OGLBundle.oneGoogleResourceBundle` (class method `@16@0:8`; legacy address `0x12d18c`, modern reference address `0x17bedc4`) and load the key `OneGoogleStorageCardUnlimitedTitle` from the `OneGoogle` table, without calling `stringForID:`. This avoids using a stale numeric index on a later release. The legacy adapter requires the cell's exact ABI, changes the display getter, and supplies the native localized title. It never adds the absent model `title` getter. On/off remains available, default on. Missing resources retain the native display. Encoding suppresses display overrides so saved quota/state values stay native. This changes only the card, not the account's actual quota or upload policy.
 
 ### Original-quality label and refresh
 
@@ -53,3 +53,11 @@ Only `isBackedUp`, `hasOriginalBytes == Yes (1)`, non-partial backup, and storag
 The macOS CI runs both 7.92.0 and 7.20.2 contracts. Legacy fixtures omit the new SSO factory, new asset-completion selector, new detail-model class, storage title getter, and Swift upload service. They exercise native account switching, silent manual/automatic routing, reconciliation failure without native payload fallback, integer completion preservation, quality evidence checks, account-bound refresh, settings actions, and native unlimited on/off/archive behavior. CI also builds rootless, rootful, and jailed packages and runs the existing UIKit settings smoke test.
 
 Real-device checks still needed on 7.20.2: login-first installation, native account refresh, settings/menu tap, unlimited display on/off after reopening the menu, original JPEG/HEIC/video/Live Photo upload, manual and automatic handoff, completion refresh without relaunch, cancellation/network loss, and upgrade/downgrade behavior. Jailed uploads require the app to remain active; this is not a background-execution entitlement change.
+
+## Later modern releases
+
+Version components are compared numerically: 7.92.1, 7.93, 7.100, 8.0, and higher select the modern adapter. Missing, malformed, or unrelated-host metadata is rejected. The separate `auditedHostVersion` diagnostic field is true only for the two reference releases; it does not block use of later versions.
+
+CI also reruns the modern native contracts with simulated version metadata 7.93.0, 7.100.0, and 8.0.0. These are compatibility tests using the reference API shape, **not analysis or real-device tests of those app releases**. Changed private API semantics can still require an adapter update even when a signature is unchanged.
+
+The reported 7.20.2 launch crash on iOS 16.7.9 is tracked separately in the [startup crash analysis](startup-crash-ios16.md). It occurs in another tweak's initializer through Cephei/RocketBootstrap; no device crash resolution is claimed by these compatibility changes.

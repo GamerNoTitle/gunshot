@@ -8,8 +8,11 @@ upload settings and the queue. English and Japanese settings labels are included
 
 This is a **display preference**. It does not grant an account benefit, alter
 Google's storage accounting, or select upload quality. Turn it off to see the
-unmodified account storage card. Other app versions or incompatible private APIs
-leave the native UI unchanged and show the control as unavailable.
+unmodified account storage card. The fixed 7.20.2 adapter and the 7.92.0+ modern adapter check their required private APIs. Incompatible APIs leave the native UI unchanged and show the control as unavailable. The two supplied IPA versions are audit references, not an upper-version limit.
+
+## Current resource lookup
+
+The adapters use `OGLBundle.oneGoogleResourceBundle` and the native key `OneGoogleStorageCardUnlimitedTitle` in table `OneGoogle`. They no longer invoke `stringForID:` with a version-specific number. The numbered IDs below describe the original 7.92.0 audit, not a requirement imposed on later versions. If the native bundle/key is unavailable, the display falls back to the original; no translated fallback is substituted for Google's resource.
 
 ## Evidence from the supplied IPA
 

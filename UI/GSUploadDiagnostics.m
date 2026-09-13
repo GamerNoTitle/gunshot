@@ -30,7 +30,7 @@ void GSSetUploadDiagnostics(BOOL enabled){
 }
 NSDictionary *GSUploadDiagnosticsSnapshot(void){
  if(!GSInstalled)return @{@"schema":@1,@"available":@NO};
- @synchronized(GSLock){return @{@"schema":@1,@"available":@YES,@"enabled":@(GSUploadDiagnosticsEnabled()),@"appVersion":[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]?:@"unknown",@"bindings":[GSBindings copy],@"events":[GSEvents copy],@"observedCount":@(GSSequence),@"retainedLimit":@256};}
+ @synchronized(GSLock){return @{@"schema":@1,@"available":@YES,@"enabled":@(GSUploadDiagnosticsEnabled()),@"appVersion":[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]?:@"unknown",@"auditedHostVersion":@(GSPhotosHostAudited()),@"bindings":[GSBindings copy],@"events":[GSEvents copy],@"observedCount":@(GSSequence),@"retainedLimit":@256};}
 }
 // Add an override for inherited methods without mutating their superclass.
 static void GSReplace(Class cls, SEL selector, Method method, IMP replacement) {

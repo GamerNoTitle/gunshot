@@ -8,10 +8,24 @@ static NSUInteger actions;
 - (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?@"GooglePhotos":@"7.20.2";}
 @end
 static id Bundle(id object,SEL selector){return [BundleFixture new];}
+@interface GSNativeStringsBundle : NSBundle @end
+@implementation GSNativeStringsBundle
+- (NSString *)localizedStringForKey:(NSString *)key value:(NSString *)value table:(NSString *)table{
+ assert([key isEqual:@"OneGoogleStorageCardUnlimitedTitle"]&&[table isEqual:@"OneGoogle"]);
+ return ready?@"Unlimited storage":value;
+}
+@end
+@interface OGLBundle : NSObject
++ (id)oneGoogleResourceBundle;
+@end
+@implementation OGLBundle
++ (id)oneGoogleResourceBundle{return [GSNativeStringsBundle new];}
+@end
+// A future numeric string ID is deliberately unusable: never call this API.
 @interface OGLStringResources : NSObject @end
 @implementation OGLStringResources
-+ (id)sharedInstance{return [self new];}
-- (id)stringForID:(int)identifier{assert(identifier==0x79);return ready?@"Unlimited storage":@"OneGoogleStorageCardUnlimitedTitle";}
++ (id)sharedInstance{assert(!"numeric string-table API must not be used");return nil;}
+- (id)stringForID:(int)identifier{assert(!"numeric string-table API must not be used");return nil;}
 @end
 // Actual old shape: no title getter and no Swift/Bento renderer.
 @interface OGLAccountMenuStorageCardData : NSObject <NSSecureCoding>
@@ -43,7 +57,7 @@ static id Bundle(id object,SEL selector){return [BundleFixture new];}
 @end
 int main(int argc,const char **argv){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)Bundle);
- if(argc>1)method_setImplementation(class_getClassMethod(OGLStringResources.class,@selector(sharedInstance)),imp_implementationWithBlock(^id(id object){return nil;}));
+ if(argc>1)method_setImplementation(class_getClassMethod(OGLBundle.class,@selector(oneGoogleResourceBundle)),imp_implementationWithBlock(^id(id object){return nil;}));
  NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;[defaults removeObjectForKey:@"GSShowUnlimitedStorage"];
  GSInstallUnlimitedStorage();assert(GSUnlimitedStorageAvailable()&&GSUnlimitedStorageEnabled());
  OGLAccountMenuStorageCardData *data=[OGLAccountMenuStorageCardData new];data.storageState=0;data.usedStorage=6.55;data.totalStorage=15;data.cardActionCallback=^{actions++;};
