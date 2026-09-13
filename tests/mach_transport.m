@@ -31,7 +31,8 @@ static void Exchange(NSUInteger mode) {
   assert(mach_msg(&response.header,MACH_SEND_MSG|MACH_SEND_TIMEOUT,response.header.msgh_size,0,MACH_PORT_NULL,3000,MACH_PORT_NULL)==KERN_SUCCESS);
   dispatch_semaphore_signal(done);
  });
- mach_port_t result=MACH_PORT_NULL;kern_return_t kr=GSLookupBroker(broker,"test.service",&result,1000);
+ mach_port_t result=MACH_PORT_NULL;const char *stage=NULL;kern_return_t kr=GSLookupBrokerWithStage(broker,"test.service",&result,1000,&stage);
+ assert(!strcmp(stage,mode==0?"broker.connected":mode==1?"broker.service-unavailable":mode==2?"broker.response":"broker.exchange"));
  dispatch_semaphore_signal(clientDone);
  if(mode==3)assert(kr==MACH_RCV_TIMED_OUT);
  if(mode==0){assert(kr==KERN_SUCCESS&&result==service);mach_port_deallocate(mach_task_self(),result);}

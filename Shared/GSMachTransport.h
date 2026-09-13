@@ -32,9 +32,11 @@ typedef struct {
  mach_msg_body_t body;
  mach_msg_port_descriptor_t port;
 } GSLookupResponse;
-static inline kern_return_t GSLookupBroker(mach_port_t broker,const char *name,mach_port_t *server,mach_msg_timeout_t timeout) {
+static inline kern_return_t GSLookupBrokerWithStage(mach_port_t broker,const char *name,mach_port_t *server,mach_msg_timeout_t timeout,const char **stage) {
+ *stage="broker.arguments";
  *server=MACH_PORT_NULL;
  size_t length=strlen(name);if(!length||length>=sizeof(((GSLookupQuery *)0)->name))return KERN_INVALID_ARGUMENT;
+ *stage="broker.reply-port";
  mach_port_t reply=MACH_PORT_NULL;kern_return_t kr=GSCreateReplyPort(&reply);
  if(kr!=KERN_SUCCESS)return kr;
  union { GSLookupQuery query; GSLookupResponse response; char receive[sizeof(GSLookupQuery)+sizeof(mach_msg_max_trailer_t)]; } buffer={0};
@@ -44,15 +46,27 @@ static inline kern_return_t GSLookupBroker(mach_port_t broker,const char *name,m
  query->header.msgh_size=(mach_msg_size_t)((offsetof(GSLookupQuery,name)+length+3)&~3);
  if(query->header.msgh_size<sizeof(GSLookupResponse))query->header.msgh_size=sizeof(GSLookupResponse);
  query->nameLength=(uint32_t)length;memcpy(query->name,name,length);
+ *stage="broker.exchange";
  kr=mach_msg(&query->header,MACH_SEND_MSG|MACH_RCV_MSG|MACH_SEND_TIMEOUT|MACH_RCV_TIMEOUT,query->header.msgh_size,sizeof(buffer),reply,timeout,MACH_PORT_NULL);
  if(kr==KERN_SUCCESS){
+  *stage="broker.response";
   GSLookupResponse *response=&buffer.response;
   if(response->header.msgh_id==0&&response->header.msgh_size==sizeof(GSLookupResponse)&&
      (response->header.msgh_bits&MACH_MSGH_BITS_COMPLEX)&&response->body.msgh_descriptor_count==1&&
      response->port.type==MACH_MSG_PORT_DESCRIPTOR&&response->port.disposition==MACH_MSG_TYPE_PORT_SEND&&MACH_PORT_VALID(response->port.name)){
-   *server=response->port.name;response->port.name=MACH_PORT_NULL;
-  }else kr=KERN_FAILURE;
+   *stage="broker.connected";*server=response->port.name;response->port.name=MACH_PORT_NULL;
+  }else{
+   // A valid empty broker reply means the service is unavailable to the broker,
+   // not necessarily that the daemon is absent from its own bootstrap domain.
+   if(response->header.msgh_id==0&&response->header.msgh_size>=sizeof(mach_msg_header_t)+sizeof(mach_msg_body_t)&&
+      !(response->header.msgh_bits&MACH_MSGH_BITS_COMPLEX)&&response->body.msgh_descriptor_count==0)*stage="broker.service-unavailable";
+   kr=KERN_FAILURE;
+  }
   mach_msg_destroy(&response->header);
  }
  GSDestroyReplyPort(reply);return kr;
+}
+
+static inline kern_return_t GSLookupBroker(mach_port_t broker,const char *name,mach_port_t *server,mach_msg_timeout_t timeout) {
+ const char *stage;return GSLookupBrokerWithStage(broker,name,server,timeout,&stage);
 }

@@ -118,5 +118,6 @@
   "Done": "完了",
   "Japanese": "日本語",
   "Show unlimited storage": "無制限ストレージを表示",
-  "Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged.": "変更はプロフィールメニューを開き直すと反映されます。無制限ストレージは表示のみの変更で、容量上限や画質には影響しません。"
+  "Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged.": "変更はプロフィールメニューを開き直すと反映されます。無制限ストレージは表示のみの変更で、容量上限や画質には影響しません。",
+  "GoToHP daemon connection failed.": "GoToHP daemon との接続に失敗しました。"
 }

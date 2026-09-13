@@ -67,3 +67,9 @@ The 2026-09-13 17:55 crash reports `EXC_GUARD / SEND_INVALID_REPLY` in RocketBoo
 The transport is based on the published [RocketBootstrap lookup protocol](https://github.com/rpetrich/RocketBootstrap/blob/master/rocketbootstrap_internal.h). Apple's [reply-port validation](https://github.com/apple-oss-distributions/xnu/blob/xnu-8792.61.2/osfmk/ipc/ipc_right.c) requires a reply-designated port for destinations enforcing reply semantics. The log identifies the failing path, but does not expose the broker's kernel port flags; this remains a device-validation target. A macOS test performs actual Mach exchanges against a reply-enforcing endpoint and checks success, denied/malformed responses, timeout and port cleanup.
 
 If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.
+
+### Connected process versus reachable service
+
+A subsequent device report shows `gotohpd` running in `user/501`, with its Mach service active and no prior exit. This excludes a missing executable or an exited daemon at the time of that report, but does not prove that initialization has completed or that the app/broker can resolve and use the endpoint. A user-domain service listing alone does not establish a namespace mismatch.
+
+The client now acquires the calling task's current bootstrap port for each lookup and releases that right, rather than relying on the process-global cached bootstrap port. On failure, the settings status includes the failing stage and hexadecimal return code. Export diagnostics includes an `ipc` snapshot with per-request lookup results, broker response classification and transport reachability. It contains no request/response payloads, credentials, account names or raw Mach port numbers. A valid empty broker response is distinguished from a malformed reply, timeout or missing broker. This adds the evidence needed to diagnose the remaining device connection failure; it does not claim that the device failure is resolved.
