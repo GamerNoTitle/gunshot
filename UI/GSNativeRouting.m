@@ -1,3 +1,4 @@
+#import "../Shared/GSPhotosCompatibility.h"
 #import "../Shared/GSLocalization.h"
 #import "GSNativeRouting.h"
 #import "GSExporter.h"
@@ -9,7 +10,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-// Explicit backup UI actions from 7.92.0's ObjC metadata.
+// Explicit backup UI actions shared by the audited host profiles.
 static BOOL GSInstalled;
 static NSString *const GSEnabledKey=@"dev.tqmane.gunshot.routeManualBackup";
 static NSString *const GSAccountKey=@"dev.tqmane.gunshot.routeAccount";
@@ -89,7 +90,7 @@ void GSInstallNativeRouting(void){
  GSInstallBackupRequests();
 #endif
  // Called on the main thread when installing the app's GoToHP launcher.
- if(GSInstalled||!GSIsGooglePhotos()||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqualToString:@"7.92.0"])return;
+ if(GSInstalled||!GSIsGooglePhotos()||GSPhotosHostProfile()==GSPhotosUnsupported)return;
  Class behavior=NSClassFromString(@"PHSBackupActionBehaviorImpl");
  Class grid=NSClassFromString(@"PHSActionsGridModel");
  Class local=NSClassFromString(@"PHSLocalAsset");

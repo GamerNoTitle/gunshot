@@ -1,3 +1,4 @@
+#import "host_profile.h"
 #import "../UI/GSNativeAccount.h"
 #import <objc/runtime.h>
 #include <assert.h>
@@ -6,7 +7,7 @@
 @interface GSFixtureBundle : NSObject
 @end
 @implementation GSFixtureBundle
-- (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?@"GooglePhotos":@"7.92.0";}
+- (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?@"GooglePhotos":GSFixtureVersion;}
 @end
 static id MainBundle(id object,SEL selector){static id bundle;if(!bundle)bundle=[GSFixtureBundle new];return bundle;}
 @protocol SSOIdentity <NSObject>
@@ -40,10 +41,20 @@ static NSUInteger authorizations;
 @interface GSSSOFixture : NSObject
 @end
 @implementation GSSSOFixture
+#ifdef GS_TEST_LEGACY
+- (id)authorizationForIdentity:(id)identity scopes:(id)scopes{
+ assert([identity isKindOfClass:GSIdentityFixture.class]);assert([[identity userID]isEqual:@"123"]);
+ assert([scopes isEqual:@[@"https://www.googleapis.com/auth/photos.native"]]);return [GSAuthorizerFixture new];
+}
+#else
 - (id)fetcherAuthorizerForAccountID:(id)account scopes:(id)scopes{
  assert([account isEqual:@"id-123"]);assert([scopes isEqual:@[@"https://www.googleapis.com/auth/photos.native"]]);return [GSAuthorizerFixture new];
 }
+#endif
 @end
+#ifdef GS_TEST_LEGACY
+#define photosSSOService ssoService
+#endif
 @interface PHSAccountManagerImpl : NSObject
 @property(nonatomic,strong) id viewingAccount;
 @property(nonatomic,strong) id photosSSOService;

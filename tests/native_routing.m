@@ -1,3 +1,4 @@
+#import "host_profile.h"
 #import "../UI/GSNativeRouting.h"
 #import <objc/runtime.h>
 #include <assert.h>
@@ -59,7 +60,7 @@ static void Drain(NSUInteger queued,NSUInteger failed){
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)FixtureMainBundle);
  GSInstallNativeRouting();assert(!GSNativeRoutingAvailable());
- version=@"7.92.0";GSInstallNativeRouting();assert(GSNativeRoutingAvailable());
+ version=GSFixtureVersion;GSInstallNativeRouting();assert(GSNativeRoutingAvailable());
  GSSetNativeRouting(NO,nil);
  PHSBackupActionBehaviorImpl *behavior=[PHSBackupActionBehaviorImpl new];
  PHSActionsGridModel *grid=[PHSActionsGridModel new];

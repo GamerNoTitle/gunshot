@@ -1,3 +1,4 @@
+#import "host_profile.h"
 #import "../Shared/GSLocalization.h"
 #import "../UI/GSAccountMenu.h"
 #import "../UI/GSPanel.h"
@@ -62,7 +63,7 @@ int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)MainBundle);
  PHSMyAccountMenuDataSource *source=[PHSMyAccountMenuDataSource new];UIViewController *controller=[UIViewController new];
  GSInstallAccountMenu();assert([source numberOfCustomSectionsForAccountMenuViewController:controller]==1);
- version=@"7.92.0";GSInstallAccountMenu();GSInstallAccountMenu();assert(nativeInstalled==1);
+ version=GSFixtureVersion;GSInstallAccountMenu();GSInstallAccountMenu();assert(nativeInstalled==1);
  assert([source numberOfCustomSectionsForAccountMenuViewController:controller]==2);
  assert([source accountMenuViewController:controller numberOfCustomItemsInSectionAtIndex:1]==1);
  assert([source accountMenuViewController:controller numberOfCustomItemsInSectionAtIndex:0]==3);

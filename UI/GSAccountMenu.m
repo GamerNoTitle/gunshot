@@ -1,3 +1,4 @@
+#import "../Shared/GSPhotosCompatibility.h"
 #import "../Shared/GSLocalization.h"
 #import "GSAccountMenu.h"
 #import "GSPanel.h"
@@ -58,7 +59,7 @@ static void GSMenuUIAction(id object,SEL selector,NSInteger type,id path,id cont
 void GSInstallAccountMenu(void){
  GSInstallUnlimitedStorage();
  static BOOL installed;
- if(installed||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"])return;
+ if(installed||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||GSPhotosHostProfile()==GSPhotosUnsupported)return;
  Class cls=NSClassFromString(@"PHSMyAccountMenuDataSource");
  NSArray *selectors=@[@"numberOfCustomSectionsForAccountMenuViewController:",@"accountMenuViewController:numberOfCustomItemsInSectionAtIndex:",@"accountMenuViewController:customItemAtIndexPath:",@"accountMenuViewController:performActionAtIndexPath:"];
  const char *encodings[]={"Q24@0:8@16","Q32@0:8@16Q24","@32@0:8@16@24","v32@0:8@16@24"};Method methods[4];

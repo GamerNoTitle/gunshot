@@ -1,3 +1,4 @@
+#import "host_profile.h"
 #import "../UI/GSUnlimitedStorage.h"
 #import "unlimited_storage_fixture.h"
 #import <objc/runtime.h>
@@ -11,13 +12,24 @@ static NSUInteger Actions,CellCalls;
 - (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?Executable:Version;}
 @end
 static id MainBundle(id object,SEL selector){static id bundle;if(!bundle)bundle=[GSStorageFixtureBundle new];return bundle;}
-@interface OGLStringResources : NSObject
-+ (id)sharedInstance;
-- (id)stringForID:(int)identifier;
+@interface GSNativeStringsBundle : NSBundle @end
+@implementation GSNativeStringsBundle
+- (NSString *)localizedStringForKey:(NSString *)key value:(NSString *)value table:(NSString *)table{
+ assert([key isEqual:@"OneGoogleStorageCardUnlimitedTitle"]&&[table isEqual:@"OneGoogle"]);
+ return ResourcesReady?@"Unlimited storage":value;
+}
 @end
+@interface OGLBundle : NSObject
++ (id)oneGoogleResourceBundle;
+@end
+@implementation OGLBundle
++ (id)oneGoogleResourceBundle{return [GSNativeStringsBundle new];}
+@end
+// A future numeric string ID is deliberately unusable: never call this API.
+@interface OGLStringResources : NSObject @end
 @implementation OGLStringResources
-+ (id)sharedInstance{static id resources;if(!resources)resources=[self new];return resources;}
-- (id)stringForID:(int)identifier{assert(identifier==0x81);return ResourcesReady?@"Unlimited storage":@"OneGoogleStorageCardUnlimitedTitle";}
++ (id)sharedInstance{assert(!"numeric string-table API must not be used");return nil;}
+- (id)stringForID:(int)identifier{assert(!"numeric string-table API must not be used");return nil;}
 @end
 @implementation GSStorageFixtureData
 + (BOOL)supportsSecureCoding{return YES;}
@@ -72,7 +84,7 @@ int main(int argc,const char **argv){@autoreleasepool{
  Class itemClass=nil,cellClass=nil;
  if(!bentoOnly){itemClass=RegisterClass(GSStorageFixtureItem.class,"OGLAccountSelectorStorageCardItem");cellClass=RegisterClass(GSStorageFixtureCell.class,"OGLAccountSelectorStorageCardCell");}
  GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());
- Version=@"7.92.0";Executable=@"OtherApp";GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());Executable=@"GooglePhotos";
+ Version=GSFixtureVersion;Executable=@"OtherApp";GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());Executable=@"GooglePhotos";
  GSInstallUnlimitedStorage();
  if(incompatible){assert(!GSUnlimitedStorageAvailable());assert([GSUnlimitedStorageSnapshot()[@"status"]isEqual:@"incompatible-model-abi"]);return 0;}
  assert(GSUnlimitedStorageAvailable());GSInstallUnlimitedStorage();
