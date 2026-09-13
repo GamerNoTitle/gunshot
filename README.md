@@ -43,7 +43,7 @@ On jailed Google Photos 7.20.2 and compatible 7.92.0+ releases, **Route manual a
 
 ### Jailbreak
 
-Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` from GitHub Actions with your package manager. RocketBootstrap, PreferenceLoader and a substrate-compatible injection system are required. If the app exits at launch with `EXC_GUARD / SEND_INVALID_REPLY`, see the [Lynx / Cephei / RocketBootstrap crash analysis and isolation steps](docs/analysis/startup-crash-ios16.md).
+Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` from GitHub Actions with your package manager. RocketBootstrap, PreferenceLoader and a substrate-compatible injection system are required. **If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.**
 
 In **Settings → GoToHP → Open GoToHP settings**, import an account using the [upstream sign-in instructions](https://github.com/xob0t/gotohp#sign-in). Upload from Google Photos' GoToHP settings, the Apple Photos GoToHP button or a supported **Upload with GoToHP** share action. Keep the app open until media reaches the queue; the daemon then continues independently.
 

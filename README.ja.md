@@ -43,7 +43,7 @@ jailed / Google Photos 7.20.2・互換性のある7.92.0以降の**手動・自�
 
 ### Jailbreak
 
-起動直後に `EXC_GUARD / SEND_INVALID_REPLY` で落ちる場合は、[Lynx・Cephei・RocketBootstrapのクラッシュ解析と切り分け手順](docs/analysis/startup-crash-ios16.md)を参照してください。
+**クラッシュする場合は、ChoicyでGoogle PhotosのGunshotだけを有効にしてください。**
 
 GitHub Actions の `gotohp-tweak-rootless` または `gotohp-tweak-rootful` の `.deb` をパッケージマネージャーで導入します。RocketBootstrap、PreferenceLoader、substrate 互換の注入環境が必要です。
 

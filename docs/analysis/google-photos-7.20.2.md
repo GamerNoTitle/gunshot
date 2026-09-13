@@ -60,4 +60,4 @@ Version components are compared numerically: 7.92.1, 7.93, 7.100, 8.0, and highe
 
 CI also reruns the modern native contracts with simulated version metadata 7.93.0, 7.100.0, and 8.0.0. These are compatibility tests using the reference API shape, **not analysis or real-device tests of those app releases**. Changed private API semantics can still require an adapter update even when a signature is unchanged.
 
-The reported 7.20.2 launch crash on iOS 16.7.9 is tracked separately in the [startup crash analysis](startup-crash-ios16.md). It occurs in another tweak's initializer through Cephei/RocketBootstrap; no device crash resolution is claimed by these compatibility changes.
+If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.
