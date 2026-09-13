@@ -151,9 +151,6 @@ func Open(root string, runner Runner) (*Engine, error) {
 	}
 	en := &Engine{root: root, state: s, active: map[string]context.CancelFunc{}, importHashes: map[string][]hash.Hash{}, runner: runner}
 	for _, j := range s.Jobs {
-		if !validID(j.ID) {
-			return nil, errors.New("invalid job id")
-		}
 		switch j.State {
 		case "uploading", "preparing":
 			j.State = "pending"

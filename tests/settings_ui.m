@@ -17,6 +17,14 @@ static atomic_ulong FixtureAccountReads;
 static atomic_int FixtureConcurrent=2;
 @interface GSPanel (GSFixturePolling)
 - (void)refresh;
+- (void)chooseValueForControl:(NSInteger)control;
+- (void)sheet:(UIAlertController *)sheet;
+@end
+@interface GSFixtureRetryPanel : GSPanel
+@property(nonatomic,strong) UIAlertController *valueSheet;
+@end
+@implementation GSFixtureRetryPanel
+- (void)sheet:(UIAlertController *)sheet{self.valueSheet=sheet;}
 @end
 static NSUInteger NativeRefreshes;
 void GSRefreshNativeLibrary(void){dispatch_async(dispatch_get_main_queue(),^{NativeRefreshes++;});}
@@ -128,6 +136,11 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
   NSSet *allowed=[NSSet setWithArray:@[@"uploadSummary",@"coreReady",@"conditionsAccepted",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
   if(![[NSSet setWithArray:runtime.allKeys]isSubsetOfSet:allowed]){Finish(NO,@"unexpected diagnostic fields");return;}
   GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=8){Finish(NO,@"settings sections missing");return;}
+  GSFixtureRetryPanel *retryPanel=[GSFixtureRetryPanel new];retryPanel.settingsMode=YES;
+  [retryPanel setValue:[@{@"retries":@7}mutableCopy] forKey:@"options"];
+  UITableViewCell *retry=[retryPanel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:2]];
+  [retryPanel chooseValueForControl:2];
+  if(![retry.detailTextLabel.text isEqual:@"7 回"]||![retryPanel.valueSheet.actions[7].title isEqual:@"✓ 7 回"]){Finish(NO,@"Japanese retry setting must use the protocol key for display and selection");return;}
   Capture(self.window,@"settings-light.png");
   GSSetLanguage(@"en");[panel viewWillAppear:NO];
   UITableViewCell *quality=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:2]];

@@ -15,7 +15,7 @@ func roleAllowed(role, op string) bool {
 	if role == "settings" || role == "googlephotos" {
 		return common || (role == "googlephotos" && (op == "begin" || op == "append" || op == "seal")) || op == "configure" || op == "account_add" || op == "account_native" || op == "account_remove" || op == "account_select"
 	}
-	if role == "googlephotos" || role == "photos" {
+	if role == "photos" {
 		return common || op == "begin" || op == "append" || op == "seal"
 	}
 	return false

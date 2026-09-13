@@ -229,6 +229,7 @@ func TestRemoteLivePhotoComponentIsNotRetried(t *testing.T) {
 func TestStructurallyCorruptStateRejected(t *testing.T) {
 	for _, mutate := range []func(*State){
 		func(s *State) { s.Jobs = append(s.Jobs, nil) },
+		func(s *State) { s.Jobs[0].ID = "../credentials.json" },
 		func(s *State) { s.Jobs[0].Resources[0].Name = "../credentials.json" },
 		func(s *State) { s.Jobs[0].State = "unknown" },
 		func(s *State) { s.Jobs = append(s.Jobs, s.Jobs[0]) },

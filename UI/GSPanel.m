@@ -15,15 +15,15 @@
 #if GS_JAILED
 #define GS_ACCOUNT_HELP GSL(@"Connect or refresh your account.")
 #define GS_BACKUP_TITLE GSL(@"Route manual and automatic backups through GoToHP")
-#define GS_BACKUP_HELP GSL(@"Enable backup in Google Photos to route automatic backups through GoToHP as well. Uploads use the GoToHP quality setting. Keep the app in the foreground on jailed devices.")
-#define GS_QUEUED_HELP GSL(@"Keep this app open while uploading. Pending items resume the next time you open it.")
-#define GS_AUTH_HELP GSL(@"Paste the EmbeddedSetup oauth_token or a complete gotohp credential. It is stored privately in this app and sent to Google. It is never displayed again.")
+#define GS_BACKUP_HELP GSL(@"Enable Google Photos backup for automatic uploads. GoToHP controls the quality. Keep the app in the foreground.")
+#define GS_QUEUED_HELP GSL(@"Keep the app open while uploading. Pending uploads resume next time.")
+#define GS_AUTH_HELP GSL(@"Paste an EmbeddedSetup oauth_token or complete gotohp credential. Stored privately in this app, sent to Google, and hidden after saving.")
 #else
 #define GS_BACKUP_TITLE GSL(@"Route manual backups through GoToHP")
 #define GS_BACKUP_HELP GSL(@"Applies to the manual Back up now action.")
 #define GS_ACCOUNT_HELP GSL(@"Add an account in Settings → GoToHP.")
-#define GS_QUEUED_HELP GSL(@"Uploads continue in the background after you close the app.")
-#define GS_AUTH_HELP GSL(@"Paste the EmbeddedSetup oauth_token or a complete gotohp credential. The value is sent only to gotohpd and Google. It is never displayed again.")
+#define GS_QUEUED_HELP GSL(@"Uploads continue after you close the app.")
+#define GS_AUTH_HELP GSL(@"Paste an EmbeddedSetup oauth_token or complete gotohp credential. Sent only to gotohpd and Google, and hidden after saving.")
 #endif
 @interface GSPanel () <PHPickerViewControllerDelegate>
 @property(nonatomic,strong) NSArray *jobs;
@@ -164,12 +164,12 @@
 #if GS_JAILED
  if(GSIsGooglePhotos())accountRows=@[@13];
 #endif
- [groups addObject:@{@"title":GSL(@"Account"),@"rows":accountRows,@"footer":GSL(@"Connection status and destination appear above.")}];
- [groups addObject:@{@"title":GSL(@"Upload settings"),@"rows":@[@0,@1,@2,@3,@4,@5],@"footer":[GSL(@"Pixel 1 requests original quality without storage usage using the first-generation Pixel XL profile. Quality is saved for each item when queued. Check Google's storage accounting and original-data availability separately.\n") stringByAppendingString:GS_QUEUED_HELP]}];
+ [groups addObject:@{@"title":GSL(@"Account"),@"rows":accountRows}];
+ [groups addObject:@{@"title":GSL(@"Upload settings"),@"rows":@[@0,@1,@2,@3,@4,@5],@"footer":[GSL(@"Pixel 1 requests original quality without storage usage (Pixel XL). Quality is fixed when queued. Verify storage usage and original data in Google Photos.\n") stringByAppendingString:GS_QUEUED_HELP]}];
  if(GSIsGooglePhotos())[groups addObject:@{@"title":GSL(@"Google Photos integration"),@"rows":@[@10],@"footer":GS_BACKUP_HELP}];
  [groups addObject:@{@"title":GSL(@"Queue management"),@"rows":@[@8,@9]}];
- if(GSIsGooglePhotos())[groups addObject:@{@"title":GSL(@"Diagnostics"),@"rows":@[@11,@12],@"footer":GSL(@"For compatibility troubleshooting. Tokens and media contents are never recorded.")}];
- [groups addObject:@{@"title":GSL(@"Appearance"),@"rows":GSIsGooglePhotos()?@[@15,@16]:@[@15],@"footer":GSIsGooglePhotos()?GSL(@"Language and storage display changes apply when the profile menu reopens. Unlimited storage changes the card display only, not your account limit or upload quality."):GSL(@"Choose the GoToHP display language. The profile menu updates the next time it opens.")}];
+ if(GSIsGooglePhotos())[groups addObject:@{@"title":GSL(@"Diagnostics"),@"rows":@[@11,@12],@"footer":GSL(@"Troubleshoot compatibility. Tokens and media are never recorded.")}];
+ [groups addObject:@{@"title":GSL(@"Appearance"),@"rows":GSIsGooglePhotos()?@[@15,@16]:@[@15],@"footer":GSIsGooglePhotos()?GSL(@"Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged."):GSL(@"Reopen the profile menu to update its language.")}];
  return groups;
 }
 - (NSInteger)queueSection{return self.controlSections.count+1;}
@@ -237,7 +237,7 @@
   if(control==15)cell.detailTextLabel.text=[GSLanguageOverride()isEqual:@"system"]?GSL(@"System default"):[GSLanguageOverride()isEqual:@"ja"]?GSL(@"Japanese"):@"English";
   if(control==0)cell.detailTextLabel.text=[self qualityTitle:self.options[@"quality"]];
   if(control==1)cell.detailTextLabel.text=[NSString stringWithFormat:GSL(@"Concurrent uploads: %@"),self.options[@"concurrent"]?:@1];
-  if(control==2)cell.detailTextLabel.text=[NSString stringWithFormat:GSL(@"Retry limit: %@"),self.options[GSL(@"retries")]?:@3];
+  if(control==2)cell.detailTextLabel.text=[NSString stringWithFormat:GSL(@"Retry limit: %@"),self.options[@"retries"]?:@3];
   if(control==6)cell.detailTextLabel.text=self.accounts[@"selected"];
   if(control==13)cell.detailTextLabel.text=GSL(@"Check the connection for the signed-in account");
   if(control==7)cell.textLabel.textColor=UIColor.systemRedColor;
@@ -249,7 +249,7 @@
    cell.accessoryView=toggle;cell.selectionStyle=UITableViewCellSelectionStyleNone;
   }
   if(control==16&&!GSUnlimitedStorageAvailable())cell.detailTextLabel.text=GSL(@"Unavailable in this version");
-  if(control==10)cell.detailTextLabel.text=GSNativeRoutingAvailable()?GS_BACKUP_TITLE:GSL(@"Unavailable in this version");
+  if(control==10&&!GSNativeRoutingAvailable())cell.detailTextLabel.text=GSL(@"Unavailable in this version");
   return cell;
  }
  if(!self.jobs.count){cell.textLabel.text=GSL(@"No uploads yet");cell.detailTextLabel.text=GSL(@"Use Choose photos and videos to add items.");cell.imageView.image=[UIImage systemImageNamed:@"tray"];cell.selectionStyle=UITableViewCellSelectionStyleNone;return cell;}
@@ -264,7 +264,7 @@
  cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;return cell;
 }
 - (void)chooseValueForControl:(NSInteger)control{
- NSString *key=@[@"quality",@"concurrent",GSL(@"retries")][control];
+ NSString *key=@[@"quality",@"concurrent",@"retries"][control];
  UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@[GSL(@"Quality"),GSL(@"Concurrent uploads"),GSL(@"Retry limit")][control] message:nil preferredStyle:UIAlertControllerStyleActionSheet];
  NSArray *values=control==0?@[@"original",@"saver",@"quota"]:control==1?@[@1,@2,@3,@4]:@[@0,@1,@2,@3,@4,@5,@6,@7,@8,@9,@10];
  for(id value in values){
@@ -289,7 +289,7 @@
   NSError *error=nil;
   GSRequest(@{@"op":@"account_native",@"account":account[@"email"],@"nativeID":account[@"identifier"]},&error);
   dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;
-   if(error){self.nativeAuthorizationFailed=YES;[self message:GSL(@"Could not obtain or validate Google Photos authorization. Check your sign-in status, then tap Reconnect.")];return;}
+   if(error){self.nativeAuthorizationFailed=YES;[self message:GSL(@"Google Photos authorization failed. Check your sign-in, then tap Reconnect.")];return;}
    [self refresh];
   });
  });
@@ -322,13 +322,13 @@
 }
 - (void)toggleNativeRouting{
 #if GS_JAILED
- if(!GSBackupRequestsAvailable()){[self message:GSL(@"Backup requests cannot be routed in this version. Select items from the GoToHP upload screen.")];return;}
+ if(!GSBackupRequestsAvailable()){[self message:GSL(@"Backup integration is unavailable in this version. Choose photos from Uploads.")];return;}
 #endif
- if(!GSNativeRoutingAvailable()){[self message:GSL(@"Manual backup integration is unavailable in this version. Choose photos from Uploads.")];return;}
+ if(!GSNativeRoutingAvailable()){[self message:GSL(@"Backup integration is unavailable in this version. Choose photos from Uploads.")];return;}
  if(GSNativeRoutingEnabled()){GSSetNativeRouting(NO,nil);[self reloadTablePreservingPosition];return;}
  NSString *account=self.accounts[@"selected"];
  if(!account.length){[self message:GS_ACCOUNT_HELP];return;}
- UIAlertController *a=[UIAlertController alertControllerWithTitle:GS_BACKUP_TITLE message:[NSString stringWithFormat:GSL(@"Destination: %@\n%@\nFailures and retries appear in the GoToHP queue. Uploads will not fall back to the native uploader."),account,GS_BACKUP_HELP] preferredStyle:UIAlertControllerStyleAlert];
+ UIAlertController *a=[UIAlertController alertControllerWithTitle:GS_BACKUP_TITLE message:[NSString stringWithFormat:GSL(@"Destination: %@\n%@\nCheck failures and retries in the GoToHP queue. No native upload fallback."),account,GS_BACKUP_HELP] preferredStyle:UIAlertControllerStyleAlert];
  [a addAction:[UIAlertAction actionWithTitle:GSL(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
  [a addAction:[UIAlertAction actionWithTitle:GSL(@"Enable") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){GSSetNativeRouting(YES,account);[self reloadTablePreservingPosition];}]];[self sheet:a];
 }
@@ -349,7 +349,6 @@
   if(control==13){[self addAccount];return;}
   if(control==10){[self toggleNativeRouting];return;}
   if(control==11){GSSetUploadDiagnostics(!GSUploadDiagnosticsEnabled());[self reloadTablePreservingPosition];return;}
-  if(control==12){[self exportUploadDiagnostics];return;}
   if(control<3){[self chooseValueForControl:control];return;}
   if(control<6)return; // Use the visible switch; no hidden value cycling.
   if(control==6||control==7)[self accountAction:control==7];
@@ -374,12 +373,12 @@
 - (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results{
  [picker dismissViewControllerAnimated:YES completion:^{NSMutableArray *ids=[NSMutableArray array];for(PHPickerResult *r in results)if(r.assetIdentifier)[ids addObject:r.assetIdentifier];
  PHFetchResult *found=[PHAsset fetchAssetsWithLocalIdentifiers:ids options:nil];NSMutableArray *assets=[NSMutableArray array];[found enumerateObjectsUsingBlock:^(PHAsset *a,NSUInteger i,BOOL *stop){[assets addObject:a];}];
- if(assets.count!=results.count)[self message:GSL(@"Some selected photos are not accessible. Update photo access permissions and select them again.")];else if(assets.count)[self importAssets:assets];}];
+ if(assets.count!=results.count)[self message:GSL(@"Some photos are inaccessible. Update photo permissions and select them again.")];else if(assets.count)[self importAssets:assets];}];
 }
 - (void)importAssets:(NSArray<PHAsset *> *)assets{[self importItems:assets assets:YES];}
 - (void)importURLs:(NSArray<NSURL *> *)urls{[self importItems:urls assets:NO];}
 - (void)importItems:(NSArray *)items assets:(BOOL)areAssets{
- if(self.busy){[self message:GSL(@"Wait for the current operation to finish, then try again.")];return;}self.stateGeneration++;self.busy=YES;
+ if(self.busy){[self message:GSL(@"Wait for the operation to finish, then retry.")];return;}self.stateGeneration++;self.busy=YES;
  __block BOOL expired=NO;__block UIBackgroundTaskIdentifier task=[UIApplication.sharedApplication beginBackgroundTaskWithExpirationHandler:^{@synchronized(self){expired=YES;}}];
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
  NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);NSDictionary *options=accounts?GSRequest(@{@"op":@"options"},&error):nil;NSUInteger queued=0;
@@ -392,7 +391,7 @@
  NSString *identifier=files?GSImportFiles(files,accounts[@"selected"],options[@"quality"],date,&error):nil;
  if(scoped)[item stopAccessingSecurityScopedResource];[NSFileManager.defaultManager removeItemAtURL:dir error:nil];
  if(!identifier)break;queued++;NSUInteger count=queued;
- dispatch_async(dispatch_get_main_queue(),^{[self message:[NSString stringWithFormat:GSL(@"Added %lu / %lu items. Keep the app open until preparation finishes."),(unsigned long)count,(unsigned long)items.count]];});
+ dispatch_async(dispatch_get_main_queue(),^{[self message:[NSString stringWithFormat:GSL(@"Added %lu / %lu items. Keep the app open while preparing."),(unsigned long)count,(unsigned long)items.count]];});
  }}
  dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;if(task!=UIBackgroundTaskInvalid){[UIApplication.sharedApplication endBackgroundTask:task];task=UIBackgroundTaskInvalid;}
  [self message:[NSString stringWithFormat:GSL(@"Added %lu / %lu items. %@"),(unsigned long)queued,(unsigned long)items.count,error?error.localizedDescription:(queued==items.count?GS_QUEUED_HELP:GSL(@"Preparation was interrupted. Select the remaining items again."))]];});
@@ -459,7 +458,7 @@ void GSInstallButton(UIWindow *window){
  panel.sharedItems=self.items;
  __weak GSUploadActivity *weak=self;panel.activityCompletion=^{[weak activityDidFinish:YES];};
  // Use an explicit button so opening the activity does not upload automatically.
- panel.navigationItem.prompt=GSL(@"Tap Add to queue the selected items.");
+ panel.navigationItem.prompt=GSL(@"Tap Add to queue your selection.");
  return [[UINavigationController alloc]initWithRootViewController:panel];
 }
 @end

@@ -9,8 +9,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-// Audited from 7.92.0's ObjC metadata; this is the explicit backup UI action,
-// not the automatic-backup engine or its server completion callbacks.
+// Explicit backup UI actions from 7.92.0's ObjC metadata.
 static BOOL GSInstalled;
 static NSString *const GSEnabledKey=@"dev.tqmane.gunshot.routeManualBackup";
 static NSString *const GSAccountKey=@"dev.tqmane.gunshot.routeAccount";
@@ -44,8 +43,7 @@ static void GSRoute(id localAssets){
   if(![asset isKindOfClass:PHAsset.class]){valid=NO;break;}
   [assets addObject:asset];
  }
- // Compatibility path: import without creating or presenting a view controller.
- // Failed imports remain visible in settings/diagnostics, never native fallback.
+ // Import silently; report failures in settings without native fallback.
  GSInitializeImport();@synchronized(GSImportLock){GSImportStatus[@"actions"]=@([GSImportStatus[@"actions"]unsignedIntegerValue]+1);}
  if(!valid||!assets.count){GSImportResult(@"The selected photos could not be retrieved.",0);return;}
  NSString *account=[GSNativeRoutingAccount()copy];NSArray *selection=[assets copy];
@@ -74,8 +72,7 @@ static void GSRoute(id localAssets){
 static void GSBackup(id object,SEL selector,id assets){
  if(!GSNativeRoutingEnabled()){GSBackupOriginal(object,selector,assets);return;}
 #if GS_JAILED
- // Keep the native scheduler/delegate alive. The common request hook owns the
- // Go handoff and subsequent server reconciliation, including manual actions.
+ // Preserve the native scheduler; the shared request hook handles the transfer.
  if(GSBackupRequestsAvailable()){GSBackupOriginal(object,selector,assets);return;}
 #endif
  GSRoute(assets);

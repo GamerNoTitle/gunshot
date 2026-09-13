@@ -1,15 +1,11 @@
 # Jailed / sideload / LiveContainer
 
-開発版。iOS 15+ / arm64 の GooglePhotos executable を対象にした、Go runtime 同梱の dylib です。添付 7.92.0 は iOS 18+。Sideloadly で注入なしのログイン後に tweak を追加し、起動・認証・アップロード・無制限ストレージ表示が動作した利用者報告があります。LiveContainer や全署名環境の動作を保証するものではありません。
-
-## 最初に：注入する前に Google Photos へログイン
+開発版。iOS 15+ / arm64 の `GooglePhotos` executable 向けに Go runtime を同梱した dylib です。解析対象の Google Photos 7.92.0 は iOS 18+。Sideloadly で起動・認証・アップロード・無制限ストレージ表示の利用者報告があります。LiveContainer を含む他の環境は実機確認が必要です。
 
 > [!IMPORTANT]
-> **先に tweak 注入なしで Google Photos 本体へログインし、その後で tweak を有効化するか、注入済み IPA を上書き導入してください。** 注入を有効にした状態では Google がログインを拒否した実機報告があります。
->
-> ログイン済みアプリや LiveContainer の guest / データコンテナを削除せず、同じ署名アカウント・Bundle ID・データを維持する形で更新します。別署名のアプリや別コンテナへログイン状態を自動移行できるとは限りません。この回避手順はすべての環境で成功する保証はありません。
+> **注入なしで Google Photos にログインしてから、tweak を有効にしてください。** 注入中は Google がログインを拒否する実機報告があります。更新時はアプリや LiveContainer の guest を削除せず、同じ署名アカウント・Bundle ID・データコンテナを維持します。
 
-[README の免責事項](../README.ja.md#免責事項--disclaimer)も確認してください。
+[免責事項](../README.ja.md#免責事項--disclaimer)も確認してください。
 
 ## 配布物とビルド
 
@@ -18,82 +14,62 @@ bash scripts/package.sh jailed
 python3 scripts/verify-package.py jailed
 ```
 
-`packages/jailed/` に次を生成します。
+`packages/jailed/` に次を生成します。ビルド済み成果物の利用に Theos / Xcode / Go は不要です。
 
-- `gotohp-tweak-jailed.deb`: IPA injector 用。jailed iOS が `.deb` を直接インストールできるという意味ではありません。
-- `GunshotJailed.dylib`: 同じ deb から取り出した単体バイナリ。LiveContainer の tweak import 用。
-- `ThirdPartyNotices.txt`: gotohp、Go runtime、静的リンクした依存モジュールの notices。
+| ファイル | 用途 |
+| --- | --- |
+| `gotohp-tweak-jailed.deb` | Sideloadly などの IPA injector に渡す archive |
+| `GunshotJailed.dylib` | 同じ deb の単体バイナリ。LiveContainer の tweak import 用 |
+| `ThirdPartyNotices.txt` | gotohp、Go runtime、静的リンクした依存モジュールの notices |
 
-Go uploader と依存 Go モジュールは静的リンク済み。Substrate、ElleKit、RocketBootstrap、PreferenceLoader、外部 executable は不要です。iOS 標準 framework は OS のものを使用します。jailbreak 用の `Gunshot.dylib` / daemon と取り違えないでください。
+Go uploader と依存 Go モジュールは静的リンク済みです。iOS 標準 framework 以外の実行時依存はありません。**rootless / rootful の deb や `Gunshot.dylib` は jailed 注入に使わず、deb と単体 dylib を二重に注入しないでください。**
 
-## `.deb` ファイルをそのまま注入する（Sideloadly）
+## Sideloadly
 
-Theos / Xcode / Go はビルド済み成果物の利用には不要です。`.deb` は配布用 archive であり、iPhone が dylib として実行するファイルではありません。**注入ツールに `.deb` を渡すと、ツールが中の dylib を展開して IPA に組み込みます。手動で展開する必要はありません。** App Store からインストール済みの Google Photos に `.deb` を開くだけで注入できるわけではありません。
+Windows / macOS の [Sideloadly](https://sideloadly.io/)で、復号済み Google Photos IPA に `.deb` を注入します。ツールが dylib を展開するため、手動展開や拡張子の変更は不要です。
 
-Windows / macOS の [Sideloadly 公式サイト](https://sideloadly.io/)は `.deb` / `.dylib` / `.framework` / `.bundle` の注入と、加工済み IPA の export を案内しています。
+1. Google Photos IPA を **Inject dylibs/frameworks をオフにして**サイドロードし、Google Photos にログインします。
+2. 同じ IPA をメインの IPA 欄に読み込みます。
+3. **Advanced Options → Inject dylibs/frameworks** を有効にし、追加ボタン（＋ / Add）で `gotohp-tweak-jailed.deb` を選びます。表記はバージョンにより異なります。選択欄が `.dylib` のみなら、対応形式 / すべてのファイルへ切り替えます。
+4. 注入一覧を確認し、接続 iPhone とログイン時の **Apple Account・Bundle ID** を指定して **Start**。ログイン済みアプリへデータを維持して上書きします。別の方法で導入する場合は export モードで IPA を保存し、導入先に必要な署名を行います。
+5. 起動後、**Google Photos のプロフィールメニュー → GoToHP の設定**を開きます。
 
-まず復号済み Google Photos IPA を **Inject dylibs/frameworks をオフにして**サイドロードし、Google Photos 本体でログインを完了してください。そのアプリを削除せず、以下の手順で同じアプリへ注入版を上書きします。
+初回の信頼 / Developer Mode、Windows の iTunes / iCloud などの接続環境は [Sideloadly FAQ](https://sideloadly.io/faq) に従ってください。
 
-1. 同じ復号済み Google Photos **IPA** をメインの IPA 欄に読み込みます。`.deb` を IPA 欄には入れません。
-2. **Advanced Options** の **Inject dylibs/frameworks** などの tweak 注入項目を有効にし、追加ボタン（＋ / Add）で **`gotohp-tweak-jailed.deb`** を選びます。画面の表記はバージョンにより異なります。ファイル選択が `.dylib` のみに絞られていれば、対応形式 / すべてのファイルへ切り替えます。拡張子を `.dylib` に変更する操作ではありません。
-3. 注入一覧に jailed deb が載ったことを確認します。同梱の `GunshotJailed.dylib` をさらに追加する必要はありません。
-4. 直接インストールするなら接続 iPhone と、ログイン時のインストールに使った同じ Apple Account・Bundle ID を指定して **Start**。ログイン済みアプリのデータを維持する更新として再署名・サイドロードします。IPA を別の方法で導入する場合は export モードで加工 IPA を保存し、その導入先で必要な署名を行います。
-5. 起動後 **Google Photos のプロフィールメニュー → GoToHP の設定**を開きます。初回の信頼 / Developer Mode は [Sideloadly FAQ](https://sideloadly.io/faq) を参照してください。
+### 他の注入ツール・手動注入
 
-Windows で Sideloadly が要求する Apple device 接続用の iTunes / iCloud 等は公式セットアップに従ってください。これは tweak の Theos / Go 依存とは別です。rootless / rootful deb は jailed 注入用ではありません。注入・署名が成功したことと、この tweak の実機動作が確認できたことも別です。
+1. 復号済み IPA に対応 injector で jailed deb を注入します。手動なら `GunshotJailed.dylib` を app の Frameworks に配置し、メイン executable に `@rpath/GunshotJailed.dylib` の `LC_LOAD_DYLIB` を追加します。
+2. dylib を含むアプリ全体を、利用可能な証明書・プロビジョニングで再署名してサイドロードします。ビルド時の ad-hoc 署名では通常の iOS にインストールできません。
 
-LiveContainer の Tweaks importer に直接入れる場合は、後述の **単体 `.dylib`** を使います。事前注入した IPA と外部 tweak の二重読み込みは避けてください。
+注入先は **メインの `GooglePhotos` executable のみ**です。app extension や arm64e-only executable は対象外です。Bundle ID を変える場合も executable 名は維持してください。
 
-## サイドロードの共通条件
-
-前述のとおり、注入なしでログインした同じアプリのデータを維持して更新します。
-
-1. 手元の復号済み Google Photos IPA に jailed deb を対応する IPA injector で注入するか、単体 dylib を app の Frameworks に配置して `@rpath/GunshotJailed.dylib` の `LC_LOAD_DYLIB` をメイン executable に追加します。単に zip にファイルを足すだけでは読み込まれません。
-2. dylib を含むアプリ全体を自分の利用可能な証明書・プロビジョニングで再署名し、サイドロードします。ビルド時の ad-hoc 署名だけでは通常の iOS にインストールできません。
-3. 注入対象は **メインの GooglePhotos executable のみ**。app extension、Apple Photos、別の arm64e-only executable へは注入しません。再署名で bundle ID を変えても executable 名は維持してください。
-4. Google Photos の**プロフィールメニュー → GoToHP の設定**を開きます。jailed / 7.92.0 ではログイン中のアカウントを既存 SSO authorizer 経由で接続します。トークンの手動入力は不要です。
-5. GoToHP の Upload から写真を選択します。NSPhotoLibraryUsageDescription がホストに必要です。Google Photos 7.92.0 では存在を確認済みです。
-
-署名済み IPA、証明書、Google Photos バイナリはこのリポジトリ・配布物に含めません。再署名で使えなくなる Google Photos 自体の機能までは修復しません。
+署名済み IPA、証明書、Google Photos バイナリは配布しません。再署名で使えなくなる Google Photos 自体の機能は修復できません。
 
 ## LiveContainer
 
-[公式の tweak 手順](https://livecontainer.github.io/docs/guides/tweaks)に合わせて単体 dylib を使います。
+[公式の tweak 手順](https://livecontainer.github.io/docs/guides/tweaks)に沿って、単体 dylib を使います。
 
-1. **注入なしの** Google Photos IPA を LiveContainer に取り込み、tweak を有効にせず起動して Google アカウントへのログインを済ませます。guest を終了し、同じ guest / データコンテナを維持して続けます。
-2. **Tweaks** タブで Google Photos 用の新しいフォルダを作成し、そこへ `GunshotJailed.dylib` を Import Tweak します。全アプリに読み込まれる root Tweaks には配置しません。
-3. Google Photos の app settings → **Tweak Folder** をそのフォルダへ設定します。TweakLoader を無効にしないでください。署名は LiveContainer の手順に従い、必要なら Sign を実行します。
-4. 起動後、**Google Photos のプロフィールメニュー → GoToHP の設定**を開きます。アカウントと queue はその guest の Application Support/GoToHP に保存します。注入済み IPA に更新する方式でも、先にログインした同じ guest / データコンテナを維持します。
+1. **注入なしの** Google Photos IPA を取り込み、tweak を有効にせず起動してログインします。guest を終了し、同じ guest / データコンテナを維持します。
+2. **Tweaks** タブに Google Photos 用のフォルダを作り、`GunshotJailed.dylib` を **Import Tweak** します。全アプリ用の root Tweaks には配置しません。
+3. Google Photos の app settings → **Tweak Folder** にそのフォルダを指定します。TweakLoader を有効にし、公式手順に従って必要なら **Sign** を実行します。
+4. 起動後、**Google Photos のプロフィールメニュー → GoToHP の設定**を開きます。
 
-`.deb` の直接 import は LiveContainer のこの手順には含まれません。外部 tweak と IPA 内への事前注入を重複させないでください。まず単一 guest / 単一 container で検証します。複数 Go runtime を含む tweak の同時ロード、multitask、実行中の data-container 切替は未検証です。guest ファイル選択に問題がある場合は[公式の app 設定](https://github.com/LiveContainer/LiveContainer#fix-file-picker--local-notification)を確認してください。
+IPA 内に事前注入する方式を使う場合も、ログイン済みの guest / データを維持し、外部 tweak と重複させないでください。単一 guest / container で検証してください。複数 Go runtime の同時ロード、multitask、実行中の data-container 切替は未検証です。ファイル選択に問題があれば[公式の app 設定](https://github.com/LiveContainer/LiveContainer#fix-file-picker--local-notification)を確認してください。
 
-## Jailbreak 版との差
+## アカウントとアップロード
 
-| 動作 | rootless / rootful | jailed / LiveContainer |
-| --- | --- | --- |
-| uploader | mobile launchd daemon | Google Photos プロセス内 |
-| account/settings | Google Photos 内 + Preferences | Google Photos 内 |
-| Go runtime | daemon に静的リンク | dylib に静的リンク |
-| アプリを閉じる | キュー投入後は daemon が継続 | background 通知で upload を中断し pending に戻す |
-| 再開 | daemon が実行 | foreground 復帰 / アプリ再起動後 GoToHP を開く |
-| 保存先 | mobile の Application Support | host/guest の Application Support |
-| iOS 以外の実行時依存 | jailbreak loader / RocketBootstrap / PreferenceLoader | 追加パッケージなし |
+7.92.0 では GoToHP の設定を開くと、ログイン中のアカウントを既存 SSO 経由で自動接続します。接続を更新するには**再接続**をタップします。トークンの手動入力は不要です。認証失敗時はエラーを表示し、別アカウントには送信しません。
 
-UIKit の background 制限を解除しません。Go HTTP は background URLSession に移管できないため、画面ロック・OS suspend・force kill 後の継続は提供しません。中断時のキャンセル処理が OS 停止に間に合わない場合でも、次回初期化で queue を復旧します。再送は先頭からで、commit 中断は結果不明として停止します。通知の処理は core queue 上なので認証・ディスク処理が終わるまで遅れる場合があります。
+**アップロード → 写真・動画を選択**から写真を選びます。ホストに `NSPhotoLibraryUsageDescription` が必要です（7.92.0 は確認済み）。認証の詳細は[認証経路・保存内容](analysis/native-account.md)、Google Photos のバックアップ連携は [backup-routing.md](analysis/backup-routing.md) を参照してください。
 
-アカウントの binding は sandbox 内の 0600 JSON に保存します。native account のトークンは保存せず、Google Photos の既存 SSO が管理します。以前に手動 import した credential は削除するまで JSON に残る場合があります。GoToHP 独自の Keychain store は未実装です。ディレクトリは 0700、初回 unlock 後アクセス可能、backup 対象から除外します。同じアプリ/LiveContainer のコードとその管理者から隔離するものではありません。独立 daemon 用の外部 IPC は開きません。
+## 実行・保存の制約
+
+uploader は Google Photos プロセス内で動作します。バックグラウンド通知で upload を中断し pending に戻し、前面復帰時や再起動後に GoToHP を開くと再開します。画面ロック・OS suspend・force kill 後の継続には対応しません。中断処理が間に合わなくても次回初期化で queue を復旧します。再送は先頭から行い、commit 中断は結果不明として停止します。認証・ディスク処理中は中断通知の処理が遅れる場合があります。
+
+アカウントの binding と queue は host / guest の `Application Support/GoToHP` に保存します。native token は Google Photos の SSO が管理し、GoToHP では保存しません。以前に手動 import した credential は削除するまで JSON に残る場合があります。
+
+JSON は 0600、ディレクトリは 0700 で、初回 unlock 後にアクセス可能、backup 対象外です。独自の Keychain store はなく、同じアプリ / LiveContainer のコードや管理者からは隔離されません。独立 daemon 用の外部 IPC は開きません。
 
 ## 実機検証
 
-サイドロードと LiveContainer それぞれで、起動、Settings、認証、JPEG/動画/Live Photo、複数選択、Wi-Fi/充電条件、background 中断、foreground 復帰、force kill と再起動、期限切れ credential を確認します。GoToHP を開いたとき、または有効なバックアップ連携要求が到着したときに uploader を初期化します。Native routing は [native-routing.md](native-routing.md) の別項目として検証してください。
-
-
-## ログイン済み Google Photos のアカウントを利用する
-
-7.92.0 の jailed 版では、プロフィール画像 → アカウントメニューの「GoToHP の設定」から開きます。ホーム上に浮くボタンは廃止しました。ログイン中のアカウントを自動接続し、Account で再接続できます。トークンの手動入力は不要です。認証が失敗した場合はエラーを表示し、別アカウントで送信しません。
-
-`Inject dylibs/frameworks` 有効時だけ本体のログインが拒否される実機報告があります。ユーザー環境では注入なしでログイン後に同じアプリへ tweak を追加すると起動できました。既存アプリは削除せず、同じ署名アカウント・アプリ識別子で更新してください。この手順や初回ログインの互換性は全環境で保証されていません。
-
-[認証経路・保存内容・検証範囲](analysis/native-account.md)を参照してください。
-
-手動・自動バックアップの新しい連携は [backup-routing.md](analysis/backup-routing.md) を参照してください。
+Sideloadly / LiveContainer ごとに、起動、設定、認証、JPEG / 動画 / Live Photo、複数選択、Wi-Fi / 充電条件、background 中断、foreground 復帰、force kill と再起動、期限切れ credential を確認してください。Native routing は [native-routing.md](native-routing.md) の項目で別途検証します。

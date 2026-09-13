@@ -7,9 +7,8 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-// Audited 7.92.0 asset request boundary, shared by manual and automatic backup.
-// Native success is NEVER fabricated: after Go commits, native fingerprint
-// lookup reconciles the real remote item. Native payload fallbacks are blocked.
+// 7.92.0 manual/automatic backup: Go commits, then native lookup confirms the
+// remote item. Block native payload fallback; report success only after lookup.
 @interface GSBackupTransfer : NSObject
 @property(atomic) BOOL cancelled;
 @property(atomic) BOOL cancelGo;
@@ -47,7 +46,7 @@ static void GSStart(id request,SEL selector,IMP original){
  if(existing){if(existing.reconciling)((void(*)(id,SEL))original)(request,selector);return;}
  if(!GSNativeRoutingEnabled()){((void(*)(id,SEL))original)(request,selector);return;}
  PHAsset *asset=GSGet(request,@"asset");
- // The audited request ivar is PHAsset, never a compressed GMUUploadAsset.
+ // Export the PHAsset original, not a compressed GMUUploadAsset.
  if(![asset isKindOfClass:PHAsset.class]){GSCount(@"unsupported");GSFail(request,1);return;}
  BOOL reconciling;@synchronized(GSLock){reconciling=[GSReconciling containsObject:asset.localIdentifier];}
  if(reconciling){((void(*)(id,SEL))original)(request,selector);return;}
@@ -88,8 +87,7 @@ static void GSStart(id request,SEL selector,IMP original){
     if(transfer.cancelled)return;
     if(!completed){GSCount(@"failed");GSFail(request,3);return;}
     if(!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSFail(request,2);return;}
-    // Let Google query its own server and create the real media model / local
-    // backup state. If it attempts a native upload instead, GSGuard blocks it.
+    // Refresh native backup state from the server; GSGuard blocks re-upload.
     transfer.reconciling=YES;@synchronized(GSLock){[GSReconciling addObject:transfer.localID];}
     GSCount(@"reconciling");((void(*)(id,SEL))original)(request,selector);
    });
@@ -119,8 +117,7 @@ static void GSBindStart(Class c){
  GSReplace(c,cancel,imp_implementationWithBlock(^(id request){
   GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);t.cancelGo=[GSEmbeddedRuntimeSnapshot()[@"foreground"]boolValue];t.cancelled=YES;
   if(t.localID)@synchronized(GSLock){[GSReconciling removeObject:t.localID];}
-  // Background cancellation belongs to the native scheduler. The durable Go
-  // queue resumes on foreground. An explicit foreground cancel also cancels Go.
+  // Background cancellation preserves the Go job for foreground resumption.
   if(t.jobID&&t.cancelGo)dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{GSRequest(@{@"op":@"cancel",@"id":t.jobID},nil);});
   ((void(*)(id,SEL))oldCancel)(request,cancel);
  }));
