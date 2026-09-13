@@ -1,7 +1,7 @@
 #import "../Shared/GSLocalization.h"
 #import "GSExporter.h"
 #import "../Shared/IPCProtocol.h"
-NSArray<NSURL *> *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error){
+static NSArray<NSURL *> *GSWriteOriginalResources(PHAsset *asset,NSURL *directory,NSError **error){
  NSArray *resources=[PHAssetResource assetResourcesForAsset:asset];NSMutableArray *chosen=[NSMutableArray array];
  PHAssetResourceType type=asset.mediaType==PHAssetMediaTypeVideo?PHAssetResourceTypeVideo:PHAssetResourceTypePhoto;
  for(PHAssetResource *r in resources)if(r.type==type){[chosen addObject:r];break;}
@@ -20,6 +20,17 @@ NSArray<NSURL *> *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error)
   if(exportError){if(error)*error=exportError;return nil;}[files addObject:url];
  }
  return files;
+}
+NSArray<NSURL *> *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error){
+ // Native backup may schedule many assets simultaneously. Keep PhotoKit/cloud
+ // resource preparation bounded across native, album, picker and share routes;
+ // this does not change the queue's network upload concurrency.
+ NSCAssert(!NSThread.isMainThread,@"Export originals on a worker");
+ static dispatch_queue_t exports;static dispatch_once_t once;
+ dispatch_once(&once,^{exports=dispatch_queue_create("dev.tqmane.gunshot.original-export",DISPATCH_QUEUE_SERIAL);});
+ __block NSArray *files=nil;__block NSError *failure=nil;
+ dispatch_sync(exports,^{@autoreleasepool{files=GSWriteOriginalResources(asset,directory,&failure);}});
+ if(error)*error=failure;return files;
 }
 NSString *GSImportFiles(NSArray<NSURL *> *files,NSString *account,NSString *quality,NSDate *date,NSError **error){
  NSMutableArray *resources=[NSMutableArray array];

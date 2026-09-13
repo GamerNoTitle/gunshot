@@ -166,6 +166,13 @@ jobs:
             .build/photos-integration-legacy-test
             .build/native-account-legacy-test
           done
+      - name: Bulk photo import
+        if: matrix.scheme == 'jailed'
+        run: |
+          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSBatchImport.m tests/batch_import.m -o .build/batch-import-test
+          .build/batch-import-test
+          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSBatchImport.m UI/GSExporter.m tests/exporter_batch.m -o .build/exporter-batch-test
+          .build/exporter-batch-test
       - name: UIKit settings presentation smoke
         if: matrix.scheme == 'jailed'
         timeout-minutes: 8

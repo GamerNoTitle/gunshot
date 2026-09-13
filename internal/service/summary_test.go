@@ -96,3 +96,40 @@ func TestSummaryConditionsReadOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestMediaFailureSummary(t *testing.T) {
+	e := newEngine(t, nil)
+	for i := 0; i < 60; i++ {
+		e.state.Jobs = append(e.state.Jobs, &Job{Quality: "original", State: "completed", Resources: []Resource{{Name: "private-name.HEIC"}}})
+	}
+	for _, job := range []*Job{
+		{Quality: "original", State: "failed", Error: "commit_outcome_unknown", Resources: []Resource{{Name: "private-name.heif"}}},
+		{Quality: "original", State: "failed", Error: "remote_live_photo_component_exists", Resources: []Resource{{Name: "private-name.HEIC"}, {Name: "private-name.MOV"}}},
+		{Quality: "original", State: "pending", Error: "upload_failed_retrying", Resources: []Resource{{Name: "private-name.jpeg"}}},
+		{Quality: "original", State: "failed", Error: "private-error-token", Resources: []Resource{{Name: "private-name.private-extension"}}},
+	} {
+		e.state.Jobs = append(e.state.Jobs, job)
+	}
+	var response struct {
+		OK bool
+		Data struct {
+			MediaTypes map[string]struct { States, FailureCodes map[string]int }
+		}
+	}
+	raw := e.HandleJSON([]byte(`{"op":"upload_summary"}`), "googlephotos")
+	if err := json.Unmarshal(raw, &response); err != nil || !response.OK {
+		t.Fatal("missing media summary")
+	}
+	m := response.Data.MediaTypes
+	if m["heic"].States["completed"] != 60 || m["heic"].States["failed"] != 1 || m["heic"].FailureCodes["commit_outcome_unknown"] != 1 {
+		t.Fatal("HEIC completion and failure counts conflated")
+	}
+	if m["heic_live_photo"].FailureCodes["remote_live_photo_component_exists"] != 1 || m["jpeg"].FailureCodes["upload_failed_retrying"] != 1 || m["other"].FailureCodes["other"] != 1 {
+		t.Fatal("incorrect media/error classification")
+	}
+	for _, secret := range []string{"private-name", "private-error-token", "private-extension"} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatal("private data escaped into media diagnostics")
+		}
+	}
+}
