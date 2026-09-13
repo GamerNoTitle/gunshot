@@ -23,7 +23,7 @@ The submodule is immutable during builds. Script string anchors intentionally fa
 
 ## Transport and storage boundary
 
-Jailbreak clients use direct Mach lookup and, when needed, a restricted libSandy profile plus authenticated XPC discovery. The tweak and daemon do not link RocketBootstrap or use its broker. See [IPC connection and diagnostics](ipc.md).
+Jailbreak clients use direct Mach lookup and, when needed, a restricted libSandy profile plus authenticated XPC discovery.
 
 Only Photos and Google Photos with the expected signing identifiers and executable locations are accepted, using the kernel Mach audit trailer. The signing identifier is derived from an audit-token-bound SecTask; the supplementary path check uses the token PID. PID recycling cannot substitute the signing identity. IPC fails closed if Security SPI is unavailable.
 

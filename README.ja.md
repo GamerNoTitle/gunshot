@@ -45,7 +45,7 @@ jailed / 純正APIに互換性のあるGoogle Photosの**手動・自動バッ�
 
 **クラッシュする場合は、ChoicyでGoogle PhotosのGunshotだけを有効にしてください。**
 
-GitHub Actions の `gotohp-tweak-rootless` または `gotohp-tweak-rootful` の `.deb` をパッケージマネージャーで導入します。libSandy 1.1.6 以降（[opa334 のリポジトリ](https://opa334.github.io/)）、substrate 互換の注入環境が必要です。依存パッケージも解決できるパッケージマネージャーで導入してください。GoToHP daemon への接続だけを許可する libSandy プロファイルは同梱し、libSandy 本体は共有のシステム依存パッケージとして導入します。**RocketBootstrap は不要になりました。** 直接のMach IPCと認証付きXPC discoveryを使います。[接続方式の詳細](docs/ipc.md)。
+GitHub Actions の `gotohp-tweak-rootless` または `gotohp-tweak-rootful` の `.deb` をパッケージマネージャーで導入します。libSandy 1.1.6 以降（[opa334 のリポジトリ](https://opa334.github.io/)）、substrate 互換の注入環境が必要です。依存パッケージも解決できるパッケージマネージャーで導入してください。GoToHP daemon への接続だけを許可する libSandy プロファイルは同梱し、libSandy 本体は共有のシステム依存パッケージとして導入します。
 
 **Google Photosを起動**すると、ログイン中アカウントへ自動接続します。トークンの貼り付けやGoToHP設定を開く操作は不要です。画質などの変更や失敗時の「再接続」は、**プロフィールメニュー → GoToHP の設定**から行えます。jailbreak版もiOSの「設定」には項目を追加せず、PreferenceLoaderも不要です。この設定画面、Apple PhotosのGoToHPボタン、対応する共有シートの **Upload with GoToHP** からアップロードできます。
 
