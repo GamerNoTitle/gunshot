@@ -42,7 +42,8 @@ with tempfile.TemporaryDirectory() as d:
     assert profile.stat().st_mode & 0o777 == 0o644
     assert plistlib.loads(profile.read_bytes())=={
         'AllowedProcesses':['com.google.photos','com.apple.mobileslideshow','com.apple.Preferences'],
-        'Extensions':[{'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':'dev.tqmane.gunshot.service'}]}
+        'Extensions':[{'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':name}
+                      for name in ('dev.tqmane.gunshot.service','dev.tqmane.gunshot.discovery')]}
     for p in ['usr/libexec/gotohpd','Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib','Library/PreferenceBundles/GunshotPrefs.bundle/GunshotPrefs']:
         assert (r/p).is_file(), p
     # The crashing legacy RocketBootstrap client must not be linked into apps.
@@ -56,10 +57,12 @@ with tempfile.TemporaryDirectory() as d:
         strings=subprocess.check_output(['strings',str(r/p)],text=True)
         assert '/'+prefix+'usr/lib/libsandy.dylib' in strings.splitlines(), 'wrong sandbox library prefix'
         assert 'dev.tqmane.gunshot.ipc' in strings.splitlines(), 'sandbox profile missing from client'
+        assert 'dev.tqmane.gunshot.discovery' in strings.splitlines(), 'XPC discovery missing from client'
     daemon_links=subprocess.check_output(['otool','-L',str(r/'usr/libexec/gotohpd')],text=True)
     assert 'rocketbootstrap' in daemon_links.lower(), daemon_links
     launch=plistlib.loads((r/'Library/LaunchDaemons/dev.tqmane.gunshot.plist').read_bytes())
     assert launch['UserName']=='mobile'
+    assert launch['MachServices']=={'dev.tqmane.gunshot.service':True,'dev.tqmane.gunshot.discovery':True}
     assert launch['ProgramArguments']==['/'+prefix+'usr/libexec/gotohpd']
     assert 'StandardOutPath' not in launch and 'StandardErrorPath' not in launch
 

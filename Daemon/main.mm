@@ -7,6 +7,7 @@
 #include <unistd.h>
 #import "../Shared/IPCProtocol.h"
 #import "GSDaemonRunLoop.h"
+#import "../Shared/GSDiscovery.h"
 #include "../.build/libgotohp.h"
 
 static const char *GSRole(audit_token_t token) {
@@ -29,6 +30,7 @@ static const char *GSRole(audit_token_t token) {
  return NULL;
 }
 static BOOL GSOnline=NO, GSWiFi=NO; // Accessed only on the conditions queue.
+static bool GSAuthorizeDiscovery(audit_token_t token){return GSRole(token)!=NULL;}
 static void GSConditions(void) {
  BOOL online=GSOnline,wifi=GSWiFi,charging=NO;
  typedef CFTypeRef (*PowerInfo)(void);typedef CFStringRef (*PowerType)(CFTypeRef);
@@ -46,6 +48,7 @@ int main(int argc,char **argv) { @autoreleasepool {
  if(getuid()!=501 || GunshotInitialize((char *)GS_STATE_PATH)!=0)return 1;
  mach_port_t port=MACH_PORT_NULL;
  if(bootstrap_check_in(bootstrap_port,GS_SERVICE,&port)!=KERN_SUCCESS)return 2;
+ if(!GSStartDiscoveryService(port,GSAuthorizeDiscovery))return 5;
  if(rocketbootstrap_unlock(GS_SERVICE)!=KERN_SUCCESS)return 3;
  dispatch_queue_t conditionsQueue=dispatch_queue_create("dev.tqmane.gunshot.conditions",DISPATCH_QUEUE_SERIAL);
  nw_path_monitor_t monitor=nw_path_monitor_create();nw_path_monitor_set_queue(monitor,conditionsQueue);

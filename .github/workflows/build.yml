@@ -64,6 +64,8 @@ jobs:
           .build/sandbox-access-test
           clang -fobjc-arc -framework Foundation '-DTHEOS_PACKAGE_INSTALL_PREFIX="/var/jb"' tests/sandbox_access.m -o .build/sandbox-access-rootless-test
           .build/sandbox-access-rootless-test
+          clang -fblocks tests/discovery.c -o .build/discovery-test
+          .build/discovery-test
           clang -fobjc-arc -framework Foundation -framework CoreFoundation tests/daemon_runloop.m -o .build/daemon-runloop-test
           .build/daemon-runloop-test
       - name: Native routing contract

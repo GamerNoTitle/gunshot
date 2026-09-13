@@ -3,6 +3,7 @@
 #include <stddef.h>
 #import "GSMachTransport.h"
 #import "GSSandboxAccess.h"
+#import "GSDiscovery.h"
 
 // Each request owns its trace; concurrent polls cannot combine unrelated stages.
 static NSDictionary *GSLastIPC;
@@ -21,6 +22,7 @@ static kern_return_t GSLookupDaemon(mach_port_t *server,NSMutableArray *trace,co
  // changes, instead of relying on libSystem's process-global cached value.
  mach_port_t bootstrap=MACH_PORT_NULL,broker=MACH_PORT_NULL;
  int profileCode=0;BOOL profileAttempted=NO;
+ kern_return_t discoveryCode=KERN_SUCCESS;const char *discoveryStage=NULL;
  *stage="lookup.bootstrap";
  kern_return_t kr=task_get_bootstrap_port(mach_task_self(),&bootstrap);GSTrace(trace,*stage,kr);
  if(kr!=KERN_SUCCESS)return kr;
@@ -35,6 +37,8 @@ static kern_return_t GSLookupDaemon(mach_port_t *server,NSMutableArray *trace,co
   if(profileCode==0){
    *stage="lookup.authorized";kr=bootstrap_look_up(bootstrap,GS_SERVICE,server);GSTrace(trace,*stage,kr);
    if(kr==KERN_SUCCESS)goto done;
+   discoveryCode=GSDiscoverDaemon(server,5000,&discoveryStage);GSTrace(trace,discoveryStage,discoveryCode);
+   if(discoveryCode==KERN_SUCCESS){kr=KERN_SUCCESS;*stage=discoveryStage;goto done;}
   }
  }
  *stage="lookup.redirected";kr=bootstrap_look_up(bootstrap,"cy:rbs:" GS_SERVICE,server);GSTrace(trace,*stage,kr);
@@ -44,6 +48,7 @@ static kern_return_t GSLookupDaemon(mach_port_t *server,NSMutableArray *trace,co
  kr=GSLookupBrokerWithStage(broker,GS_SERVICE,server,5000,stage);GSTrace(trace,*stage,kr);
  mach_port_deallocate(mach_task_self(),broker);
 done:
+ if(kr!=KERN_SUCCESS&&discoveryStage){*stage=discoveryStage;kr=discoveryCode;}
  if(kr==1100&&profileAttempted&&profileCode!=0){*stage="sandbox.profile";kr=profileCode;}
  mach_port_deallocate(mach_task_self(),bootstrap);return kr;
 }
