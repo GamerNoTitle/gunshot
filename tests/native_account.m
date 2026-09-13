@@ -4,6 +4,40 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#if GS_TEST_DAEMON_RELAY
+#import "../UI/GSNativeRelay.h"
+static NSUInteger relayConnections,relayRefreshes,relayClears;
+static BOOL relayReject;
+NSDictionary *GSRequest(NSDictionary *request,NSError **error){
+ assert(!NSThread.isMainThread);
+ __block NSDictionary *result=nil;
+ dispatch_sync(dispatch_get_main_queue(),^{
+  NSString *op=request[@"op"];
+  if([op isEqual:@"accounts"]){result=@{@"selected":@"test@example.com",@"nativeAuthorization":@"waiting"};return;}
+  if([op isEqual:@"native_bearer_clear"]){relayClears++;result=@{};return;}
+  assert([op isEqual:@"account_native"]||[op isEqual:@"native_bearer"]);
+  assert([request[@"secret"]isEqual:@"test-native-access-token"]);
+  assert([request[@"nativeID"]isEqual:@"123"]&&[request[@"account"]isEqual:@"test@example.com"]);
+  if([op isEqual:@"account_native"])relayConnections++;else relayRefreshes++;
+  if(!relayReject)result=@{};
+ });
+ if(!result&&error)*error=[NSError errorWithDomain:@"fixture" code:1 userInfo:nil];
+ return result;
+}
+static void AwaitRelay(BOOL(^ready)(void)){
+ NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];
+ while(!ready()&&deadline.timeIntervalSinceNow>0)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+ assert(ready());
+}
+static BOOL ConnectRelay(void){
+ NSDictionary *account=GSNativeAccountSummary();__block BOOL done=NO,success=NO;
+ dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
+  NSError *error=nil;BOOL result=GSConnectDaemonAccount(account,&error);assert(result||error);
+  dispatch_async(dispatch_get_main_queue(),^{success=result;done=YES;});
+ });
+ AwaitRelay(^BOOL{return done;});return success;
+}
+#endif
 @interface GSFixtureBundle : NSObject
 @end
 @implementation GSFixtureBundle
@@ -86,5 +120,20 @@ int main(void){@autoreleasepool{
  identity.hasValidAuth=NO;assert(Fetch("123")==nil);identity.hasValidAuth=YES;
  beforeCompletion=^{manager.viewingAccount=nil;};assert(Fetch("123")==nil);
  assert(GSNativeAccountSummary()==nil);
+#if GS_TEST_DAEMON_RELAY
+ beforeCompletion=nil;manager.viewingAccount=account;
+ NSError *error=nil;assert(!GSConnectDaemonAccount(GSNativeAccountSummary(),&error)&&error);
+ assert(ConnectRelay());assert(relayConnections==1);
+ assert([GSNativeRelaySnapshot()[@"authorization"]isEqual:@"validated"]);
+ GSRefreshDaemonAccount();GSRefreshDaemonAccount(); // Coalesce foreground + timer.
+ AwaitRelay(^BOOL{return relayRefreshes==1;});
+ assert([GSNativeRelaySnapshot().allKeys containsObject:@"authorization"]);
+ assert(GSNativeRelaySnapshot().count==2); // Status + source only, no identity/secret.
+ relayReject=YES;assert(!ConnectRelay());relayReject=NO;
+ NSUInteger previous=relayConnections;
+ beforeCompletion=^{manager.viewingAccount=nil;};
+ assert(!ConnectRelay());assert(relayConnections==previous&&relayClears>0);
+ assert([GSNativeRelaySnapshot()[@"authorization"]isEqual:@"waiting"]);
+#endif
  return 0;
 }}

@@ -22,9 +22,13 @@ import (
 
 var engine *service.Engine
 var initMu sync.Mutex
+var hostBearerProvider bool
 
 //export GunshotSetHostBearerProvider
 func GunshotSetHostBearerProvider(provider C.uintptr_t) {
+	initMu.Lock()
+	defer initMu.Unlock()
+	hostBearerProvider = provider != 0
 	if provider == 0 {
 		backend.GunshotSetNativeBearerProvider(nil)
 		return
@@ -58,6 +62,7 @@ func GunshotInitialize(path *C.char) C.int {
 		return -1
 	}
 	engine = e
+	if !hostBearerProvider { e.EnableNativeRelay() }
 	go e.Run(context.Background())
 	return 0
 }

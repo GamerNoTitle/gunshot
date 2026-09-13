@@ -23,15 +23,23 @@ The submodule is immutable during builds. Script string anchors intentionally fa
 
 ## Transport and storage boundary
 
-Only Photos, Google Photos, and Settings with the expected signing identifiers and executable locations are accepted, using the kernel Mach audit trailer. The signing identifier is derived from an audit-token-bound SecTask; the supplementary path check uses the token PID. PID recycling cannot substitute the signing identity. IPC fails closed if Security SPI is unavailable.
+Only Photos and Google Photos with the expected signing identifiers and executable locations are accepted, using the kernel Mach audit trailer. The signing identifier is derived from an audit-token-bound SecTask; the supplementary path check uses the token PID. PID recycling cannot substitute the signing identity. IPC fails closed if Security SPI is unavailable.
 
-Messages are simple Mach messages (no port/OOL descriptors), with a fixed maximum buffer and validated length. JSON has no filesystem path operation and cannot provide its own role. Settings and the audit-verified Google Photos process can mutate accounts and options for the in-app settings page. Approved Photos clients can begin/append/seal media jobs. Daemon-only conditions updates never arrive via a client-supplied role.
+Messages are simple Mach messages (no port/OOL descriptors), with a fixed maximum buffer and validated length. JSON has no filesystem path operation and cannot provide its own role. Only the audit-verified Google Photos process can mutate accounts and options over IPC for the in-app settings page. The internal settings role remains for the jailed adapter; the daemon never grants that role to a client. Approved Photos clients can begin/append/seal media jobs. Daemon-only conditions updates never arrive via a client-supplied role.
 
 Each import reserves daemon-created random ID and explicit filename/size pairs; offset-checked 32 KiB chunks populate private files. Content hashes are accumulated while chunks arrive, so sealing a large video does not reread the file under the queue lock. Seal verifies sizes and fsyncs files before publishing a pending job. Queue state is fsynced and atomically replaced before scheduling. A write failure stops scheduling until restart; corrupt state fails initialization rather than silently resetting history. Received tokens are not persisted in queue state.
 
 The queue snapshots account and quality. Upload execution uses independent API clients for concurrency. Phase transitions are durable; per-byte progress is in-memory to avoid flash churn. On restart an incomplete import is cancelled, active upload returns to pending, and an uncertain commit becomes a failed job requiring manual review/retry. Network retries restart at byte zero. Remote hash checks reduce duplicate risk but cannot implement an exactly-once transaction with Google.
 
-Staging is private to the mobile daemon. No `/var/jb` hardcoding in user data. The package-stage script expands Theos's package prefix only for executables, LaunchDaemons and Preferences. Rootless and rootful must not be installed simultaneously.
+Staging is private to the mobile daemon. No `/var/jb` hardcoding in user data. The package-stage script expands Theos's package prefix only for executables, LaunchDaemons and the libSandy profile. Rootless and rootful must not be installed simultaneously.
+
+## Native account authorization
+
+Google Photos obtains a `photos.native` bearer from its existing SSO authorizer. Jailed calls that provider directly; jailbreak forwards the bearer through the existing audit-authorized Mach service using `account_native` for connection and `native_bearer` for renewal. Only Google Photos may submit or clear a native bearer. The daemon validates a new binding at the Photos endpoint before persisting email/native ID. Access tokens live only in memory and are never part of account summaries, state or diagnostics.
+
+The host serializes reconnect and renewal, refreshes every 60 seconds while scheduled, and refreshes on foreground activation. The daemon enforces a five-minute local retention cap; this is not Google's expiry guarantee. New work waits without spending retries when a native binding lacks a bearer, including after daemon restart. An interrupted commit still requires review. Closing or suspending the app prevents indefinite SSO refresh; reopening it replenishes authorization. Queue account bindings are preserved, and a bearer for another identity is never used.
+
+Settings live inside Google Photos. The jailbreak package no longer builds/registers the Preferences bundle, depends on PreferenceLoader, or authorizes the Settings process to reach the daemon.
 
 ## IPA inspection
 

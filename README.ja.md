@@ -45,9 +45,11 @@ jailed / 純正APIに互換性のあるGoogle Photosの**手動・自動バッ�
 
 **クラッシュする場合は、ChoicyでGoogle PhotosのGunshotだけを有効にしてください。**
 
-GitHub Actions の `gotohp-tweak-rootless` または `gotohp-tweak-rootful` の `.deb` をパッケージマネージャーで導入します。RocketBootstrap、libSandy 1.1.6 以降（[opa334 のリポジトリ](https://opa334.github.io/)）、PreferenceLoader、substrate 互換の注入環境が必要です。依存パッケージも解決できるパッケージマネージャーで導入してください。GoToHP daemon への接続だけを許可する libSandy プロファイルは同梱し、libSandy 本体は共有のシステム依存パッケージとして導入します。
+GitHub Actions の `gotohp-tweak-rootless` または `gotohp-tweak-rootful` の `.deb` をパッケージマネージャーで導入します。RocketBootstrap、libSandy 1.1.6 以降（[opa334 のリポジトリ](https://opa334.github.io/)）、substrate 互換の注入環境が必要です。依存パッケージも解決できるパッケージマネージャーで導入してください。GoToHP daemon への接続だけを許可する libSandy プロファイルは同梱し、libSandy 本体は共有のシステム依存パッケージとして導入します。
 
-**設定 → GoToHP → Open GoToHP settings** で、[upstream のサインイン手順](https://github.com/xob0t/gotohp#sign-in)に従いアカウントを取り込みます。Google Photos の GoToHP 設定、Apple Photos の GoToHP ボタン、対応する共有シートの **Upload with GoToHP** からアップロードできます。キューへの受け渡し完了まではアプリを開いておき、その後は daemon が送信を続けます。
+**Google Photos のプロフィールメニュー → GoToHP の設定** を開くと、Google Photosでログイン中のアカウントを接続します。トークンの貼り付けは不要です。jailbreak版もiOSの「設定」には項目を追加せず、PreferenceLoaderも不要です。この設定画面、Apple PhotosのGoToHPボタン、対応する共有シートの **Upload with GoToHP** からアップロードできます。
+
+キューへの受け渡し完了まではGoogle Photosを開いてください。その後は、daemon内の認証が利用できる間、アプリを閉じても送信を続けます。認証の更新はGoogle Photos自身が行い、daemonでのトークン保持は最大5分です。認証がなくなった場合やdaemon再起動後は、Google Photosを開いて認証が更新されるまで、再試行回数を消費せず待機します。アプリ終了中に認証を無期限で更新できる仕組みではありません。[認証の詳細](docs/analysis/native-account.md)。
 
 ## 画質とキュー
 

@@ -110,7 +110,7 @@ NSDictionary *GSRequest(NSDictionary *request,NSError **error) {
  GSConditions();
  BOOL native=[op isEqual:@"account_native"];
  if(native)GSRecord(@{@"authorization":@"checking"});
- result=GSCall(request,[@[@"begin",@"append",@"seal"]containsObject:op]?"googlephotos":"settings");
+ result=GSCall(request,[@[@"begin",@"append",@"seal",@"account_native"]containsObject:op]?"googlephotos":"settings");
  if(native)GSRecord(@{@"authorization":result?@"validated":@"failed"});
  });
  if(!result&&error)*error=[NSError errorWithDomain:@"Gunshot" code:1 userInfo:@{NSLocalizedDescriptionKey:GSL(@"GoToHP request failed. Check the account, storage and queue in this app.")}];

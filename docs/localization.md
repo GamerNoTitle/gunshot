@@ -4,7 +4,7 @@ GoToHP supports English and Japanese. The default follows the device's preferred
 
 In the embedded settings, choose **Appearance → Language** to select System default, Japanese or English. This preference belongs to the host app and does not change Google Photos or iOS language settings. The GoToHP screen updates immediately; reopen the profile menu to update its entry. System-owned controls and system errors follow iOS localization. Raw upstream/server diagnostic messages remain unchanged.
 
-The catalogs in `Localization/en.json` and `Localization/ja.json` use English fallback text as keys. A generated header embeds them in the tweak, jailed dylib and Preferences binary. Sideloadly and LiveContainer users do not need a separate resource bundle.
+The catalogs in `Localization/en.json` and `Localization/ja.json` use English fallback text as keys. A generated header embeds them in the tweak and jailed dylib. Sideloadly and LiveContainer users do not need a separate resource bundle.
 
 To change translations:
 

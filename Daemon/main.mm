@@ -24,7 +24,6 @@ static const char *GSRole(audit_token_t token) {
  NSString *bundle=CFBridgingRelease(identifier);char path[4096]={0};
  if(pathForPID((int)token.val[5],path,sizeof(path))<=0)return NULL;
  NSString *exe=[NSString stringWithUTF8String:path];
- if([bundle isEqualToString:@"com.apple.Preferences"] && ([exe isEqualToString:@"/Applications/Preferences.app/Preferences"]||[exe isEqualToString:@"/System/Applications/Preferences.app/Preferences"]))return "settings";
  if([bundle isEqualToString:@"com.apple.mobileslideshow"] && [exe hasSuffix:@"/MobileSlideShow.app/MobileSlideShow"] && ([exe hasPrefix:@"/Applications/"]||[exe hasPrefix:@"/System/Applications/"]))return "photos";
  if([bundle isEqualToString:@"com.google.photos"] && [exe hasSuffix:@"/GooglePhotos.app/GooglePhotos"] && ([exe hasPrefix:@"/private/var/containers/Bundle/Application/"]||[exe hasPrefix:@"/var/containers/Bundle/Application/"]))return "googlephotos";
  return NULL;

@@ -119,3 +119,8 @@ Diagnostic 5 shows `sandbox.profile = 0`, `adapterActive = 0`, `uploadRedirected
 Gunshot's profile issued only `com.apple.app-sandbox.mach`. By comparison, [sandyd's own global profile](https://github.com/opa334/libSandy/blob/main/sandyd/main.m) issues both that class and `com.apple.security.exception.mach-lookup.global-name`. The packaged Gunshot profile now mirrors this two-class pattern for each of its two exact service names, keeping the same three allowed signing IDs. It adds no filesystem grants or unrelated service names. No provider globals, hooks or transport implementations are changed.
 
 Package verification requires exactly four Mach grants (two classes × two services). The expected device result is successful `lookup.authorized`; adapter flags may correctly remain zero. The source and diagnostic identify the missing class as a concrete compatibility gap, but device lookup is still needed to confirm that this host accepts the second class. Install the full Debian package so the updated profile is included.
+
+
+### Device connection confirmed; native authentication follows
+
+Diagnostic 6 and the user's report confirm `lookup.direct=0`, successful send/receive and `stage=connected` after the two-class profile correction. The remaining issue is the missing jailbreak native-account provider, addressed by the [native authentication relay](native-account.md#jailbreakの認証リレー診断6の接続成功後). With iOS Settings integration removed, the current package grants lookup only to Google Photos and Apple Photos; the four exact Mach extensions remain unchanged.

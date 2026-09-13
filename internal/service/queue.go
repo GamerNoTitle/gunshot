@@ -160,6 +160,8 @@ func (e *Engine) Tick() {
 		if j.State != "pending" || j.Next > time.Now().Unix() {
 			continue
 		}
+		// Missing/expired host authorization waits without consuming retry budget.
+		if e.nativeAuthorization(j.Account) == "waiting" { continue }
 		j.State = "preparing"
 		if j.Quality == "original" {
 			j.OriginalPolicy = 1
@@ -232,6 +234,11 @@ func (e *Engine) execute(ctx context.Context, snapshot Job, paths []string) {
 		}
 		j.State = "pending"
 		j.Error = "paused"
+	case e.nativeAuthorization(j.Account) == "waiting":
+		if j.Attempts > 0 { j.Attempts-- }
+		j.State = "pending"
+		j.Error = "waiting_for_native_auth"
+		j.Next = 0
 	case j.Attempts <= e.state.Options.Retries:
 		j.State = "pending"
 		j.Error = "upload_failed_retrying"

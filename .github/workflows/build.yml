@@ -70,6 +70,13 @@ jobs:
           python3 scripts/test-discovery-launchd.py .build/discovery-launchd-test
           clang -fobjc-arc -framework Foundation -framework CoreFoundation tests/daemon_runloop.m -o .build/daemon-runloop-test
           .build/daemon-runloop-test
+      - name: Jailbreak native account relay
+        if: matrix.scheme == 'rootless'
+        run: |
+          clang -fobjc-arc -DGS_TEST_DAEMON_RELAY=1 -framework Foundation UI/GSNativeAccount.m UI/GSNativeRelay.m tests/native_account.m -o .build/native-relay-test
+          .build/native-relay-test
+          clang -fobjc-arc -DGS_TEST_DAEMON_RELAY=1 -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m UI/GSNativeRelay.m tests/native_account.m -o .build/native-relay-legacy-test
+          .build/native-relay-legacy-test
       - name: Native routing contract
         if: matrix.scheme == 'jailed'
         run: |

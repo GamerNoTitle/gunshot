@@ -31,9 +31,22 @@ func (e *Engine) accounts(r Request) (any, error) {
 	g := &backend.ConfigManager{}
 	switch r.Op {
 	case "accounts":
-		return g.GetAccounts(), nil
+		a := g.GetAccounts()
+		return map[string]any{"accounts": a.Accounts, "selected": a.Selected, "nativeAuthorization": e.nativeAuthorization(a.Selected)}, nil
 	case "account_native":
-		return nil, g.AddNativeAccount(r.Account, r.NativeID)
+		if e.nativeRelay != nil {
+			if err := e.nativeRelay.put(r.NativeID, r.Secret); err != nil { return nil, err }
+		}
+		err := g.AddNativeAccount(r.Account, r.NativeID)
+		if err != nil && e.nativeRelay != nil { e.nativeRelay.clear() }
+		return nil, err
+	case "native_bearer":
+		if e.nativeRelay == nil || backend.GunshotNativeAccountID(r.Account) != r.NativeID || r.NativeID == "" { return nil, errRequest }
+		return nil, e.nativeRelay.put(r.NativeID, r.Secret)
+	case "native_bearer_clear":
+		if e.nativeRelay == nil { return nil, errRequest }
+		e.nativeRelay.clear()
+		return nil, nil
 	case "account_add":
 		if len(r.Secret) == 0 || len(r.Secret) > 32768 {
 			return nil, errRequest
@@ -53,7 +66,9 @@ func (e *Engine) accounts(r Request) (any, error) {
 				return nil, errors.New("cancel account jobs first")
 			}
 		}
-		return nil, g.RemoveCredentials(r.Account)
+		err := g.RemoveCredentials(r.Account)
+		if err == nil && e.nativeRelay != nil { e.nativeRelay.clear() }
+		return nil, err
 	}
 	return nil, errRequest
 }
