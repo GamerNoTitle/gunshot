@@ -17,6 +17,7 @@
 static NSUInteger opened,originalActions,dismissed,nativeInstalled;
 static UIViewController *lastHost;
 void GSPresentSettings(UIViewController *host){opened++;lastHost=host;}
+void GSInstallUnlimitedStorage(void){}
 void GSInstallNativeAccount(void){nativeInstalled++;}
 static NSString *version=@"unsupported";
 @interface GSFixtureBundle : NSObject @end

@@ -4,6 +4,7 @@
 #import "GSNativeAccount.h"
 #import "GSNativeRouting.h"
 #import "GSUploadDiagnostics.h"
+#import "GSUnlimitedStorage.h"
 #if GS_JAILED
 #import "GSBackupRequests.h"
 #import "GSPhotosIntegration.h"
@@ -40,7 +41,7 @@
 @end
 @implementation GSPanel
 - (void)viewDidLoad{
- [super viewDidLoad];GSInstallNativeRouting();GSInstallUploadDiagnostics();self.title=@"GoToHP";self.jobs=@[];self.statusText=GSL(@"Checking the connection…");self.statusLanguage=GSLanguage();
+ [super viewDidLoad];GSInstallNativeRouting();GSInstallUploadDiagnostics();GSInstallUnlimitedStorage();self.title=@"GoToHP";self.jobs=@[];self.statusText=GSL(@"Checking the connection…");self.statusLanguage=GSLanguage();
  self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:GSL(@"Done") style:UIBarButtonItemStylePlain target:self action:@selector(close)];
  self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:self.settingsMode?GSL(@"Reconnect"):GSL(@"Add") style:UIBarButtonItemStylePlain target:self action:@selector(primary)];
 #if !GS_JAILED
@@ -143,7 +144,7 @@
  if(GSIsGooglePhotos())[groups addObject:@{@"title":GSL(@"Google Photos integration"),@"rows":@[@10],@"footer":GS_BACKUP_HELP}];
  [groups addObject:@{@"title":GSL(@"Queue management"),@"rows":@[@8,@9]}];
  if(GSIsGooglePhotos())[groups addObject:@{@"title":GSL(@"Diagnostics"),@"rows":@[@11,@12],@"footer":GSL(@"For compatibility troubleshooting. Tokens and media contents are never recorded.")}];
- [groups addObject:@{@"title":GSL(@"Appearance"),@"rows":@[@15],@"footer":GSL(@"Choose the GoToHP display language. The profile menu updates the next time it opens.")}];
+ [groups addObject:@{@"title":GSL(@"Appearance"),@"rows":GSIsGooglePhotos()?@[@15,@16]:@[@15],@"footer":GSIsGooglePhotos()?GSL(@"Language and storage display changes apply when the profile menu reopens. Unlimited storage changes the card display only, not your account limit or upload quality."):GSL(@"Choose the GoToHP display language. The profile menu updates the next time it opens.")}];
  return groups;
 }
 - (NSInteger)queueSection{return self.controlSections.count+1;}
@@ -174,11 +175,13 @@
 - (BOOL)switchValueForControl:(NSInteger)control{
  if(control==10)return GSNativeRoutingEnabled();
  if(control==11)return GSUploadDiagnosticsEnabled();
+ if(control==16)return GSUnlimitedStorageEnabled();
  return [self.options[@[@"wifiOnly",@"chargingOnly",@"paused"][control-3]]boolValue];
 }
 - (void)controlSwitchChanged:(UISwitch *)toggle{
  NSInteger control=toggle.tag;BOOL desired=toggle.on;
  [toggle setOn:[self switchValueForControl:control] animated:YES];
+ if(control==16){GSSetUnlimitedStorage(desired);[self.tableView reloadData];return;}
  if(self.busy)return;
  if(control==10){[self toggleNativeRouting];return;}
  if(control==11){GSSetUploadDiagnostics(desired);[self.tableView reloadData];return;}
@@ -202,8 +205,8 @@
  }
  NSInteger control=[self controlAtPath:path];
  if(control>=0){
-  NSArray *titles=@[GSL(@"Quality"),GSL(@"Concurrent uploads"),GSL(@"Retry limit"),GSL(@"Wi-Fi only"),GSL(@"Charging only"),GSL(@"Pause uploads"),GSL(@"Destination account"),GSL(@"Remove account from GoToHP"),GSL(@"Retry failed uploads"),GSL(@"Clear completed history"),GS_BACKUP_TITLE,GSL(@"Upload diagnostics"),GSL(@"Export diagnostics"),GSL(@"Connect or refresh account"),GSL(@"Choose photos and videos"),GSL(@"Language")];
-  NSArray *icons=@[@"photo",@"square.stack.3d.up",@"arrow.clockwise",@"wifi",@"battery.100.bolt",@"pause.circle",@"person.crop.circle.badge.checkmark",@"person.crop.circle.badge.minus",@"arrow.clockwise.circle",@"checkmark.circle",@"arrow.triangle.branch",@"waveform.path.ecg",@"square.and.arrow.up",@"person.crop.circle.badge.checkmark",@"plus.circle",@"globe"];
+  NSArray *titles=@[GSL(@"Quality"),GSL(@"Concurrent uploads"),GSL(@"Retry limit"),GSL(@"Wi-Fi only"),GSL(@"Charging only"),GSL(@"Pause uploads"),GSL(@"Destination account"),GSL(@"Remove account from GoToHP"),GSL(@"Retry failed uploads"),GSL(@"Clear completed history"),GS_BACKUP_TITLE,GSL(@"Upload diagnostics"),GSL(@"Export diagnostics"),GSL(@"Connect or refresh account"),GSL(@"Choose photos and videos"),GSL(@"Language"),GSL(@"Show unlimited storage")];
+  NSArray *icons=@[@"photo",@"square.stack.3d.up",@"arrow.clockwise",@"wifi",@"battery.100.bolt",@"pause.circle",@"person.crop.circle.badge.checkmark",@"person.crop.circle.badge.minus",@"arrow.clockwise.circle",@"checkmark.circle",@"arrow.triangle.branch",@"waveform.path.ecg",@"square.and.arrow.up",@"person.crop.circle.badge.checkmark",@"plus.circle",@"globe",@"cloud"];
   cell.textLabel.text=titles[control];cell.imageView.image=[UIImage systemImageNamed:icons[control]];
   cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
   if(control==15)cell.detailTextLabel.text=[GSLanguageOverride()isEqual:@"system"]?GSL(@"System default"):[GSLanguageOverride()isEqual:@"ja"]?GSL(@"Japanese"):@"English";
@@ -213,13 +216,14 @@
   if(control==6)cell.detailTextLabel.text=self.accounts[@"selected"];
   if(control==13)cell.detailTextLabel.text=GSL(@"Check the connection for the signed-in account");
   if(control==7)cell.textLabel.textColor=UIColor.systemRedColor;
-  if((control>=3&&control<=5)||control==10||control==11){
+  if((control>=3&&control<=5)||control==10||control==11||control==16){
    UISwitch *toggle=[UISwitch new];toggle.tag=control;toggle.on=[self switchValueForControl:control];
    toggle.accessibilityLabel=titles[control];toggle.onTintColor=tableView.tintColor;
-   toggle.enabled=!self.busy&&(control==10?GSNativeRoutingAvailable():control==11?GSUploadDiagnosticsAvailable():self.options!=nil);
+   toggle.enabled=control==16?GSUnlimitedStorageAvailable():!self.busy&&(control==10?GSNativeRoutingAvailable():control==11?GSUploadDiagnosticsAvailable():self.options!=nil);
    [toggle addTarget:self action:@selector(controlSwitchChanged:) forControlEvents:UIControlEventValueChanged];
    cell.accessoryView=toggle;cell.selectionStyle=UITableViewCellSelectionStyleNone;
   }
+  if(control==16&&!GSUnlimitedStorageAvailable())cell.detailTextLabel.text=GSL(@"Unavailable in this version");
   if(control==10)cell.detailTextLabel.text=GSNativeRoutingAvailable()?GS_BACKUP_TITLE:GSL(@"Unavailable in this version");
   return cell;
  }
@@ -311,6 +315,7 @@
  [tableView deselectRowAtIndexPath:path animated:YES];
  NSInteger control=[self controlAtPath:path];
  if(control==12){[self exportUploadDiagnostics];return;}
+ if(control==16)return;
  if(self.busy)return;
  if(control>=0){
   if(control==15){[self chooseLanguage];return;}

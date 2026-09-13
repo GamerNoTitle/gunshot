@@ -35,6 +35,11 @@ char *GSFixtureRequest(char *json,char *role){
  NSData *reply=[NSJSONSerialization dataWithJSONObject:@{@"ok":@YES,@"data":data} options:0 error:nil];
  return strdup([[NSString alloc]initWithData:reply encoding:NSUTF8StringEncoding].UTF8String);
 }
+static BOOL UnlimitedStorage=YES;
+void GSInstallUnlimitedStorage(void){}
+BOOL GSUnlimitedStorageAvailable(void){return YES;}
+BOOL GSUnlimitedStorageEnabled(void){return UnlimitedStorage;}
+void GSSetUnlimitedStorage(BOOL enabled){UnlimitedStorage=enabled;}
 BOOL GSIsGooglePhotos(void){return YES;}
 void GSInstallNativeRouting(void){}
 BOOL GSNativeRoutingAvailable(void){return YES;}
@@ -101,6 +106,16 @@ static GSPanel *Panel(UIViewController *host){
   if(![quality.textLabel.text isEqual:@"Quality"]||![panel.navigationItem.rightBarButtonItem.title isEqual:@"Reconnect"]){Finish(NO,@"English settings did not update");return;}
   UITableViewCell *status=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
   if(![status.detailTextLabel.text isEqual:@"Authenticated · Ready to upload"]){Finish(NO,@"cached status language did not update");return;}
+  NSIndexPath *storagePath=[NSIndexPath indexPathForRow:1 inSection:6];
+  [panel setValue:@YES forKey:@"busy"];
+  UITableViewCell *storage=[panel tableView:panel.tableView cellForRowAtIndexPath:storagePath];
+  UISwitch *toggle=(UISwitch *)storage.accessoryView;
+  if(![storage.textLabel.text isEqual:@"Show unlimited storage"]||![toggle isKindOfClass:UISwitch.class]||!toggle.on||!toggle.enabled){Finish(NO,@"storage toggle default or availability failed");return;}
+  toggle.on=NO;[toggle sendActionsForControlEvents:UIControlEventValueChanged];
+  if(UnlimitedStorage){Finish(NO,@"storage opt-out while busy failed");return;}
+  toggle.on=YES;[toggle sendActionsForControlEvents:UIControlEventValueChanged];
+  if(!UnlimitedStorage){Finish(NO,@"storage opt-in failed");return;}
+  [panel setValue:@NO forKey:@"busy"];[panel.tableView reloadData];
   Capture(self.window,@"settings-english.png");
   GSSetLanguage(@"ja");[panel viewWillAppear:NO];
   [panel.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:7] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
