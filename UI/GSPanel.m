@@ -282,6 +282,7 @@
 - (void)exportUploadDiagnostics{
  NSMutableDictionary *snapshot=[GSUploadDiagnosticsSnapshot() mutableCopy];
  snapshot[@"manualRouting"]=GSNativeRoutingSnapshot();
+ snapshot[@"unlimitedStorage"]=GSUnlimitedStorageSnapshot();
 #if GS_JAILED
  snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
  snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();

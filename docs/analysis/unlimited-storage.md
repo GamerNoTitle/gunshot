@@ -29,31 +29,60 @@ The binaries and their hashes are indexed in [objc/manifest.json](objc/manifest.
 The class methods above are separately inspected through metaclass metadata;
 the existing compressed method indices list instance methods only.
 
+## Self-managed card path (fix after PR #13)
+
+The device screenshot after PR #13 still showed `43% of 15 GB used`. The earlier
+fixture covered only the Photos-owned source, so its passing result did not cover
+the self-managed card path. Further disassembly confirms:
+
+| Image / location | Verified behavior |
+| --- | --- |
+| Main `PHSMyAccountMenuDataSource.accountMenuCardData`, `0x1000b3aa4` | Adds the legacy backup and storage cards to an array. |
+| Framework `OGLAggregatorCardDataSourceImpl` internal getter, `0x13713c8` | Starts with its internal provider's cards. When merging the Photos source, the type check at `0x1371500`–`0x137151c` **excludes OGLAccountMenuStorageCardData** from that source. The class reference is `0x7e1bbd8`. |
+| Framework aggregator `accountMenuCardData`, `0x13715ac` | Objective-C bridge returns the final card array after the filter/merge. |
+| Framework collapsible/non-collapsible menu view-model builders | Read `accountMenuCardData` through Objective-C dispatch at `0x12f5578`, `0x12f56a8`, `0x12f6c54`. |
+| Framework `OGLStringResources.stringForID:`, `0x17b33a0` | Reads the resource table at `0x7605ec8`; index `0x81` references the unlimited title. Uses Google's `oneGoogleResourceBundle` resolver. The argument ABI is **int** (`@20@0:8i16`). |
+
+The screenshot alone does not prove which runtime gate/path fired. The excluded
+legacy card is a confirmed coverage gap explaining why changing only the Photos
+source cannot cover this mode. The fix also removes the assumption that resources
+must resolve through `bundleForClass:` at dylib initialization.
+
 ## Implementation boundary
 
-`UI/GSUnlimitedStorage.m` hooks only the Photos menu presentation source and the
-native card's title formatter. The returned, freshly allocated display model uses
-state 2 and the original OneGoogle title resource. The native formatter receives
-that same resource for state-2 items, so sizing and rendering use the same text.
-The native cell continues to provide layout, cloud icon, localization, theme and
-accessibility. No overlay view or global `GMUQuota.isUnlimited` override is used.
+`UI/GSUnlimitedStorage.m` now handles both the Photos source and the **final
+aggregated array**, using a fresh native storage-card model for presentation.
+All 18 stored properties are copied through checked, typed getters/setters before
+changing state, title and subtitle. Cached originals, used/total counters, native
+callbacks and every non-storage card are preserved; disabling the preference
+returns the original source objects/array on the next menu build.
 
-Used/total storage values and native callbacks are retained. No account token,
-quota response, upload policy, device profile or media metadata is changed.
-Disabling the preference passes through the original source and formatter on
-subsequent menu builds. An already presented card is refreshed by reopening the
-menu, avoiding private reload calls during sheet transitions.
+The native OneGoogle resource provider supplies the title. Resource loading is
+retried during presentation, so an early unresolved resource cannot permanently
+prevent installation. The legacy card title formatter still uses this title for
+both native sizing and rendering. Layout, icons, localization, theme and
+accessibility remain native. There is no overlay, feature-flag override or global
+`GMUQuota.isUnlimited` override.
 
-Installation requires executable `GooglePhotos`, version `7.92.0`, exact method
-encodings and the native string resource. Instance type checks protect the hooked
-paths. No method implementation is replaced if validation fails. The feature is
-packaged for jailed, rootless and rootful builds; there is no extra dependency.
+No account token, quota response, upload policy, device profile or media metadata
+is changed. Reopen the menu after a setting change; the fix avoids private reload
+calls during sheet transitions. The host version, all 18 field ABIs, both source
+ABIs, resource provider ABI and legacy formatter ABI must match before any hook
+is installed. Inherited methods get a local override rather than changing their
+superclass implementation.
+
+Diagnostic exports include `unlimitedStorage`: installation status, matched
+paths, resource readiness and invocation/projection/failure counts only. No
+account, title text, storage amounts, tokens or media data are recorded there.
+This lets device results distinguish an uninstalled hook from an unused source.
 
 ## Validation
 
-`tests/unlimited_storage.m` exercises default-on, persistent opt-out/re-enable,
-original callbacks and counters, fresh menu restoration, nil/unexpected model,
-wrong host/version, missing resources and incompatible ABI. The UIKit settings
+`tests/unlimited_storage.m` exercises a self-managed aggregate that never calls
+the legacy source, cached-array restoration on opt-out, account changes and
+server refresh, preservation of all three callbacks and scalar flags, late native
+resources, nil/unexpected models, inherited-method isolation, wrong host/version
+and incompatible ABI. It also checks the diagnostic field allowlist. The UIKit settings
 fixture exercises the actual switch while account operations are busy. CI builds
 all three packages. These fixtures do not execute Google's proprietary UI;
 final native layout and interactions still require device validation.

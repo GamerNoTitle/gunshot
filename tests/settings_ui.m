@@ -37,6 +37,7 @@ char *GSFixtureRequest(char *json,char *role){
 }
 static BOOL UnlimitedStorage=YES;
 void GSInstallUnlimitedStorage(void){}
+NSDictionary *GSUnlimitedStorageSnapshot(void){return @{};}
 BOOL GSUnlimitedStorageAvailable(void){return YES;}
 BOOL GSUnlimitedStorageEnabled(void){return UnlimitedStorage;}
 void GSSetUnlimitedStorage(BOOL enabled){UnlimitedStorage=enabled;}
