@@ -2,7 +2,7 @@ TARGET := iphone:clang:latest:15.0
 ARCHS = arm64
 include $(THEOS)/makefiles/common.mk
 LIBRARY_NAME = GunshotJailed
-GunshotJailed_FILES = Hooks.m EmbeddedService.m ../UI/GSPanel.m ../UI/GSAccountMenu.m ../UI/GSNativeAccount.m ../UI/GSAccountConnection.m ../UI/GSExporter.m ../UI/GSNativeRouting.m ../UI/GSBackupRequests.m ../UI/GSPhotosIntegration.m ../UI/GSUploadMonitor.m ../UI/GSBackupLifecycle.m ../UI/GSUploadDiagnostics.m ../UI/GSUnlimitedStorage.m
+GunshotJailed_FILES = Hooks.m EmbeddedService.m ../UI/GSPanel.m ../UI/GSBatchImport.m ../UI/GSAlbumPicker.m ../UI/GSAccountMenu.m ../UI/GSNativeAccount.m ../UI/GSAccountConnection.m ../UI/GSExporter.m ../UI/GSNativeRouting.m ../UI/GSBackupRequests.m ../UI/GSPhotosIntegration.m ../UI/GSUploadMonitor.m ../UI/GSBackupLifecycle.m ../UI/GSUploadDiagnostics.m ../UI/GSUnlimitedStorage.m
 GunshotJailed_CFLAGS = -fobjc-arc -DGS_JAILED=1 -I../Shared -I../.build
 GunshotJailed_FRAMEWORKS = UIKit Foundation Photos PhotosUI Network Security CoreFoundation
 GunshotJailed_LIBRARIES = resolv

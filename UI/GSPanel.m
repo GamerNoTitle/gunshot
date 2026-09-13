@@ -1,6 +1,8 @@
 #import "../Shared/GSLocalization.h"
 #import "GSPanel.h"
 #import "GSExporter.h"
+#import "GSBatchImport.h"
+#import "GSAlbumPicker.h"
 #import "GSNativeAccount.h"
 #import "GSAccountConnection.h"
 #if !GS_JAILED
@@ -149,12 +151,13 @@
 #endif
  self.statusText=[accounts[@"selected"]length]?[NSString stringWithFormat:@"%@ · %@",authorization,readiness]:GSL(@"Connect an account to continue");
  NSString *importError=GSNativeRoutingSnapshot()[@"lastError"];if(importError)self.statusText=importError;self.statusLanguage=GSLanguage();
+ NSDictionary *batch=GSBatchImportSnapshot();if([batch[@"total"]unsignedIntegerValue])self.statusText=[self.statusText stringByAppendingFormat:@"\n%@",[self batchStatus:batch]];
  if(changed||![previousStatus isEqual:self.statusText]||![previousLanguage isEqual:self.statusLanguage])[self reloadTablePreservingPosition];
  });
  });
 }
 - (NSArray<NSDictionary *> *)controlSections{
- if(!self.settingsMode)return @[@{@"title":GSL(@"Uploads"),@"rows":@[@14],@"footer":GS_QUEUED_HELP}];
+ if(!self.settingsMode)return @[@{@"title":GSL(@"Uploads"),@"rows":@[@14,@17,@18],@"footer":[GSL(@"For large batches, choose an album. The photo picker is limited to 100 items per selection.\n") stringByAppendingString:GS_QUEUED_HELP]}];
  NSMutableArray *groups=[NSMutableArray array];
  NSArray *accountRows=@[@13,@6,@7];
  if(GSIsGooglePhotos())accountRows=@[@13];
@@ -224,10 +227,12 @@
  }
  NSInteger control=[self controlAtPath:path];
  if(control>=0){
-  NSArray *titles=@[GSL(@"Quality"),GSL(@"Concurrent uploads"),GSL(@"Retry limit"),GSL(@"Wi-Fi only"),GSL(@"Charging only"),GSL(@"Pause uploads"),GSL(@"Destination account"),GSL(@"Remove account from GoToHP"),GSL(@"Retry failed uploads"),GSL(@"Clear completed history"),GS_BACKUP_TITLE,GSL(@"Upload diagnostics"),GSL(@"Export diagnostics"),GSL(@"Connect or refresh account"),GSL(@"Choose photos and videos"),GSL(@"Language"),GSL(@"Show unlimited storage")];
-  NSArray *icons=@[@"photo",@"square.stack.3d.up",@"arrow.clockwise",@"wifi",@"battery.100.bolt",@"pause.circle",@"person.crop.circle.badge.checkmark",@"person.crop.circle.badge.minus",@"arrow.clockwise.circle",@"checkmark.circle",@"arrow.triangle.branch",@"waveform.path.ecg",@"square.and.arrow.up",@"person.crop.circle.badge.checkmark",@"plus.circle",@"globe",@"cloud"];
+  NSArray *titles=@[GSL(@"Quality"),GSL(@"Concurrent uploads"),GSL(@"Retry limit"),GSL(@"Wi-Fi only"),GSL(@"Charging only"),GSL(@"Pause uploads"),GSL(@"Destination account"),GSL(@"Remove account from GoToHP"),GSL(@"Retry failed uploads"),GSL(@"Clear completed history"),GS_BACKUP_TITLE,GSL(@"Upload diagnostics"),GSL(@"Export diagnostics"),GSL(@"Connect or refresh account"),GSL(@"Choose photos and videos"),GSL(@"Language"),GSL(@"Show unlimited storage"),GSL(@"Choose album"),GSL(@"Stop preparing")];
+  NSArray *icons=@[@"photo",@"square.stack.3d.up",@"arrow.clockwise",@"wifi",@"battery.100.bolt",@"pause.circle",@"person.crop.circle.badge.checkmark",@"person.crop.circle.badge.minus",@"arrow.clockwise.circle",@"checkmark.circle",@"arrow.triangle.branch",@"waveform.path.ecg",@"square.and.arrow.up",@"person.crop.circle.badge.checkmark",@"plus.circle",@"globe",@"cloud",@"rectangle.stack",@"stop.circle"];
   cell.textLabel.text=titles[control];cell.imageView.image=[UIImage systemImageNamed:icons[control]];
   cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
+  if(control==17)cell.detailTextLabel.text=GSL(@"Upload an entire album; browse folders to choose an album.");
+  if(control==18){BOOL active=[GSBatchImportSnapshot()[@"active"]boolValue];cell.textLabel.textColor=active?UIColor.systemRedColor:UIColor.secondaryLabelColor;cell.accessoryType=UITableViewCellAccessoryNone;cell.detailTextLabel.text=GSL(@"Stop after the current item. Queued uploads continue.");}
   if(control==15)cell.detailTextLabel.text=[GSLanguageOverride()isEqual:@"system"]?GSL(@"System default"):[GSLanguageOverride()isEqual:@"ja"]?GSL(@"Japanese"):@"English";
   if(control==0)cell.detailTextLabel.text=[self qualityTitle:self.options[@"quality"]];
   if(control==1)cell.detailTextLabel.text=[NSString stringWithFormat:GSL(@"Concurrent uploads: %@"),self.options[@"concurrent"]?:@1];
@@ -301,6 +306,7 @@
 - (void)exportUploadDiagnostics{
  NSMutableDictionary *snapshot=[GSUploadDiagnosticsSnapshot() mutableCopy];
  snapshot[@"manualRouting"]=GSNativeRoutingSnapshot();
+ snapshot[@"batchImport"]=GSBatchImportSnapshot();
  snapshot[@"unlimitedStorage"]=GSUnlimitedStorageSnapshot();
  snapshot[@"accountConnection"]=GSAccountConnectionSnapshot();
  snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();
@@ -340,10 +346,12 @@
  NSInteger control=[self controlAtPath:path];
  if(control==12){[self exportUploadDiagnostics];return;}
  if(control==16)return;
+ if(control==18){GSStopBatchImport(NO);return;}
  if(self.busy)return;
  if(control>=0){
   if(control==15){[self chooseLanguage];return;}
   if(control==14){[self choose];return;}
+  if(control==17){[self chooseAlbum];return;}
   if(control==13){[self addAccount];return;}
   if(control==10){[self toggleNativeRouting];return;}
   if(control==11){GSSetUploadDiagnostics(!GSUploadDiagnosticsEnabled());[self reloadTablePreservingPosition];return;}
@@ -364,36 +372,64 @@
  if(![NSBundle.mainBundle objectForInfoDictionaryKey:@"NSPhotoLibraryUsageDescription"]){[self message:GSL(@"This app cannot request access to your photos.")];return;}
  [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelReadWrite handler:^(PHAuthorizationStatus status){dispatch_async(dispatch_get_main_queue(),^{
  if(status!=PHAuthorizationStatusAuthorized&&status!=PHAuthorizationStatusLimited){[self message:GSL(@"Allow access to your photo library.")];return;}
- PHPickerConfiguration *c=[[PHPickerConfiguration alloc]initWithPhotoLibrary:PHPhotoLibrary.sharedPhotoLibrary];c.selectionLimit=0;c.preferredAssetRepresentationMode=PHPickerConfigurationAssetRepresentationModeCurrent;
+ PHPickerConfiguration *c=[[PHPickerConfiguration alloc]initWithPhotoLibrary:PHPhotoLibrary.sharedPhotoLibrary];c.selectionLimit=100;c.preferredAssetRepresentationMode=PHPickerConfigurationAssetRepresentationModeCurrent;
  PHPickerViewController *picker=[[PHPickerViewController alloc]initWithConfiguration:c];picker.delegate=self;[self presentViewController:picker animated:YES completion:nil];
  });}];
 }
-- (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results{
- [picker dismissViewControllerAnimated:YES completion:^{NSMutableArray *ids=[NSMutableArray array];for(PHPickerResult *r in results)if(r.assetIdentifier)[ids addObject:r.assetIdentifier];
- PHFetchResult *found=[PHAsset fetchAssetsWithLocalIdentifiers:ids options:nil];NSMutableArray *assets=[NSMutableArray array];[found enumerateObjectsUsingBlock:^(PHAsset *a,NSUInteger i,BOOL *stop){[assets addObject:a];}];
- if(assets.count!=results.count)[self message:GSL(@"Some photos are inaccessible. Update photo permissions and select them again.")];else if(assets.count)[self importAssets:assets];}];
+- (void)chooseAlbum{
+ if(![self.accounts[@"selected"]length]){[self message:GS_ACCOUNT_HELP];return;}
+ if(![NSBundle.mainBundle objectForInfoDictionaryKey:@"NSPhotoLibraryUsageDescription"]){[self message:GSL(@"This app cannot request access to your photos.")];return;}
+ [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelReadWrite handler:^(PHAuthorizationStatus status){dispatch_async(dispatch_get_main_queue(),^{
+  if(status!=PHAuthorizationStatusAuthorized&&status!=PHAuthorizationStatusLimited){[self message:GSL(@"Allow access to your photo library.")];return;}
+  GSAlbumPicker *albums=[[GSAlbumPicker alloc]initWithStyle:UITableViewStyleInsetGrouped];
+  __weak GSPanel *weak=self;
+  albums.selection=^(PHFetchResult<PHAsset *> *assets){
+   [weak startImportCount:assets.count source:@"album" assets:YES provider:^id(NSUInteger index){return [assets objectAtIndex:index];}];
+  };
+  [self presentViewController:[[UINavigationController alloc]initWithRootViewController:albums] animated:YES completion:nil];
+ });}];
 }
-- (void)importAssets:(NSArray<PHAsset *> *)assets{[self importItems:assets assets:YES];}
-- (void)importURLs:(NSArray<NSURL *> *)urls{[self importItems:urls assets:NO];}
-- (void)importItems:(NSArray *)items assets:(BOOL)areAssets{
- if(self.busy){[self message:GSL(@"Wait for the operation to finish, then retry.")];return;}self.stateGeneration++;self.busy=YES;
- __block BOOL expired=NO;__block UIBackgroundTaskIdentifier task=[UIApplication.sharedApplication beginBackgroundTaskWithExpirationHandler:^{@synchronized(self){expired=YES;}}];
- dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
- NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);NSDictionary *options=accounts?GSRequest(@{@"op":@"options"},&error):nil;NSUInteger queued=0;
- for(id item in items){@autoreleasepool{
- @synchronized(self){if(expired)break;}if(error)break;
- NSURL *dir=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
- [NSFileManager.defaultManager createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:&error];if(error)break;
- NSArray *files=nil;NSDate *date=nil;BOOL scoped=NO;
- if(areAssets){PHAsset *asset=item;date=asset.creationDate;files=GSExportAsset(asset,dir,&error);}else{NSURL *url=item;scoped=[url startAccessingSecurityScopedResource];files=@[url];NSDictionary *attr=[NSFileManager.defaultManager attributesOfItemAtPath:url.path error:&error];date=attr[NSFileModificationDate];}
- NSString *identifier=files?GSImportFiles(files,accounts[@"selected"],options[@"quality"],date,&error):nil;
- if(scoped)[item stopAccessingSecurityScopedResource];[NSFileManager.defaultManager removeItemAtURL:dir error:nil];
- if(!identifier)break;queued++;NSUInteger count=queued;
- dispatch_async(dispatch_get_main_queue(),^{[self message:[NSString stringWithFormat:GSL(@"Added %lu / %lu items. Keep the app open while preparing."),(unsigned long)count,(unsigned long)items.count]];});
- }}
- dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;if(task!=UIBackgroundTaskInvalid){[UIApplication.sharedApplication endBackgroundTask:task];task=UIBackgroundTaskInvalid;}
- [self message:[NSString stringWithFormat:GSL(@"Added %lu / %lu items. %@"),(unsigned long)queued,(unsigned long)items.count,error?error.localizedDescription:(queued==items.count?GS_QUEUED_HELP:GSL(@"Preparation was interrupted. Select the remaining items again."))]];});
+- (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results{
+ // Retain identifiers only. PHPicker's item providers need not load any media.
+ NSMutableArray *ids=[NSMutableArray arrayWithCapacity:results.count];
+ for(PHPickerResult *result in results)[ids addObject:result.assetIdentifier?:NSNull.null];
+ [picker dismissViewControllerAnimated:YES completion:^{
+  if(ids.count)[self startImportCount:ids.count source:@"picker" assets:YES provider:GSPhotoIdentifierProvider(ids)];
+ }];
+}
+- (NSString *)batchStatus:(NSDictionary *)state{
+ NSString *counts=[NSString stringWithFormat:GSL(@"Queued %lu / %lu · Failed %lu · Remaining %lu"),[state[@"queued"]unsignedLongValue],[state[@"total"]unsignedLongValue],[state[@"failed"]unsignedLongValue],[state[@"remaining"]unsignedLongValue]];
+ NSString *reason=state[@"stopReason"],*help=nil;
+ if([state[@"active"]boolValue])help=GSL(@"Preparing originals. Keep the app open.");
+ else if([reason isEqual:@"account_changed"])help=GSL(@"Preparation stopped because the account changed. Reconnect and select the remaining items.");
+ else if([reason isEqual:@"queue_rejected"]||[reason isEqual:@"service_unavailable"]||[reason isEqual:@"local_storage"])help=GSL(@"Preparation stopped. Check the connection, free space and queue, then select the remaining items.");
+ else if(reason)help=GSL(@"Preparation stopped. Items already queued are kept.");
+ else help=[state[@"failed"]unsignedIntegerValue]?GSL(@"Some originals could not be read. Check photo access and iCloud downloads, then retry the selection."):GS_QUEUED_HELP;
+ return [NSString stringWithFormat:@"%@\n%@",counts,help];
+}
+- (void)importAssets:(NSArray<PHAsset *> *)assets{
+ NSArray *selection=[assets copy];[self startImportCount:selection.count source:@"share" assets:YES provider:^id(NSUInteger index){return selection[index];}];
+}
+- (void)importURLs:(NSArray<NSURL *> *)urls{
+ NSArray *selection=[urls copy];[self startImportCount:selection.count source:@"share" assets:NO provider:^id(NSUInteger index){return selection[index];}];
+}
+- (void)startImportCount:(NSUInteger)count source:(NSString *)source assets:(BOOL)assets provider:(GSBatchItemProvider)provider{
+ if(!count)return;
+ if(self.busy||[GSBatchImportSnapshot()[@"active"]boolValue]){[self message:GSL(@"Wait for the operation to finish, then retry.")];return;}
+ NSString *account=self.accounts[@"selected"],*identity=GSNativeAccountSummary()[@"identifier"];
+ if(!account.length||(GSIsGooglePhotos()&&!identity.length)){[self message:GS_ACCOUNT_HELP];return;}
+ self.stateGeneration++;self.busy=YES;
+ __weak GSPanel *weak=self;
+ __block UIBackgroundTaskIdentifier task=UIBackgroundTaskInvalid;
+ task=[UIApplication.sharedApplication beginBackgroundTaskWithExpirationHandler:^{GSStopBatchImport(YES);if(task!=UIBackgroundTaskInvalid){[UIApplication.sharedApplication endBackgroundTask:task];task=UIBackgroundTaskInvalid;}}];
+ BOOL started=GSStartBatchImport(count,source,assets,provider,account,identity,^(NSDictionary *state){
+  [weak message:[weak batchStatus:state]];
+ },^(NSDictionary *state){
+  if(task!=UIBackgroundTaskInvalid){[UIApplication.sharedApplication endBackgroundTask:task];task=UIBackgroundTaskInvalid;}
+  weak.busy=NO;[weak message:[weak batchStatus:state]];
  });
+ if(!started){self.busy=NO;if(task!=UIBackgroundTaskInvalid)[UIApplication.sharedApplication endBackgroundTask:task];[self message:GSL(@"Wait for the operation to finish, then retry.")];}
+ else [self message:[self batchStatus:GSBatchImportSnapshot()]];
 }
 @end
 

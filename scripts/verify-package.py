@@ -14,7 +14,7 @@ prefix='var/jb/' if scheme=='rootless' else ''
 def verify_backup_integration(binary):
     # Prevent packaging a build with the original jailed-only source omissions.
     symbols=subprocess.check_output(['nm','-gU',str(binary)],text=True)
-    for function in ('GSStartBackupIntegration','GSInstallBackupRequests','GSInstallPhotosIntegration','GSSetUploadHostForeground','GSUploadMonitorSnapshot'):
+    for function in ('GSStartBackupIntegration','GSInstallBackupRequests','GSInstallPhotosIntegration','GSSetUploadHostForeground','GSUploadMonitorSnapshot','GSStartBatchImport','GSBatchImportSnapshot','GSPhotoIdentifierProvider'):
         assert '_'+function in symbols, f'{binary}: missing {function}'
 with tempfile.TemporaryDirectory() as d:
     subprocess.run(['dpkg-deb','-x',str(deb),d],check=True)

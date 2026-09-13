@@ -53,6 +53,10 @@ Keep Google Photos open until media reaches the queue. The daemon can continue u
 
 ## Quality and queue
 
+For bulk imports, open **GoToHP settings → Uploads → Choose album**. Browse folders to an album, then add all accessible photos and videos. This avoids loading thousands of selections through the system photo picker. **Choose photos and videos** accepts up to 100 items per selection. If that picker shows **Unable to Load Items**, cancel it and use **Choose album**.
+
+Originals are prepared one at a time. Keep the app open during preparation; **Stop preparing** stops after the current item and keeps jobs already queued. An unreadable photo is counted as failed while the remaining selection continues. Check photo permissions and iCloud availability before retrying it. See [bulk import and HEIC troubleshooting](docs/bulk-import.md).
+
 | Setting | Device profile / requested behavior |
 | --- | --- |
 | Original | Pixel XL (Pixel 1), original quality without storage usage |

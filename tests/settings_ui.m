@@ -155,6 +155,11 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
   if(![retry.detailTextLabel.text isEqual:@"7 回"]||![retryPanel.valueSheet.actions[7].title isEqual:@"✓ 7 回"]){Finish(NO,@"Japanese retry setting must use the protocol key for display and selection");return;}
   Capture(self.window,@"settings-light.png");
   GSSetLanguage(@"en");[panel viewWillAppear:NO];
+  GSPanel *uploads=[[GSPanel alloc]initWithStyle:UITableViewStyleInsetGrouped];
+  if([uploads tableView:panel.tableView numberOfRowsInSection:1]!=3){Finish(NO,@"bulk upload controls missing");return;}
+  UITableViewCell *album=[uploads tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:1]];
+  UITableViewCell *stop=[uploads tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:1]];
+  if(![album.textLabel.text isEqual:@"Choose album"]||![stop.textLabel.text isEqual:@"Stop preparing"]||![album.detailTextLabel.text containsString:@"entire album"]){Finish(NO,@"album import labels missing");return;}
   UITableViewCell *quality=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:2]];
   if(![quality.textLabel.text isEqual:@"Quality"]||![panel.navigationItem.rightBarButtonItem.title isEqual:@"Reconnect"]){Finish(NO,@"English settings did not update");return;}
   UITableViewCell *status=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
