@@ -67,7 +67,7 @@
 #endif
  [self refresh];
 }
-- (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];[self updateNavigationLabels];[self.tableView reloadData];}
+- (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];[self updateNavigationLabels];[self reloadTablePreservingPosition];}
 - (void)updateNavigationLabels{
  self.navigationItem.leftBarButtonItem.title=GSL(@"Done");
  self.navigationItem.rightBarButtonItem.title=self.settingsMode?GSL(@"Reconnect"):GSL(@"Add");
@@ -80,7 +80,7 @@
  UIAlertController *sheet=[UIAlertController alertControllerWithTitle:GSL(@"Language") message:nil preferredStyle:UIAlertControllerStyleActionSheet];
  NSArray *codes=@[@"system",@"ja",@"en"],*names=@[GSL(@"System default"),GSL(@"Japanese"),@"English"];
  for(NSUInteger i=0;i<codes.count;i++){NSString *code=codes[i];NSString *title=[code isEqual:GSLanguageOverride()]?[@"✓ " stringByAppendingString:names[i]]:names[i];
-  [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){GSSetLanguage(code);[self updateNavigationLabels];[self.tableView reloadData];[self refresh];}]];
+  [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){GSSetLanguage(code);[self updateNavigationLabels];[self reloadTablePreservingPosition];[self refresh];}]];
  }
  [sheet addAction:[UIAlertAction actionWithTitle:GSL(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];[self sheet:sheet];
 }
@@ -101,15 +101,40 @@
  if(self.navigationController.viewControllers.count>1){[self.navigationController popViewControllerAnimated:YES];return;}
  if(self.activityCompletion)self.activityCompletion();else[self dismissViewControllerAnimated:YES completion:nil];
 }
-- (void)message:(NSString *)message{self.statusText=message;self.statusLanguage=GSLanguage();[self.tableView reloadData];}
+- (BOOL)isInteractingWithTable{return self.tableView.tracking||self.tableView.dragging||self.tableView.decelerating;}
+- (void)reloadTablePreservingPosition{
+ UITableView *table=self.tableView;
+ NSIndexPath *anchor=table.indexPathsForVisibleRows.firstObject;
+ CGFloat delta=anchor?table.contentOffset.y-[table rectForRowAtIndexPath:anchor].origin.y:0;
+ __block CGPoint offset=table.contentOffset;
+ [UIView performWithoutAnimation:^{
+  [table reloadData];[table layoutIfNeeded];
+  if(anchor&&anchor.section<[table numberOfSections]&&anchor.row<[table numberOfRowsInSection:anchor.section])
+   offset.y=[table rectForRowAtIndexPath:anchor].origin.y+delta;
+  CGFloat minimum=-table.adjustedContentInset.top;
+  CGFloat maximum=MAX(minimum,table.contentSize.height-table.bounds.size.height+table.adjustedContentInset.bottom);
+  [table setContentOffset:CGPointMake(offset.x,MIN(MAX(offset.y,minimum),maximum)) animated:NO];
+ }];
+}
+- (void)message:(NSString *)message{
+ BOOL changed=![self.statusText isEqual:message]||![self.statusLanguage isEqual:GSLanguage()];
+ self.statusText=message;self.statusLanguage=GSLanguage();if(changed)[self reloadTablePreservingPosition];
+}
 - (void)refresh{
- if(self.busy||self.refreshing||self.nativeAuthorizationFailed)return;self.refreshing=YES;
+ if(self.busy||self.refreshing||self.nativeAuthorizationFailed||[self isInteractingWithTable])return;self.refreshing=YES;
  NSUInteger generation=self.stateGeneration;
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
  NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);NSDictionary *options=accounts?GSRequest(@{@"op":@"options"},&error):nil;
  NSMutableArray *jobs=[NSMutableArray array];NSInteger cursor=0;NSDictionary *page=nil;
  if(options)do{page=GSRequest(@{@"op":@"list",@"cursor":@(cursor)},&error);if(!page)break;[jobs addObjectsFromArray:page[@"jobs"]?:@[]];cursor=[page[@"next"]integerValue];}while(cursor>=0);
- dispatch_async(dispatch_get_main_queue(),^{self.refreshing=NO;if(generation!=self.stateGeneration){[self refresh];return;}if(error){[self message:error.localizedDescription];return;}self.accounts=accounts;self.options=[options mutableCopy];self.jobs=jobs;
+ dispatch_async(dispatch_get_main_queue(),^{self.refreshing=NO;
+ // A poll completing during a gesture is superseded by the next idle poll.
+ // Do not change the data source count or invalidate self-sizing rows mid-scroll.
+ if([self isInteractingWithTable])return;
+ if(generation!=self.stateGeneration){[self refresh];return;}if(error){[self message:error.localizedDescription];return;}
+ BOOL changed=![self.accounts isEqual:accounts]||![self.options isEqual:options]||![self.jobs isEqual:jobs];
+ NSString *previousStatus=self.statusText,*previousLanguage=self.statusLanguage;
+ self.accounts=accounts;self.options=[options mutableCopy];self.jobs=jobs;
  NSString *readiness=GSL(@"Ready to upload");
  if([options[@"paused"]boolValue])readiness=GSL(@"Uploads paused");
  else if(![page[@"online"]boolValue])readiness=GSL(@"Waiting for a connection or app launch");
@@ -128,7 +153,7 @@
 #endif
  self.statusText=[accounts[@"selected"]length]?[NSString stringWithFormat:@"%@ · %@",authorization,readiness]:GSL(@"Connect an account to continue");
  NSString *importError=GSNativeRoutingSnapshot()[@"lastError"];if(importError)self.statusText=importError;self.statusLanguage=GSLanguage();
- [self.tableView reloadData];
+ if(changed||![previousStatus isEqual:self.statusText]||![previousLanguage isEqual:self.statusLanguage])[self reloadTablePreservingPosition];
  });
  });
 }
@@ -181,10 +206,10 @@
 - (void)controlSwitchChanged:(UISwitch *)toggle{
  NSInteger control=toggle.tag;BOOL desired=toggle.on;
  [toggle setOn:[self switchValueForControl:control] animated:YES];
- if(control==16){GSSetUnlimitedStorage(desired);[self.tableView reloadData];return;}
+ if(control==16){GSSetUnlimitedStorage(desired);[self reloadTablePreservingPosition];return;}
  if(self.busy)return;
  if(control==10){[self toggleNativeRouting];return;}
- if(control==11){GSSetUploadDiagnostics(desired);[self.tableView reloadData];return;}
+ if(control==11){GSSetUploadDiagnostics(desired);[self reloadTablePreservingPosition];return;}
  NSMutableDictionary *options=[self.options mutableCopy];if(!options)return;
  options[@[@"wifiOnly",@"chargingOnly",@"paused"][control-3]]=@(desired);
  [self request:@{@"op":@"configure",@"options":options}];
@@ -282,6 +307,7 @@
 - (void)exportUploadDiagnostics{
  NSMutableDictionary *snapshot=[GSUploadDiagnosticsSnapshot() mutableCopy];
  snapshot[@"manualRouting"]=GSNativeRoutingSnapshot();
+ snapshot[@"unlimitedStorage"]=GSUnlimitedStorageSnapshot();
 #if GS_JAILED
  snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
  snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();
@@ -299,12 +325,12 @@
  if(!GSBackupRequestsAvailable()){[self message:GSL(@"Backup requests cannot be routed in this version. Select items from the GoToHP upload screen.")];return;}
 #endif
  if(!GSNativeRoutingAvailable()){[self message:GSL(@"Manual backup integration is unavailable in this version. Choose photos from Uploads.")];return;}
- if(GSNativeRoutingEnabled()){GSSetNativeRouting(NO,nil);[self.tableView reloadData];return;}
+ if(GSNativeRoutingEnabled()){GSSetNativeRouting(NO,nil);[self reloadTablePreservingPosition];return;}
  NSString *account=self.accounts[@"selected"];
  if(!account.length){[self message:GS_ACCOUNT_HELP];return;}
  UIAlertController *a=[UIAlertController alertControllerWithTitle:GS_BACKUP_TITLE message:[NSString stringWithFormat:GSL(@"Destination: %@\n%@\nFailures and retries appear in the GoToHP queue. Uploads will not fall back to the native uploader."),account,GS_BACKUP_HELP] preferredStyle:UIAlertControllerStyleAlert];
  [a addAction:[UIAlertAction actionWithTitle:GSL(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
- [a addAction:[UIAlertAction actionWithTitle:GSL(@"Enable") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){GSSetNativeRouting(YES,account);[self.tableView reloadData];}]];[self sheet:a];
+ [a addAction:[UIAlertAction actionWithTitle:GSL(@"Enable") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){GSSetNativeRouting(YES,account);[self reloadTablePreservingPosition];}]];[self sheet:a];
 }
 - (void)accountAction:(BOOL)remove{
  UIAlertController *a=[UIAlertController alertControllerWithTitle:remove?GSL(@"Remove account"):GSL(@"Destination account") message:remove?GSL(@"Cancel this account's unfinished jobs first."):nil preferredStyle:UIAlertControllerStyleActionSheet];
@@ -322,7 +348,7 @@
   if(control==14){[self choose];return;}
   if(control==13){[self addAccount];return;}
   if(control==10){[self toggleNativeRouting];return;}
-  if(control==11){GSSetUploadDiagnostics(!GSUploadDiagnosticsEnabled());[self.tableView reloadData];return;}
+  if(control==11){GSSetUploadDiagnostics(!GSUploadDiagnosticsEnabled());[self reloadTablePreservingPosition];return;}
   if(control==12){[self exportUploadDiagnostics];return;}
   if(control<3){[self chooseValueForControl:control];return;}
   if(control<6)return; // Use the visible switch; no hidden value cycling.

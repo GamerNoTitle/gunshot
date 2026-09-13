@@ -58,9 +58,13 @@ jobs:
           mkdir -p .build
           clang -fobjc-arc -framework Foundation tests/localization.m -o .build/localization-test
           .build/localization-test
-          clang -fobjc-arc -framework Foundation UI/GSUnlimitedStorage.m tests/unlimited_storage.m -o .build/unlimited-storage-test
+          clang -fobjc-arc -c UI/GSUnlimitedStorage.m -o .build/unlimited-storage.o
+          clang -fobjc-arc -c tests/unlimited_storage.m -o .build/unlimited-storage-fixture.o
+          swiftc -parse-as-library -emit-object -import-objc-header tests/unlimited_storage_fixture.h tests/unlimited_storage.swift -o .build/unlimited-storage-swift.o
+          swiftc .build/unlimited-storage.o .build/unlimited-storage-fixture.o .build/unlimited-storage-swift.o -o .build/unlimited-storage-test
           .build/unlimited-storage-test
           .build/unlimited-storage-test incompatible-abi
+          .build/unlimited-storage-test bento-only
           clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/native-routing-test
           .build/native-routing-test
           clang -fobjc-arc -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/silent-jailed-routing-test

@@ -1,90 +1,122 @@
 #import "../UI/GSUnlimitedStorage.h"
+#import "unlimited_storage_fixture.h"
 #import <objc/runtime.h>
 #include <assert.h>
 
 static NSString *Version=@"unsupported",*Executable=@"GooglePhotos";
-static NSBundle *Resources;
-static NSUInteger Calls,Actions,TitleCalls;
+static BOOL ResourcesReady,ThrowDuringEncode;
+static NSUInteger Actions,CellCalls;
 @interface GSStorageFixtureBundle : NSObject @end
 @implementation GSStorageFixtureBundle
 - (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?Executable:Version;}
 @end
 static id MainBundle(id object,SEL selector){static id bundle;if(!bundle)bundle=[GSStorageFixtureBundle new];return bundle;}
-static id BundleForClass(id object,SEL selector,Class cls){return Resources;}
-@interface OGLAccountMenuStorageCardData : NSObject
-@property(nonatomic) NSInteger storageState;
-@property(nonatomic,copy) NSString *title,*subtitle;
-@property(nonatomic) double usedStorage,totalStorage;
-@property(nonatomic,copy) void(^cardActionCallback)(void);
+@interface OGLStringResources : NSObject
++ (id)sharedInstance;
+- (id)stringForID:(int)identifier;
 @end
-@implementation OGLAccountMenuStorageCardData @end
-@interface OGLAccountSelectorStorageCardItem : NSObject
-@property(nonatomic) NSInteger storageState;
+@implementation OGLStringResources
++ (id)sharedInstance{static id resources;if(!resources)resources=[self new];return resources;}
+- (id)stringForID:(int)identifier{assert(identifier==0x81);return ResourcesReady?@"Unlimited storage":@"OneGoogleStorageCardUnlimitedTitle";}
 @end
-@implementation OGLAccountSelectorStorageCardItem @end
-@interface OGLAccountSelectorStorageCardCell : NSObject
-+ (id)titleTextWithStorageItem:(id)item;
-@end
-@implementation OGLAccountSelectorStorageCardCell
-+ (id)titleTextWithStorageItem:(id)item{TitleCalls++;return @"Native regular title";}
-@end
-@interface GSStorageFixtureSource : NSObject
-@property(nonatomic) BOOL empty;
-@property(nonatomic,strong) id replacement;
-@property(nonatomic) NSInteger quotaState;
-- (id)storageCardData;
-@end
-@implementation GSStorageFixtureSource
-- (id)storageCardData{
- Calls++;if(self.empty)return nil;if(self.replacement)return self.replacement;
- OGLAccountMenuStorageCardData *data=[OGLAccountMenuStorageCardData new];
- data.storageState=self.quotaState;data.title=@"Original title";data.subtitle=@"Original subtitle";
- data.usedStorage=8;data.totalStorage=15;data.cardActionCallback=^{Actions++;};return data;
+@implementation GSStorageFixtureData
++ (BOOL)supportsSecureCoding{return YES;}
+- (void)encodeWithCoder:(NSCoder *)coder{
+ if(ThrowDuringEncode)@throw [NSException exceptionWithName:@"FixtureEncode" reason:nil userInfo:nil];
+ // Deliberately use getters, matching native encodeWithCoder: at 0x17a3fd4.
+ [coder encodeInteger:self.storageState forKey:@"storageState"];
+ [coder encodeObject:self.title forKey:@"title"];
+ [coder encodeDouble:self.usedStorage forKey:@"usedStorage"];
+ [coder encodeDouble:self.totalStorage forKey:@"totalStorage"];
+}
+- (instancetype)initWithCoder:(NSCoder *)coder{
+ if((self=[super init])){_storageState=[coder decodeIntegerForKey:@"storageState"];_title=[coder decodeObjectOfClass:NSString.class forKey:@"title"];_usedStorage=[coder decodeDoubleForKey:@"usedStorage"];_totalStorage=[coder decodeDoubleForKey:@"totalStorage"];}return self;
 }
 @end
+@interface GSStorageFixtureItem : NSObject
+@property(nonatomic) NSInteger storageState;
+@end
+@implementation GSStorageFixtureItem @end
+@interface GSStorageFixtureCell : NSObject
++ (id)titleTextWithStorageItem:(id)item;
+- (void)updateWithItem:(id)item;
+@end
+@implementation GSStorageFixtureCell
++ (id)titleTextWithStorageItem:(id)item{return @"Native regular title";}
+- (void)updateWithItem:(id)item{CellCalls++;}
+@end
+@interface OGLBentoAccountMenuFactory : NSObject
+- (id)makeBentoAccountMenuViewController;
+@end
+@implementation OGLBentoAccountMenuFactory
+- (id)makeBentoAccountMenuViewController{return [NSObject new];}
+@end
+@interface GSStorageObserver : NSObject @end
+@implementation GSStorageObserver
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context{}
+@end
+static Class RegisterClass(Class parent,const char *name){Class cls=objc_allocateClassPair(parent,name,0);objc_registerClassPair(cls);return cls;}
+static GSStorageFixtureData *Card(Class cls){
+ GSStorageFixtureData *data=[cls new];data.storageState=0;data.title=@"43% of 15 GB used";
+ data.subtitle=@"Native subtitle";data.usedStorage=6.55;data.totalStorage=15;
+ data.cardActionCallback=^{Actions++;};return data;
+}
 int main(int argc,const char **argv){@autoreleasepool{
- NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
- [defaults removeObjectForKey:@"GSShowUnlimitedStorage"];
- assert(GSUnlimitedStorageEnabled());GSSetUnlimitedStorage(NO);assert(!GSUnlimitedStorageEnabled());
- GSSetUnlimitedStorage(YES);assert(GSUnlimitedStorageEnabled());
+ BOOL incompatible=argc>1&&!strcmp(argv[1],"incompatible-abi"),bentoOnly=argc>1&&!strcmp(argv[1],"bento-only");
+ NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;[defaults removeObjectForKey:@"GSShowUnlimitedStorage"];
+ assert(GSUnlimitedStorageEnabled());GSSetUnlimitedStorage(NO);assert(!GSUnlimitedStorageEnabled());GSSetUnlimitedStorage(YES);
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)MainBundle);
- method_setImplementation(class_getClassMethod(NSBundle.class,@selector(bundleForClass:)),(IMP)BundleForClass);
- Class sourceClass=objc_allocateClassPair(GSStorageFixtureSource.class,"PHSMyAccountMenuDataSource",0);
- if(argc>1)class_addMethod(sourceClass,@selector(storageCardData),class_getMethodImplementation(GSStorageFixtureSource.class,@selector(storageCardData)),"q16@0:8");
- objc_registerClassPair(sourceClass);
+ Class data=objc_allocateClassPair(GSStorageFixtureData.class,"OGLAccountMenuStorageCardData",0);
+ if(incompatible)class_addMethod(data,@selector(storageState),class_getMethodImplementation(GSStorageFixtureData.class,@selector(storageState)),"d16@0:8");
+ objc_registerClassPair(data);
+ Class itemClass=nil,cellClass=nil;
+ if(!bentoOnly){itemClass=RegisterClass(GSStorageFixtureItem.class,"OGLAccountSelectorStorageCardItem");cellClass=RegisterClass(GSStorageFixtureCell.class,"OGLAccountSelectorStorageCardCell");}
  GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());
- Version=@"7.92.0";Executable=@"OtherApp";GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());
- Executable=@"GooglePhotos";GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable()); // Missing bundle.
- NSString *root=[NSTemporaryDirectory()stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
- NSString *bundle=[root stringByAppendingPathComponent:@"OneGoogle.bundle"];
- [[NSFileManager defaultManager]createDirectoryAtPath:bundle withIntermediateDirectories:YES attributes:nil error:nil];
- [@{@"OneGoogleStorageCardUnlimitedTitle":@"Unlimited storage"}writeToFile:[bundle stringByAppendingPathComponent:@"OneGoogle.strings"] atomically:YES];
- [@{@"CFBundleIdentifier":@"dev.tqmane.storagefixture",@"CFBundlePackageType":@"BNDL"}writeToFile:[bundle stringByAppendingPathComponent:@"Info.plist"] atomically:YES];
- [@{@"CFBundleIdentifier":@"dev.tqmane.storageparent",@"CFBundlePackageType":@"BNDL"}writeToFile:[root stringByAppendingPathComponent:@"Info.plist"] atomically:YES];
- Resources=[NSBundle bundleWithPath:root];assert(Resources);
- if(argc>1){
-  // Run in a fresh process: a changed private ABI must leave both IMPs intact.
-  GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());
- }else{
-  GSInstallUnlimitedStorage();assert(GSUnlimitedStorageAvailable());GSInstallUnlimitedStorage();
-  GSStorageFixtureSource *source=[sourceClass new];
-  OGLAccountMenuStorageCardData *data=[source storageCardData];assert(Calls==1&&data.storageState==2);
-  assert([data.title isEqual:@"Unlimited storage"]&&data.subtitle==nil);
-  assert(data.usedStorage==8&&data.totalStorage==15&&source.quotaState==0);
-  data.cardActionCallback();assert(Actions==1);
-  OGLAccountSelectorStorageCardItem *item=[OGLAccountSelectorStorageCardItem new];item.storageState=2;
-  assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:item]isEqual:@"Unlimited storage"]);
-  item.storageState=0;assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:item]isEqual:@"Native regular title"]&&TitleCalls==1);
-  GSSetUnlimitedStorage(NO);OGLAccountMenuStorageCardData *normal=[source storageCardData];
-  assert(normal!=data&&normal.storageState==0&&[normal.title isEqual:@"Original title"]&&[normal.subtitle isEqual:@"Original subtitle"]);
-  assert(data.storageState==2); // No retroactive mutation of a previous menu.
-  item.storageState=2;assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:item]isEqual:@"Native regular title"]);
-  GSSetUnlimitedStorage(YES);assert([[source storageCardData]storageState]==2);
-  source.empty=YES;assert([source storageCardData]==nil);source.empty=NO;
-  source.replacement=[NSObject new];assert([source storageCardData]==source.replacement);
-  assert([[OGLAccountSelectorStorageCardCell titleTextWithStorageItem:nil]isEqual:@"Native regular title"]);
+ Version=@"7.92.0";Executable=@"OtherApp";GSInstallUnlimitedStorage();assert(!GSUnlimitedStorageAvailable());Executable=@"GooglePhotos";
+ GSInstallUnlimitedStorage();
+ if(incompatible){assert(!GSUnlimitedStorageAvailable());assert([GSUnlimitedStorageSnapshot()[@"status"]isEqual:@"incompatible-model-abi"]);return 0;}
+ assert(GSUnlimitedStorageAvailable());GSInstallUnlimitedStorage();
+ assert([GSUnlimitedStorageSnapshot()[@"legacyObserver"]boolValue]==!bentoOnly);
+ // No mapper or source class exists in either fixture. Exercise the Swift reader.
+ GSStorageFixtureData *original=Card(data);const void *pointer=(__bridge const void *)original;
+ assert(GSReadStorageFromSwift(pointer)==0&&!GSReadUnlimitedTitleFromSwift(pointer));
+ ResourcesReady=YES;
+ assert(GSReadStorageFromSwift(pointer)==2&&GSReadUnlimitedTitleFromSwift(pointer));
+ // Never mutate the backing fields, callbacks, quota counters or superclass.
+ NSInteger (*storedState)(id,SEL)=(void *)class_getMethodImplementation(GSStorageFixtureData.class,@selector(storageState));
+ id (*storedTitle)(id,SEL)=(void *)class_getMethodImplementation(GSStorageFixtureData.class,@selector(title));
+ assert(storedState(original,@selector(storageState))==0&&[storedTitle(original,@selector(title))isEqual:@"43% of 15 GB used"]);
+ assert(original.usedStorage==6.55&&original.totalStorage==15&&[original.subtitle isEqual:@"Native subtitle"]);
+ original.cardActionCallback();assert(Actions==1);assert([Card(GSStorageFixtureData.class) storageState]==0);
+ GSStorageObserver *observer=[GSStorageObserver new];[original addObserver:observer forKeyPath:@"storageState" options:0 context:NULL];
+ assert(object_getClass(original)!=data);assert(GSReadStorageFromSwift(pointer)==2&&GSReadUnlimitedTitleFromSwift(pointer));
+ [original removeObserver:observer forKeyPath:@"storageState"];
+ // Even with display enabled, archive/unarchive must retain the actual model.
+ NSError *error=nil;NSData *archive=[NSKeyedArchiver archivedDataWithRootObject:original requiringSecureCoding:YES error:&error];assert(archive&&!error);
+ GSStorageFixtureData *restored=[NSKeyedUnarchiver unarchivedObjectOfClass:data fromData:archive error:&error];assert(restored&&!error);
+ assert(storedState(restored,@selector(storageState))==0&&[storedTitle(restored,@selector(title))isEqual:@"43% of 15 GB used"]);
+ assert(restored.usedStorage==6.55&&restored.totalStorage==15);
+ ThrowDuringEncode=YES;BOOL threw=NO;
+ @try{[original encodeWithCoder:nil];}@catch(NSException *e){threw=YES;}ThrowDuringEncode=NO;assert(threw);
+ assert(GSReadStorageFromSwift(pointer)==2); // Exception did not leak suppression.
+ GSSetUnlimitedStorage(NO);assert(GSReadStorageFromSwift(pointer)==0&&!GSReadUnlimitedTitleFromSwift(pointer));
+ // A native update while enabled/disabled remains visible after disabling again.
+ original.storageState=1;original.title=@"Updated native title";
+ GSSetUnlimitedStorage(YES);assert(GSReadStorageFromSwift(pointer)==2&&GSReadUnlimitedTitleFromSwift(pointer));
+ GSSetUnlimitedStorage(NO);assert(GSReadStorageFromSwift(pointer)==1&&[original.title isEqual:@"Updated native title"]);GSSetUnlimitedStorage(YES);
+ if(!bentoOnly){
+  GSStorageFixtureItem *item=[itemClass new];item.storageState=original.storageState;
+  GSStorageFixtureCell *cell=[cellClass new];[cell updateWithItem:item];assert(CellCalls==1);
+  assert([[cellClass titleTextWithStorageItem:item]isEqual:@"Unlimited storage"]);
+  GSSetUnlimitedStorage(NO);assert([[cellClass titleTextWithStorageItem:item]isEqual:@"Native regular title"]);GSSetUnlimitedStorage(YES);
  }
+ assert([[OGLBentoAccountMenuFactory new]makeBentoAccountMenuViewController]);
+ NSDictionary *snapshot=GSUnlimitedStorageSnapshot();
+ assert([snapshot[@"implementation"]isEqual:@"native-display-model-v4"]&&[snapshot[@"modelStateReads"]unsignedLongValue]>0&&[snapshot[@"modelTitleReads"]unsignedLongValue]>0);
+ assert([snapshot[@"bentoControllers"]unsignedLongValue]==1&&[snapshot[@"archiveCalls"]unsignedLongValue]>=2);
+ assert([snapshot[@"cardClasses"]containsObject:@"NSKVONotifying_OGLAccountMenuStorageCardData"]);
+ assert([snapshot[@"cellUpdates"]unsignedLongValue]==(bentoOnly?0:1));
+ NSSet *keys=[NSSet setWithArray:@[@"implementation",@"available",@"enabled",@"status",@"legacyObserver",@"bentoObserver",@"stringsReady",@"modelStateReads",@"modelTitleReads",@"displayOverrides",@"archiveCalls",@"bentoControllers",@"cellUpdates",@"titleCalls",@"nativeStorageState",@"displayStorageState",@"renderedStorageState",@"cardClasses",@"controllerClasses"]];assert([[NSSet setWithArray:snapshot.allKeys]isEqual:keys]);
  [defaults removeObjectForKey:@"GSShowUnlimitedStorage"];
- [[NSFileManager defaultManager]removeItemAtPath:root error:nil];
- NSLog(@"PASS native unlimited storage presentation");
+ NSLog(@"PASS Swift model reads with %@; KVO, native backing fields, coder restoration, late resources, callbacks, on/off",bentoOnly?@"no legacy renderer":@"legacy renderer");
 }}

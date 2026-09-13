@@ -6,11 +6,18 @@
 #import "../UI/GSExporter.h"
 #import "../Shared/IPCProtocol.h"
 #include <stdlib.h>
+#include <stdatomic.h>
+#include <math.h>
 #include "libgotohp.h"
 // Real jailed adapter + UIKit + NWPath + Go runtime. Only account operations are fake.
 // A synchronous main callback models native SSO while the core queue is busy.
 
 static BOOL SnapshotDuringAuthorization;
+static atomic_ulong FixtureAccountReads;
+static atomic_int FixtureConcurrent=2;
+@interface GSPanel (GSFixturePolling)
+- (void)refresh;
+@end
 static NSUInteger NativeRefreshes;
 void GSRefreshNativeLibrary(void){dispatch_async(dispatch_get_main_queue(),^{NativeRefreshes++;});}
 NSDictionary *GSPhotosIntegrationSnapshot(void){return @{};}
@@ -30,13 +37,15 @@ char *GSFixtureRequest(char *json,char *role){
    NSLog(@"Fixture: authorization snapshot returned");
   });
  }
+ if([op isEqual:@"accounts"])atomic_fetch_add(&FixtureAccountReads,1);
  if([op isEqual:@"accounts"])data=@{@"selected":@"test@example.com",@"accounts":@[@{@"email":@"test@example.com"}]};
- if([op isEqual:@"options"])data=@{@"quality":@"original",@"concurrent":@2,@"retries":@3,@"wifiOnly":@NO,@"chargingOnly":@NO,@"paused":@NO};
+ if([op isEqual:@"options"])data=@{@"quality":@"original",@"concurrent":@(atomic_load(&FixtureConcurrent)),@"retries":@3,@"wifiOnly":@NO,@"chargingOnly":@NO,@"paused":@NO};
  NSData *reply=[NSJSONSerialization dataWithJSONObject:@{@"ok":@YES,@"data":data} options:0 error:nil];
  return strdup([[NSString alloc]initWithData:reply encoding:NSUTF8StringEncoding].UTF8String);
 }
 static BOOL UnlimitedStorage=YES;
 void GSInstallUnlimitedStorage(void){}
+NSDictionary *GSUnlimitedStorageSnapshot(void){return @{};}
 BOOL GSUnlimitedStorageAvailable(void){return YES;}
 BOOL GSUnlimitedStorageEnabled(void){return UnlimitedStorage;}
 void GSSetUnlimitedStorage(BOOL enabled){UnlimitedStorage=enabled;}
@@ -75,6 +84,25 @@ static GSPanel *Panel(UIViewController *host){
  UIViewController *nav=host.presentedViewController;
  if(![nav isKindOfClass:UINavigationController.class])return nil;
  id top=((UINavigationController *)nav).topViewController;return [top isKindOfClass:GSPanel.class]?top:nil;
+}
+static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(void)){
+ NSIndexPath *path=[NSIndexPath indexPathForRow:1 inSection:6];
+ [panel.tableView layoutIfNeeded];
+ UITableViewCell *cell=[panel.tableView cellForRowAtIndexPath:path];
+ if(!cell){Finish(NO,@"storage switch must be visible before polling test");return;}
+ CGFloat relative=[panel.tableView rectForRowAtIndexPath:path].origin.y-panel.tableView.contentOffset.y;
+ NSUInteger reads=atomic_load(&FixtureAccountReads);
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{
+  CGFloat now=[panel.tableView rectForRowAtIndexPath:path].origin.y-panel.tableView.contentOffset.y;
+  if(atomic_load(&FixtureAccountReads)<reads+2||[panel.tableView cellForRowAtIndexPath:path]!=cell||fabs(now-relative)>1){Finish(NO,@"unchanged timer polls replaced the switch or moved the settings list");return;}
+  // A real changed snapshot still updates, retaining the visible row's position.
+  atomic_store(&FixtureConcurrent,3);[panel refresh];
+  Await(^BOOL{return [[[panel valueForKey:@"options"]objectForKey:@"concurrent"]intValue]==3;},^{
+   CGFloat updated=[panel.tableView rectForRowAtIndexPath:path].origin.y-panel.tableView.contentOffset.y;
+   if(fabs(updated-relative)>1||![((UISwitch *)[panel.tableView cellForRowAtIndexPath:path].accessoryView)isOn]){Finish(NO,@"changed snapshot moved or removed the storage switch");return;}
+   Capture(window,@"settings-after-polling.png");next();
+  },[NSDate dateWithTimeIntervalSinceNow:5]);
+ });
 }
 @interface GSFixtureScene : UIResponder <UIWindowSceneDelegate>
 @property(nonatomic,strong) UIWindow *window;
@@ -120,6 +148,7 @@ static GSPanel *Panel(UIViewController *host){
   GSSetLanguage(@"ja");[panel viewWillAppear:NO];
   [panel.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:7] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
   Capture(self.window,@"settings-history.png");
+  CheckStationaryPolling(panel,self.window,^{
   [root dismissViewControllerAnimated:NO completion:^{
    UIViewController *menu=[UIViewController new];menu.view.backgroundColor=UIColor.secondarySystemBackgroundColor;
    [root presentViewController:menu animated:NO completion:^{
@@ -133,12 +162,13 @@ static GSPanel *Panel(UIViewController *host){
       Capture(self.window,@"settings-dark.png");
       [root dismissViewControllerAnimated:NO completion:^{
        GSPresentSettings(nil);
-       Await(^BOOL{return Panel(root).viewIfLoaded.window!=nil&&NativeRefreshes>0&&GSEmbeddedRuntimeSnapshot()[@"uploadSummary"]!=nil;},^{Finish(YES,@"detached, nested, repeated and nil-host presentation; settings rendered; real jailed runtime online, completion observer active and authorization snapshot nonblocking");},deadline);
+       Await(^BOOL{return Panel(root).viewIfLoaded.window!=nil&&NativeRefreshes>0&&GSEmbeddedRuntimeSnapshot()[@"uploadSummary"]!=nil;},^{Finish(YES,@"detached, nested, repeated and nil-host presentation; stationary polling and changed-snapshot anchor retained; settings rendered; real jailed runtime online, completion observer active and authorization snapshot nonblocking");},deadline);
       }];
      });
     },deadline);
    }];
   }];
+  });
  },deadline);
 }
 @end
