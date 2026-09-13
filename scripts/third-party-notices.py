@@ -8,7 +8,8 @@ while raw.strip():
     if 'Module' in package:
         m=package['Module'];modules[m['Path']]=m
 parts=['GoToHP / Gunshot third-party notices\nSource: https://github.com/tqmane/gunshot\n']
-parts.append(pathlib.Path('LICENSE').read_text())
+parts.extend(['Gunshot — Copyright (C) 2026 tqmane', pathlib.Path('LICENSE').read_text()])
+parts.extend(['gotohp upstream — MIT License', pathlib.Path('GotohpCore/upstream/LICENSE').read_text()])
 goroot=pathlib.Path(subprocess.check_output(['go','env','GOROOT'],text=True).strip())
 parts.extend(['Go runtime / standard library', (goroot/'LICENSE').read_text()])
 for m in modules.values():

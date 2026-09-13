@@ -92,6 +92,15 @@ go vet -tags cli ./...
 
 CI でテストと 3 方式のビルドを行い、`v*` タグの成功時に Release へ配布物を添付します。upstream の更新は `bash scripts/sync-upstream.sh [commit]`。配布時は upstream のライセンスと生成された notices を同梱してください。
 
+## ライセンス
+
+Gunshot は [GNU GPL v3.0 以降](LICENSE)で提供します。
+Copyright (C) 2026 tqmane.
+
+同梱する [gotohp upstream](GotohpCore/upstream/LICENSE) は引き続き MIT ライセンスです
+（Copyright (c) 2024 xob0t）。その他の依存関係にもそれぞれのライセンスが適用されます。
+配布パッケージの `ThirdPartyNotices.txt` にこれらの表示を同梱します。
+
 ## 開発資料
 
 - [構成・認証情報・upstream 連携](docs/architecture.md)
