@@ -8,7 +8,7 @@ upload settings and the queue. English and Japanese settings labels are included
 
 This is a **display preference**. It does not grant an account benefit, alter
 Google's storage accounting, or select upload quality. Turn it off to see the
-unmodified account storage card. The fixed 7.20.2 adapter and the 7.92.0+ modern adapter check their required private APIs. Incompatible APIs leave the native UI unchanged and show the control as unavailable. The two supplied IPA versions are audit references, not an upper-version limit.
+unmodified account storage card. The legacy UIKit and modern model-title adapters are selected automatically from their required private APIs, independently of the version number. Incompatible APIs leave the native UI unchanged and show the control as unavailable. The two supplied IPA versions are audit references, not an upper-version limit.
 
 ## Current resource lookup
 

@@ -58,6 +58,8 @@ jobs:
           mkdir -p .build
           clang -fobjc-arc -framework Foundation tests/mach_transport.m -o .build/mach-transport-test
           .build/mach-transport-test
+          clang -fobjc-arc -framework Foundation tests/ipc_client.m -o .build/ipc-client-test
+          .build/ipc-client-test
       - name: Native routing contract
         if: matrix.scheme == 'jailed'
         run: |

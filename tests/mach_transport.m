@@ -39,7 +39,8 @@ static void Exchange(NSUInteger mode) {
  assert(dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC))==0);
  // A malformed descriptor response must not leave an extra service send right.
  mach_port_urefs_t refs=0;assert(mach_port_get_refs(mach_task_self(),service,MACH_PORT_RIGHT_SEND,&refs)==KERN_SUCCESS&&refs==1);
- mach_port_destroy(mach_task_self(),broker);mach_port_destroy(mach_task_self(),service);
+ mach_port_deallocate(mach_task_self(),broker);GSDestroyReplyPort(broker);
+ mach_port_deallocate(mach_task_self(),service);GSDestroyReplyPort(service);
 }
 int main(void){@autoreleasepool{
  for(NSUInteger i=0;i<5;i++)for(NSUInteger mode=0;mode<4;mode++)Exchange(mode);

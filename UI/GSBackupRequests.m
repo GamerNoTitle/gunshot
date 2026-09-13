@@ -159,6 +159,7 @@ void GSInstallBackupRequests(void){
   Method m=class_getInstanceMethod(c,NSSelectorFromString(entry[0]));if(!m||strcmp(method_getTypeEncoding(m),[entry[1]UTF8String]))return;
  }
  Method fetch=class_getInstanceMethod(base,NSSelectorFromString(@"startFetcher"));if(!fetch||strcmp(method_getTypeEncoding(fetch),"v16@0:8"))return;
+ if(GSPhotosCompletionForClass(asset)==GSPhotosCompletionUnavailable)return;
  Method ac=class_getInstanceMethod(asset,NSSelectorFromString(GSPhotosAssetCompletion(asset))),lc=class_getInstanceMethod(live,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"));
  if(!ac||!lc||strcmp(method_getTypeEncoding(ac),GSPhotosAssetCompletionABI(asset))||strcmp(method_getTypeEncoding(lc),"v32@0:8@16@24"))return;
  GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSReconciling=[NSMutableSet set];
