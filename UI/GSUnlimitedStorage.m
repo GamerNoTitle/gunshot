@@ -1,3 +1,4 @@
+#import "../Shared/GSPhotosCompatibility.h"
 #import "GSUnlimitedStorage.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -50,10 +51,10 @@ static BOOL GSStorageItem(id item){
   GSStorageMethod(object_getClass(item),@"storageState","q16@0:8");
 }
 static NSString *GSUnlimitedTitle(void){
- // 7.92.0: 0x81 is OneGoogleStorageCardUnlimitedTitle in the OneGoogle bundle.
+ // Audited OneGoogleStorageCardUnlimitedTitle: 7.20.2 = 0x79, 7.92.0 = 0x81.
  // Retry on each read because resources may load after dylib initialization.
  id resources=((id(*)(id,SEL))objc_msgSend)(NSClassFromString(@"OGLStringResources"),NSSelectorFromString(@"sharedInstance"));
- id title=((id(*)(id,SEL,int))objc_msgSend)(resources,NSSelectorFromString(@"stringForID:"),0x81);
+ id title=((id(*)(id,SEL,int))objc_msgSend)(resources,NSSelectorFromString(@"stringForID:"),GSPhotosLegacyHost()?0x79:0x81);
  BOOL valid=[title isKindOfClass:NSString.class]&&[title length]&&![title isEqual:@"OneGoogleStorageCardUnlimitedTitle"];
  atomic_store(&GSStringsReady,valid);return valid?title:nil;
 }
@@ -101,17 +102,21 @@ static IMP GSStorageReplace(Class cls,SEL selector,IMP replacement){
 void GSInstallUnlimitedStorage(void){
  if(GSStorageInstalled)return;
  if(![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||
-    ![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"]){GSStorageStatus=@"unsupported-host-version";return;}
+    GSPhotosHostProfile()==GSPhotosUnsupported){GSStorageStatus=@"unsupported-host-version";return;}
  Class data=NSClassFromString(@"OGLAccountMenuStorageCardData"),strings=NSClassFromString(@"OGLStringResources");
  GSStorageStatus=@"incompatible-model-abi";
- if(!GSStorageMethod(data,@"storageState","q16@0:8")||!GSStorageMethod(data,@"title","@16@0:8")||!GSStorageMethod(data,@"encodeWithCoder:","v24@0:8@16"))return;
+ if(!GSStorageMethod(data,@"storageState","q16@0:8")||(!GSPhotosLegacyHost()&&!GSStorageMethod(data,@"title","@16@0:8"))||!GSStorageMethod(data,@"encodeWithCoder:","v24@0:8@16"))return;
  GSStorageStatus=@"incompatible-resources-abi";
  if(!GSStorageMethod(object_getClass(strings),@"sharedInstance","@16@0:8")||!GSStorageMethod(strings,@"stringForID:","@20@0:8i16"))return;
+ // 7.20.2 has no model title getter: require its native UIKit title path.
+ if(GSPhotosLegacyHost()&&(!GSStorageMethod(NSClassFromString(@"OGLAccountSelectorStorageCardItem"),@"storageState","q16@0:8")||
+  !GSStorageMethod(object_getClass(NSClassFromString(@"OGLAccountSelectorStorageCardCell")),@"titleTextWithStorageItem:","@24@0:8@16")||
+  !GSStorageMethod(NSClassFromString(@"OGLAccountSelectorStorageCardCell"),@"updateWithItem:","v24@0:8@16"))){GSStorageStatus=@"incompatible-legacy-cell-abi";return;}
  GSStorageLock=[NSObject new];GSObservedCardClasses=[NSMutableOrderedSet orderedSet];GSObservedControllerClasses=[NSMutableOrderedSet orderedSet];
  // UIKit and Bento share these display getters. Preserve the stored model,
  // account quota and callback identities.
  GSOriginalModelState=(void *)GSStorageReplace(data,NSSelectorFromString(@"storageState"),(IMP)GSStorageModelState);
- GSOriginalModelTitle=(void *)GSStorageReplace(data,NSSelectorFromString(@"title"),(IMP)GSStorageModelTitle);
+ if(!GSPhotosLegacyHost())GSOriginalModelTitle=(void *)GSStorageReplace(data,NSSelectorFromString(@"title"),(IMP)GSStorageModelTitle);
  GSOriginalModelEncode=(void *)GSStorageReplace(data,NSSelectorFromString(@"encodeWithCoder:"),(IMP)GSStorageModelEncode);
  // Optional: Bento does not use the legacy UIKit converter or cell.
  Class item=NSClassFromString(@"OGLAccountSelectorStorageCardItem"),cell=NSClassFromString(@"OGLAccountSelectorStorageCardCell");

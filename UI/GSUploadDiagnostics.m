@@ -1,3 +1,4 @@
+#import "../Shared/GSPhotosCompatibility.h"
 #import "GSUploadDiagnostics.h"
 #import <objc/runtime.h>
 #include <stdatomic.h>
@@ -29,7 +30,7 @@ void GSSetUploadDiagnostics(BOOL enabled){
 }
 NSDictionary *GSUploadDiagnosticsSnapshot(void){
  if(!GSInstalled)return @{@"schema":@1,@"available":@NO};
- @synchronized(GSLock){return @{@"schema":@1,@"available":@YES,@"enabled":@(GSUploadDiagnosticsEnabled()),@"appVersion":@"7.92.0",@"bindings":[GSBindings copy],@"events":[GSEvents copy],@"observedCount":@(GSSequence),@"retainedLimit":@256};}
+ @synchronized(GSLock){return @{@"schema":@1,@"available":@YES,@"enabled":@(GSUploadDiagnosticsEnabled()),@"appVersion":[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]?:@"unknown",@"bindings":[GSBindings copy],@"events":[GSEvents copy],@"observedCount":@(GSSequence),@"retainedLimit":@256};}
 }
 // Add an override for inherited methods without mutating their superclass.
 static void GSReplace(Class cls, SEL selector, Method method, IMP replacement) {
@@ -55,6 +56,9 @@ static void GSBind(NSString *name,NSString *selectorName,const char *encoding,in
  });
  else if(kind==3)replacement=imp_implementationWithBlock(^(id object,id data,id error){
   GSRecord(label,data,error!=nil);((void(*)(id,SEL,id,id))original)(object,selector,data,error);
+ });
+ else if(kind==4)replacement=imp_implementationWithBlock(^(id object,BOOL success,id result,NSInteger code){
+  GSRecord(label,result,!success);((void(*)(id,SEL,BOOL,id,NSInteger))original)(object,selector,success,result,code);
  });
  if(replacement)GSReplace(cls,selector,method,replacement);
 }
@@ -95,13 +99,13 @@ static void GSBindStatelessScotty(void){
 }
 void GSInstallUploadDiagnostics(void){
  // Install on the main thread. Start remains opt-in and resets each process launch.
- if(GSInstalled||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"])return;
+ if(GSInstalled||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||GSPhotosHostProfile()==GSPhotosUnsupported)return;
  GSLock=[NSObject new];GSEvents=[NSMutableArray array];GSBindings=[NSMutableArray array];
  for(NSString *name in @[@"GMUUploadRequest",@"GMUAssetUploadRequest",@"GMULivePhotoSingleUploadRequest",@"PHSLockedPhotoMediaUploadRequest",@"PHSLockedPhotoLivePhotoSingleUploadRequest"])
   GSBind(name,@"start","v16@0:8",0);
  GSBind(@"GMUUploadRequest",@"startFetcher","v16@0:8",0);
- GSBind(@"GMUUploadRequest",@"didCompleteWithSuccess:resultantMediaItem:error:","v36@0:8B16@20@28",1);
- GSBind(@"GMUAssetUploadRequest",@"didCompleteWithSuccess:resultantMediaItem:error:","v36@0:8B16@20@28",1);
+ GSBind(@"GMUUploadRequest",GSPhotosAssetCompletion(),GSPhotosAssetCompletionABI(),GSPhotosLegacyHost()?4:1);
+ GSBind(@"GMUAssetUploadRequest",GSPhotosAssetCompletion(),GSPhotosAssetCompletionABI(),GSPhotosLegacyHost()?4:1);
  GSBind(@"GMULivePhotoSingleUploadRequest",@"didCompleteWithError:resultantMediaItem:","v32@0:8@16@24",2);
  GSBind(@"GMUUploadMediaRequest",@"uploadFetcherDidCompleteWithData:error:","v32@0:8@16@24",3);
  GSBindScotty();GSBindStatelessScotty();GSInstalled=YES;

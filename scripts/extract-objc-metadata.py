@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract the instance-method lists used by the provided 7.92.0 analysis index.
+"""Extract the instance-method lists used by the provided 7.20.2 / 7.92.0 analysis indexes.
 Not a general Swift/C++ decompiler; rejects unsupported input rather than emitting partial output.
 """
 import struct,pathlib,json,sys

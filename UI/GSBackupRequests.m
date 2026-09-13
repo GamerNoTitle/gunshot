@@ -1,3 +1,4 @@
+#import "../Shared/GSPhotosCompatibility.h"
 #import "../Shared/GSLocalization.h"
 #import "GSBackupRequests.h"
 #import "GSNativeRouting.h"
@@ -7,7 +8,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-// 7.92.0 manual/automatic backup: Go commits, then native lookup confirms the
+// Audited manual/automatic backup: Go commits, then native lookup confirms the
 // remote item. Block native payload fallback; report success only after lookup.
 @interface GSBackupTransfer : NSObject
 @property(atomic) BOOL cancelled;
@@ -32,7 +33,10 @@ BOOL GSBackupRequestsAvailable(void){return GSInstalled;}
 NSDictionary *GSBackupRequestsSnapshot(void){if(!GSInstalled)return @{@"available":@NO};@synchronized(GSLock){NSMutableDictionary *d=[GSCounts mutableCopy];d[@"available"]=@YES;d[@"enabled"]=GSNativeRoutingEnabled()?@YES:@NO;return d;}}
 static void GSFail(id request,NSInteger code){
  NSError *error=[NSError errorWithDomain:@"GoToHP.Backup" code:code userInfo:@{NSLocalizedDescriptionKey:GSL(@"Check the GoToHP queue for details. Native upload has not been used.")}];
- if(GSMethod(request,@"didCompleteWithSuccess:resultantMediaItem:error:","v36@0:8B16@20@28"))
+ if(GSPhotosLegacyHost()&&GSMethod(request,GSPhotosAssetCompletion(),GSPhotosAssetCompletionABI()))
+  // The legacy native API constructs an NSError from a numeric failure code.
+  ((void(*)(id,SEL,BOOL,id,NSInteger))objc_msgSend)(request,NSSelectorFromString(GSPhotosAssetCompletion()),NO,nil,code);
+ else if(GSMethod(request,@"didCompleteWithSuccess:resultantMediaItem:error:","v36@0:8B16@20@28"))
   ((void(*)(id,SEL,BOOL,id,id))objc_msgSend)(request,NSSelectorFromString(@"didCompleteWithSuccess:resultantMediaItem:error:"),NO,nil,error);
  else if(GSMethod(request,@"didCompleteWithError:resultantMediaItem:","v32@0:8@16@24"))
   ((void(*)(id,SEL,id,id))objc_msgSend)(request,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"),error,nil);
@@ -101,9 +105,10 @@ static void GSFinish(id request,BOOL success){
  if(t.reconciling)GSCount(success?@"nativeReconciled":@"reconcileFailed");
 }
 static void GSBindCompletion(Class c,BOOL live){
- SEL s=NSSelectorFromString(live?@"didCompleteWithError:resultantMediaItem:":@"didCompleteWithSuccess:resultantMediaItem:error:");
+ SEL s=NSSelectorFromString(live?@"didCompleteWithError:resultantMediaItem:":GSPhotosAssetCompletion());
  IMP old=method_getImplementation(class_getInstanceMethod(c,s));
  if(live)GSReplace(c,s,imp_implementationWithBlock(^(id request,id error,id result){GSFinish(request,error==nil);((void(*)(id,SEL,id,id))old)(request,s,error,result);}));
+ else if(GSPhotosLegacyHost())GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,NSInteger code){GSFinish(request,success);((void(*)(id,SEL,BOOL,id,NSInteger))old)(request,s,success,result,code);}));
  else GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,id error){GSFinish(request,success&&error==nil);((void(*)(id,SEL,BOOL,id,id))old)(request,s,success,result,error);}));
 }
 static void GSBindStart(Class c){
@@ -148,14 +153,14 @@ static void GSBindScotty(void){
  }
 }
 void GSInstallBackupRequests(void){
- if(GSInstalled||!GSIsGooglePhotos()||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"])return;
+ if(GSInstalled||!GSIsGooglePhotos()||GSPhotosHostProfile()==GSPhotosUnsupported)return;
  Class asset=NSClassFromString(@"GMUAssetUploadRequest"),live=NSClassFromString(@"GMULivePhotoSingleUploadRequest"),base=NSClassFromString(@"GMUUploadRequest");
  for(Class c in @[asset?:NSObject.class,live?:NSObject.class])for(NSArray *entry in @[@[@"start",@"v16@0:8"],@[@"cancel",@"v16@0:8"],@[@"shouldTimeout",@"B16@0:8"],@[@"didStart",@"B16@0:8"],@[@"asset",@"@16@0:8"],@[@"credentials",@"@16@0:8"]]){
   Method m=class_getInstanceMethod(c,NSSelectorFromString(entry[0]));if(!m||strcmp(method_getTypeEncoding(m),[entry[1]UTF8String]))return;
  }
  Method fetch=class_getInstanceMethod(base,NSSelectorFromString(@"startFetcher"));if(!fetch||strcmp(method_getTypeEncoding(fetch),"v16@0:8"))return;
- Method ac=class_getInstanceMethod(asset,NSSelectorFromString(@"didCompleteWithSuccess:resultantMediaItem:error:")),lc=class_getInstanceMethod(live,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"));
- if(!ac||!lc||strcmp(method_getTypeEncoding(ac),"v36@0:8B16@20@28")||strcmp(method_getTypeEncoding(lc),"v32@0:8@16@24"))return;
+ Method ac=class_getInstanceMethod(asset,NSSelectorFromString(GSPhotosAssetCompletion())),lc=class_getInstanceMethod(live,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"));
+ if(!ac||!lc||strcmp(method_getTypeEncoding(ac),GSPhotosAssetCompletionABI())||strcmp(method_getTypeEncoding(lc),"v32@0:8@16@24"))return;
  GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSReconciling=[NSMutableSet set];
  GSBindStart(asset);GSBindStart(live);GSBindCompletion(asset,NO);GSBindCompletion(live,YES);
  SEL s=NSSelectorFromString(@"startFetcher");IMP original=method_getImplementation(fetch);GSReplace(base,s,imp_implementationWithBlock(^(id request){GSGuard(request,s,original);}));

@@ -1,3 +1,4 @@
+#import "../Shared/GSPhotosCompatibility.h"
 #import "GSNativeAccount.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -40,7 +41,7 @@ BOOL GSNativeAccountMatches(id accountID){
  return [GSGet(GSGet(GSSource.manager,@"viewingAccount"),@"accountID")isEqual:accountID];
 }
 void GSInstallNativeAccount(void){
- if(GSSource||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"])return;
+ if(GSSource||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"]isEqual:@"GooglePhotos"]||GSPhotosHostProfile()==GSPhotosUnsupported)return;
  Class cls=NSClassFromString(@"PHSAccountManagerImpl");Method method=class_getInstanceMethod(cls,NSSelectorFromString(@"viewingAccount"));
  if(!method||strcmp(method_getTypeEncoding(method),"@16@0:8"))return;
  GSSource=[GSAccountSource new];GSViewingAccountOriginal=(void *)method_setImplementation(method,(IMP)GSViewingAccount);
@@ -56,9 +57,12 @@ char *GSNativeBearer(const char *identifier){
  @try {
  if(![GSNativeAccountSummary()[@"identifier"]isEqual:expected]){finish(nil);return;}
  id manager=GSSource.manager;id account=GSGet(manager,@"viewingAccount");id accountID=GSGet(account,@"accountID");
- id service=GSGet(manager,@"photosSSOService");NSString *factory=@"fetcherAuthorizerForAccountID:scopes:";
- if(!accountID||!GSMethod(service,factory,"@32@0:8@16@24")){finish(nil);return;}
- id authorizer=((id(*)(id,SEL,id,id))objc_msgSend)(service,NSSelectorFromString(factory),accountID,@[@"https://www.googleapis.com/auth/photos.native"]);
+ BOOL legacy=GSPhotosLegacyHost();
+ id service=GSGet(manager,legacy?@"ssoService":@"photosSSOService");
+ NSString *factory=legacy?@"authorizationForIdentity:scopes:":@"fetcherAuthorizerForAccountID:scopes:";
+ id subject=legacy?GSIdentity(account):accountID;
+ if(!subject||!GSMethod(service,factory,"@32@0:8@16@24")){finish(nil);return;}
+ id authorizer=((id(*)(id,SEL,id,id))objc_msgSend)(service,NSSelectorFromString(factory),subject,@[@"https://www.googleapis.com/auth/photos.native"]);
  if(!GSMethod(authorizer,@"authorizeRequest:completionHandler:","v32@0:8@16@?24")){finish(nil);return;}
  // This request is only authorized, never sent. SSO owns refresh and its Keychain.
  NSMutableURLRequest *request=[NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"https://photos.googleapis.com/data/upload/uploadmedia/interactive"]];

@@ -4,7 +4,7 @@
 
 A Google Photos uploader for jailbreak, sideloading and LiveContainer, using the Go core from [xob0t/gotohp](https://github.com/xob0t/gotohp). Jailbreak builds upload through a separate daemon; jailed builds run inside Google Photos.
 
-**Development build.** The analyzed Google Photos **7.92.0** requires **iOS 18.0**. Compatibility still needs device testing; version-specific integration is disabled on unsupported versions.
+**Development build.** Audited host profiles: Google Photos **7.20.2 (iOS 16.1+)** and **7.92.0 (iOS 18.0+)**. See the [version compatibility audit](docs/analysis/google-photos-7.20.2.md). Compatibility still needs device testing; version-specific integration is disabled on unsupported versions.
 
 ## Screenshots
 
@@ -39,7 +39,7 @@ Get `gotohp-tweak-jailed` from [GitHub Actions](https://github.com/tqmane/gunsho
 
 GoToHP connects the signed-in Google Photos account. Choose **Uploads → Choose photos and videos** to upload. **Keep Google Photos in the foreground**; jailed uploads cannot continue after the app closes.
 
-On jailed Google Photos 7.92.0, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/full-upload-replacement.md).
+On jailed Google Photos 7.20.2 and 7.92.0, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/full-upload-replacement.md).
 
 ### Jailbreak
 

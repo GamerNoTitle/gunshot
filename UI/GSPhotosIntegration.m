@@ -1,3 +1,4 @@
+#import "../Shared/GSPhotosCompatibility.h"
 #import "../Shared/GSLocalization.h"
 #import "GSPhotosIntegration.h"
 #import "GSNativeAccount.h"
@@ -9,7 +10,7 @@
 - (instancetype)initWithBackupStatus:(NSString *)status backupStatusSubtitle:(NSString *)subtitle learnMoreLink:(NSString *)link;
 @end
 
-// Exact 7.92.0 metadata. Never set backup flags or edit the native database.
+// Exact, version-specific metadata. Never set backup flags or edit the native database.
 static NSObject *GSLock;
 static NSMapTable *GSSynchronizers;
 static NSMutableDictionary *GSCounts;
@@ -46,24 +47,31 @@ static void GSCaptureSynchronizer(id object){
  @synchronized(GSLock){[GSSynchronizers setObject:object forKey:account];}
  dispatch_async(dispatch_get_main_queue(),^{GSFlushRefresh();});
 }
-static id GSBackupStatus(id controller,SEL selector,IMP original){
- id status=((id(*)(id,SEL))original)(controller,selector);
- if(!status||!GSNativeRoutingEnabled()||!GSMethod(controller,@"isBackedUp","B16@0:8")||!((BOOL(*)(id,SEL))objc_msgSend)(controller,NSSelectorFromString(@"isBackedUp")))return status;
+static BOOL GSHasConfirmedOriginal(id controller){
+ if(!GSNativeRoutingEnabled()||!GSMethod(controller,@"isBackedUp","B16@0:8")||!((BOOL(*)(id,SEL))objc_msgSend)(controller,NSSelectorFromString(@"isBackedUp")))return NO;
  id photo=GSGet(GSGet(controller,@"extendedPhoto"),@"serverPhoto");
- if(![photo isKindOfClass:NSClassFromString(@"PHSServerPhoto")]||!GSMethod(photo,@"hasOriginalBytes","C16@0:8")||!GSMethod(photo,@"storagePolicy","C16@0:8")||!GSMethod(photo,@"isPartialBackup","B16@0:8"))return status;
+ if(![photo isKindOfClass:NSClassFromString(@"PHSServerPhoto")]||!GSMethod(photo,@"hasOriginalBytes","C16@0:8")||!GSMethod(photo,@"storagePolicy","C16@0:8")||!GSMethod(photo,@"isPartialBackup","B16@0:8"))return NO;
  unsigned char originals=((unsigned char(*)(id,SEL))objc_msgSend)(photo,NSSelectorFromString(@"hasOriginalBytes"));
  // Enum descriptor: Unknown=0, Yes=1, No=2, Maybe=3. Maybe is not Yes.
  GSCount(originals==1?@"serverOriginal":originals==2?@"serverNotOriginal":@"serverOriginalUnknown");
- if(originals!=1||((BOOL(*)(id,SEL))objc_msgSend)(photo,NSSelectorFromString(@"isPartialBackup")))return status;
+ if(originals!=1||((BOOL(*)(id,SEL))objc_msgSend)(photo,NSSelectorFromString(@"isPartialBackup")))return NO;
  unsigned char policy=((unsigned char(*)(id,SEL))objc_msgSend)(photo,NSSelectorFromString(@"storagePolicy"));
- if(policy!=1)return status; // Only the Standard / Storage Saver label mismatch.
+ if(policy!=1)return NO; // Only the Standard / Storage Saver label mismatch.
+ return YES;
+}
+// 7.20.2 builds a native label/image content model instead of BackupStatusData.
+// Scope the inherited factory override to this controller's backup-status call.
+static _Thread_local void *GSLegacyStatusController;
+static id GSBackupStatus(id controller,SEL selector,IMP original){
+ id status=((id(*)(id,SEL))original)(controller,selector);
+ if(!status||!GSHasConfirmedOriginal(controller))return status;
  NSString *backup=GSGet(status,@"backupStatus");if(![backup isKindOfClass:NSString.class])return status;
  id replacement=[(PHSOneUpInfoPanelBackupStatusData *)[NSClassFromString(@"PHSOneUpInfoPanelBackupStatusData") alloc] initWithBackupStatus:backup backupStatusSubtitle:GSL(@"Original quality (original data available)") learnMoreLink:@"https://support.google.com/photos/answer/6220791"];
  if(replacement){GSCount(@"qualityLabelCorrected");return replacement;}
  return status;
 }
 void GSInstallPhotosIntegration(void){
- if(GSInstalled||!GSIsGooglePhotos()||![[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]isEqual:@"7.92.0"])return;
+ if(GSInstalled||!GSIsGooglePhotos()||GSPhotosHostProfile()==GSPhotosUnsupported)return;
  GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSSynchronizers=[NSMapTable strongToWeakObjectsMapTable];GSInstalled=YES;
  Class sync=NSClassFromString(@"PHSUserItemsSynchronizer");
  Method fetch=class_getInstanceMethod(sync,NSSelectorFromString(@"fetchData"));
@@ -73,6 +81,28 @@ void GSInstallPhotosIntegration(void){
    IMP old=method_getImplementation(m);method_setImplementation(m,imp_implementationWithBlock(^(id object){GSCaptureSynchronizer(object);((void(*)(id,SEL))old)(object,s);}));
   }
   GSSyncAvailable=YES;
+ }
+ if(GSPhotosLegacyHost()){
+  Class details=NSClassFromString(@"PHSOneUpInfoPanelDetailsViewController");
+  SEL status=NSSelectorFromString(@"modelForBackedupStatus"),factory=NSSelectorFromString(@"contentViewModelWithTitle:subtitle:subtitleContainsHTML:image:");
+  Method sm=class_getInstanceMethod(details,status),fm=class_getInstanceMethod(details,factory);
+  if(sm&&fm&&!strcmp(method_getTypeEncoding(sm),"@16@0:8")&&!strcmp(method_getTypeEncoding(fm),"@44@0:8@16@24B32@36")){
+   IMP oldStatus=method_getImplementation(sm),oldFactory=method_getImplementation(fm);
+   IMP replacement=imp_implementationWithBlock(^id(id controller,id title,id subtitle,BOOL html,id image){
+    if(GSLegacyStatusController==(__bridge void *)controller&&GSHasConfirmedOriginal(controller)){
+     subtitle=GSL(@"Original quality (original data available)");html=NO;GSCount(@"qualityLabelCorrected");
+    }
+    return ((id(*)(id,SEL,id,id,BOOL,id))oldFactory)(controller,factory,title,subtitle,html,image);
+   });
+   // Do not alter the shared section superclass or unrelated detail content.
+   if(class_addMethod(details,factory,replacement,method_getTypeEncoding(fm))){
+    method_setImplementation(sm,imp_implementationWithBlock(^id(id controller){
+     void *previous=GSLegacyStatusController;GSLegacyStatusController=(__bridge void *)controller;
+     @try{return ((id(*)(id,SEL))oldStatus)(controller,status);}@finally{GSLegacyStatusController=previous;}
+    }));GSQualityAvailable=YES;
+   }else imp_removeBlock(replacement);
+  }
+  return;
  }
  Class details=NSClassFromString(@"PHSOneUpInfoPanelDetailsViewController"),model=NSClassFromString(@"PHSOneUpInfoPanelBackupStatusData");
  SEL s=NSSelectorFromString(@"getBackupStatusModelData");Method m=class_getInstanceMethod(details,s),init=class_getInstanceMethod(model,NSSelectorFromString(@"initWithBackupStatus:backupStatusSubtitle:learnMoreLink:"));

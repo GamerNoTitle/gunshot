@@ -1,4 +1,4 @@
-# Google Photos 7.92.0 アプリ解析結果・総合索引
+# Google Photos アプリ解析結果・総合索引
 
 提供 IPA に対してこれまで行った解析結果の入口です。**アプリ全機能の意味・動作を解析し終えたという意味ではありません。** 全件抽出した metadata と、処理まで追った箇所、未確認の箇所を以下に整理しています。
 
@@ -6,6 +6,7 @@
 
 | 対象 | 参照先 | 確認水準 |
 | --- | --- | --- |
+| 7.20.2 の旧版対応・ABI 差分・必要 OS | [7.20.2 互換性監査](google-photos-7.20.2.md) / [contracts](objc/7.20.2-contracts.json) | 添付 IPA の metadata・対象関数の逆アセンブル。実機確認待ち |
 | 初代 Pixel の原本・iPhone の節約表示・完了後同期 | [画質表示と同期](original-quality-display.md) | upstream 2 実装、7.92.0 の enum / 表示 call path、利用者の Web 確認 |
 | 全クラス名・instance selector・encoding・static IMP | [機械可読全件索引](objc/README.md) | metadata 抽出済み |
 | 入力同定・件数・SHA-256 | [manifest](objc/manifest.json) | 対象 2 image の照合情報 |
@@ -22,7 +23,7 @@
 
 - [純正の無制限ストレージ表示](unlimited-storage.md): native state / 翻訳リソース / 表示専用 hook / 既定オンの切替。
 
-## 対象アプリ
+## 7.92.0 の対象アプリ
 
 - 提供ファイル: `com.google.photos-7.92.0-eeveedecrypter.ipa`
 - Bundle ID: `com.google.photos`

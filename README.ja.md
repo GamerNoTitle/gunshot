@@ -4,7 +4,7 @@
 
 Jailbreak・サイドロード・LiveContainer 向けの Google Photos アップローダー。[xob0t/gotohp](https://github.com/xob0t/gotohp) の Go コアを使い、jailbreak 版は独立した daemon、jailed 版は Google Photos 内でアップロードします。
 
-**開発版です。** 解析対象の Google Photos **7.92.0** は **iOS 18.0** 以上が必要です。互換性は実機での確認が必要で、未対応バージョンではバージョン固有の連携が無効になります。
+**開発版です。** 解析済みの対応プロファイルは Google Photos **7.20.2（iOS 16.1以降）** と **7.92.0（iOS 18.0以降）** です。[バージョン互換性の解析](docs/analysis/google-photos-7.20.2.md)を参照してください。互換性は実機での確認が必要で、未対応バージョンではバージョン固有の連携が無効になります。
 
 ## スクリーンショット
 
@@ -39,7 +39,7 @@ Google・Apple とは無関係の非公式プロジェクトです。**現状の
 
 Google Photos のログイン中アカウントへ接続します。**アップロード → 写真・動画を選択**からアップロードできます。**Google Photos は前面で開いたままにしてください。** jailed 版はアプリを閉じると送信を継続できません。
 
-jailed / Google Photos 7.92.0 の**手動・自動バックアップを GoToHP へ送る**は既定 OFF です。有効にして送信先を確認すると、GoToHP を開かずに対応するバックアップ操作を転送します。自動バックアップには Google Photos 側のバックアップも ON にしてください。[対応経路](docs/analysis/backup-routing.md)と[未対応の範囲](docs/full-upload-replacement.md)。
+jailed / Google Photos 7.20.2・7.92.0 の**手動・自動バックアップを GoToHP へ送る**は既定 OFF です。有効にして送信先を確認すると、GoToHP を開かずに対応するバックアップ操作を転送します。自動バックアップには Google Photos 側のバックアップも ON にしてください。[対応経路](docs/analysis/backup-routing.md)と[未対応の範囲](docs/full-upload-replacement.md)。
 
 ### Jailbreak
 
