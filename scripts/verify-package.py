@@ -29,13 +29,20 @@ with tempfile.TemporaryDirectory() as d:
         linked=subprocess.check_output(['otool','-L',str(binary)],text=True)
         assert '@rpath/GunshotJailed.dylib' in linked, linked
         dependencies="\n".join(linked.splitlines()[2:])
-        for name in ('rocketbootstrap','substrate','ellekit','Preferences.framework','/var/jb/'):
+        for name in ('rocketbootstrap','libsandy','substrate','ellekit','Preferences.framework','/var/jb/'):
             assert name.lower() not in dependencies.lower(), linked
         for line in linked.splitlines()[2:]:
             assert line.strip().startswith(('/System/Library/Frameworks/','/usr/lib/')), line
         assert subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()=='arm64'
         sys.exit(0)
     r=Path(d)/prefix
+    deps=subprocess.check_output(['dpkg-deb','-f',str(deb),'Depends'],text=True)
+    assert 'com.opa334.libsandy (>= 1.1.6)' in deps, deps
+    profile=r/'Library/libSandy/dev.tqmane.gunshot.ipc.plist'
+    assert profile.stat().st_mode & 0o777 == 0o644
+    assert plistlib.loads(profile.read_bytes())=={
+        'AllowedProcesses':['com.google.photos','com.apple.mobileslideshow','com.apple.Preferences'],
+        'Extensions':[{'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':'dev.tqmane.gunshot.service'}]}
     for p in ['usr/libexec/gotohpd','Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib','Library/PreferenceBundles/GunshotPrefs.bundle/GunshotPrefs']:
         assert (r/p).is_file(), p
     # The crashing legacy RocketBootstrap client must not be linked into apps.
@@ -46,6 +53,9 @@ with tempfile.TemporaryDirectory() as d:
         assert 'rocketbootstrap' not in linked.lower(), linked
         symbols=subprocess.check_output(['nm','-u',str(r/p)],text=True)
         assert '_rocketbootstrap_look_up' not in symbols, symbols
+        strings=subprocess.check_output(['strings',str(r/p)],text=True)
+        assert '/'+prefix+'usr/lib/libsandy.dylib' in strings.splitlines(), 'wrong sandbox library prefix'
+        assert 'dev.tqmane.gunshot.ipc' in strings.splitlines(), 'sandbox profile missing from client'
     daemon_links=subprocess.check_output(['otool','-L',str(r/'usr/libexec/gotohpd')],text=True)
     assert 'rocketbootstrap' in daemon_links.lower(), daemon_links
     launch=plistlib.loads((r/'Library/LaunchDaemons/dev.tqmane.gunshot.plist').read_bytes())

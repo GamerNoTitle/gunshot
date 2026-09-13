@@ -45,7 +45,7 @@ jailed / 純正APIに互換性のあるGoogle Photosの**手動・自動バッ�
 
 **クラッシュする場合は、ChoicyでGoogle PhotosのGunshotだけを有効にしてください。**
 
-GitHub Actions の `gotohp-tweak-rootless` または `gotohp-tweak-rootful` の `.deb` をパッケージマネージャーで導入します。RocketBootstrap、PreferenceLoader、substrate 互換の注入環境が必要です。
+GitHub Actions の `gotohp-tweak-rootless` または `gotohp-tweak-rootful` の `.deb` をパッケージマネージャーで導入します。RocketBootstrap、libSandy 1.1.6 以降（[opa334 のリポジトリ](https://opa334.github.io/)）、PreferenceLoader、substrate 互換の注入環境が必要です。依存パッケージも解決できるパッケージマネージャーで導入してください。GoToHP daemon への接続だけを許可する libSandy プロファイルは同梱し、libSandy 本体は共有のシステム依存パッケージとして導入します。
 
 **設定 → GoToHP → Open GoToHP settings** で、[upstream のサインイン手順](https://github.com/xob0t/gotohp#sign-in)に従いアカウントを取り込みます。Google Photos の GoToHP 設定、Apple Photos の GoToHP ボタン、対応する共有シートの **Upload with GoToHP** からアップロードできます。キューへの受け渡し完了まではアプリを開いておき、その後は daemon が送信を続けます。
 

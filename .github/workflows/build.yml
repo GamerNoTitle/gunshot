@@ -60,6 +60,10 @@ jobs:
           .build/mach-transport-test
           clang -fobjc-arc -framework Foundation tests/ipc_client.m -o .build/ipc-client-test
           .build/ipc-client-test
+          clang -fobjc-arc -framework Foundation tests/sandbox_access.m -o .build/sandbox-access-test
+          .build/sandbox-access-test
+          clang -fobjc-arc -framework Foundation '-DTHEOS_PACKAGE_INSTALL_PREFIX="/var/jb"' tests/sandbox_access.m -o .build/sandbox-access-rootless-test
+          .build/sandbox-access-rootless-test
           clang -fobjc-arc -framework Foundation -framework CoreFoundation tests/daemon_runloop.m -o .build/daemon-runloop-test
           .build/daemon-runloop-test
       - name: Native routing contract

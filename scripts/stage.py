@@ -7,6 +7,12 @@ def plist(path,data):
     path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(plistlib.dumps(data))
 service={'Label':'dev.tqmane.gunshot','ProgramArguments':[prefix+'/usr/libexec/gotohpd'],'UserName':'mobile','GroupName':'mobile','RunAtLoad':True,'KeepAlive':True,'ThrottleInterval':10,'MachServices':{'dev.tqmane.gunshot.service':True},'ProcessType':'Background','Umask':63}
 plist(root/'Library/LaunchDaemons/dev.tqmane.gunshot.plist',service)
+# Installed by the package manager as root; never writable by mobile.
+# No wildcard process IDs, filesystem grants or access to unrelated services.
+profile=root/'Library/libSandy/dev.tqmane.gunshot.ipc.plist'
+plist(profile,{'AllowedProcesses':['com.google.photos','com.apple.mobileslideshow','com.apple.Preferences'],
+               'Extensions':[{'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':'dev.tqmane.gunshot.service'}]})
+profile.chmod(0o644)
 plist(root/'Library/PreferenceLoader/Preferences/Gunshot.plist',{'entry':{'bundle':'GunshotPrefs','cell':'PSLinkCell','detail':'GSRootListController','label':'GoToHP'}})
 control=stage/'DEBIAN';control.mkdir(parents=True,exist_ok=True)
 launch=prefix+'/Library/LaunchDaemons/dev.tqmane.gunshot.plist'
