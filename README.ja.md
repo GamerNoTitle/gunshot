@@ -92,6 +92,8 @@ go vet -tags cli ./...
 
 CI でテストと 3 方式のビルドを行い、`v*` タグの成功時に Release へ配布物を添付します。upstream の更新は `bash scripts/sync-upstream.sh [commit]`。配布時は upstream のライセンスと生成された notices を同梱してください。
 
+Release が作成済みなら、タイトル・説明を保ったまま配布物をアップロードし、同名ファイルを更新します。既存タグ（例: `v0.2.1`）の公開をやり直す場合は、**Actions → Build and test → Run workflow** で `main` を選び、**release_tag** にタグ名を入力してください。更新済みの workflow でそのタグのソースをビルド・テストして公開します。タグは移動しません。**release_tag** が空ならビルドのみです。古い失敗ジョブの再実行には古い workflow が使われるため、この復旧には **Run workflow** を使ってください。
+
 ## ライセンス
 
 Gunshot は [GNU GPL v3.0 以降](LICENSE)で提供します。

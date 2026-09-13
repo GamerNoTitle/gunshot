@@ -90,6 +90,8 @@ go vet -tags cli ./...
 
 CI runs tests and builds all three packages. Successful `v*` tags publish release assets. To update the pinned upstream, run `bash scripts/sync-upstream.sh [commit]`; keep its license and generated notices with distributions.
 
+If a release already exists, CI uploads the built assets to it, replacing assets with the same names while preserving its title and notes. To recover publication for an existing tag (for example `v0.2.1`), select **Actions → Build and test → Run workflow**, choose `main`, and enter that tag in **release_tag**. The updated workflow builds and tests the tag's source, then uploads its packages; it does not move the tag. Leaving **release_tag** empty runs a build only. Re-running an old failed job uses its old workflow, so use **Run workflow** for this recovery.
+
 ## License
 
 Gunshot is licensed under [GNU GPL v3.0 or later](LICENSE).
