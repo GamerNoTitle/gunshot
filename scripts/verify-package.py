@@ -38,6 +38,16 @@ with tempfile.TemporaryDirectory() as d:
     r=Path(d)/prefix
     for p in ['usr/libexec/gotohpd','Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib','Library/PreferenceBundles/GunshotPrefs.bundle/GunshotPrefs']:
         assert (r/p).is_file(), p
+    # The crashing legacy RocketBootstrap client must not be linked into apps.
+    # Only the daemon uses RocketBootstrap to unlock its registered service.
+    for p in ['Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib',
+              'Library/PreferenceBundles/GunshotPrefs.bundle/GunshotPrefs']:
+        linked=subprocess.check_output(['otool','-L',str(r/p)],text=True)
+        assert 'rocketbootstrap' not in linked.lower(), linked
+        symbols=subprocess.check_output(['nm','-u',str(r/p)],text=True)
+        assert '_rocketbootstrap_look_up' not in symbols, symbols
+    daemon_links=subprocess.check_output(['otool','-L',str(r/'usr/libexec/gotohpd')],text=True)
+    assert 'rocketbootstrap' in daemon_links.lower(), daemon_links
     launch=plistlib.loads((r/'Library/LaunchDaemons/dev.tqmane.gunshot.plist').read_bytes())
     assert launch['UserName']=='mobile'
     assert launch['ProgramArguments']==['/'+prefix+'usr/libexec/gotohpd']
