@@ -3,8 +3,8 @@
 #import <CoreFoundation/CoreFoundation.h>
 
 static void GSDaemonKeepAlive(void *info) { (void)info; }
-// RocketBootstrap registers Darwin notifications / run-loop work while unlocking
-// its service. A blocking receive loop on main prevents re-registration callbacks.
+// Serve Mach requests on a worker so Foundation/run-loop callbacks can still
+// run on main. Discovery and condition monitors have their own dispatch queues.
 static inline BOOL GSRunDaemonService(void (^serve)(void)) {
  if(!NSThread.isMainThread)return NO;
  CFRunLoopRef loop=CFRunLoopGetMain();

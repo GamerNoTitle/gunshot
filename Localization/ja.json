@@ -106,7 +106,6 @@
   "Original media resources are unavailable.": "原本のメディアデータを取得できません。",
   "GoToHP request failed. Check the account, storage and queue in this app.": "GoToHP の要求に失敗しました。このアプリのアカウント、空き容量、キューを確認してください。",
   "GoToHP request failed. Check the daemon, account and queue.": "GoToHP の要求に失敗しました。daemon、アカウント、キューを確認してください。",
-  "GoToHP daemon unavailable. Check installation and RocketBootstrap.": "GoToHP daemon に接続できません。インストール状態と RocketBootstrap を確認してください。",
   "Accounts, quality, background restrictions and upload queue are managed by gotohpd.": "アカウント、画質、バックグラウンドの制限、アップロードキューは gotohpd が管理します。",
   "Open GoToHP settings": "GoToHP の設定を開く",
   "Paste an EmbeddedSetup oauth_token or complete gotohp credential. Stored privately in this app, sent to Google, and hidden after saving.": "EmbeddedSetup の oauth_token または gotohp の認証情報を貼り付けてください。このアプリ内に非公開で保存し、Google に送信します。保存後は非表示です。",

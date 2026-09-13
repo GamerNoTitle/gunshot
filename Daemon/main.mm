@@ -48,7 +48,6 @@ int main(int argc,char **argv) { @autoreleasepool {
  mach_port_t port=MACH_PORT_NULL;
  if(bootstrap_check_in(bootstrap_port,GS_SERVICE,&port)!=KERN_SUCCESS)return 2;
  if(!GSStartDiscoveryService(port,GSAuthorizeDiscovery))return 5;
- if(rocketbootstrap_unlock(GS_SERVICE)!=KERN_SUCCESS)return 3;
  dispatch_queue_t conditionsQueue=dispatch_queue_create("dev.tqmane.gunshot.conditions",DISPATCH_QUEUE_SERIAL);
  nw_path_monitor_t monitor=nw_path_monitor_create();nw_path_monitor_set_queue(monitor,conditionsQueue);
  nw_path_monitor_set_update_handler(monitor,^(nw_path_t path){GSOnline=nw_path_get_status(path)==nw_path_status_satisfied;GSWiFi=GSOnline&&nw_path_uses_interface_type(path,nw_interface_type_wifi);GSConditions();});nw_path_monitor_start(monitor);

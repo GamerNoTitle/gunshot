@@ -44,6 +44,7 @@ with tempfile.TemporaryDirectory() as d:
     r=Path(d)/prefix
     deps=subprocess.check_output(['dpkg-deb','-f',str(deb),'Depends'],text=True)
     assert 'com.opa334.libsandy (>= 1.1.6)' in deps, deps
+    assert 'rocketbootstrap' not in deps.lower(), deps
     assert 'preferenceloader' not in deps.lower(), deps
     assert not (r/'Library/PreferenceLoader/Preferences/Gunshot.plist').exists()
     assert not (r/'Library/PreferenceBundles/GunshotPrefs.bundle').exists()
@@ -58,20 +59,21 @@ with tempfile.TemporaryDirectory() as d:
             {'type':'mach','extension_class':'com.apple.security.exception.mach-lookup.global-name','mach_name':'dev.tqmane.gunshot.discovery'}]}
     for p in ['usr/libexec/gotohpd','Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib']:
         assert (r/p).is_file(), p
-    # The crashing legacy RocketBootstrap client must not be linked into apps.
-    # Only the daemon uses RocketBootstrap to unlock its registered service.
-    for p in ['Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib']:
-        verify_backup_integration(r/p)
+    # Both sides must work without the removed broker library or service names.
+    for p in ['usr/libexec/gotohpd','Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib']:
         linked=subprocess.check_output(['otool','-L',str(r/p)],text=True)
         assert 'rocketbootstrap' not in linked.lower(), linked
         symbols=subprocess.check_output(['nm','-u',str(r/p)],text=True)
-        assert '_rocketbootstrap_look_up' not in symbols, symbols
+        assert '_rocketbootstrap_' not in symbols.lower(), symbols
+        strings=subprocess.check_output(['strings',str(r/p)],text=True)
+        for removed in ('cy:rbs:', 'com.apple.ReportCrash.SimulateCrash'):
+            assert removed not in strings, f'{p}: obsolete lookup endpoint {removed}'
+    for p in ['Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib']:
+        verify_backup_integration(r/p)
         strings=subprocess.check_output(['strings',str(r/p)],text=True)
         assert '/'+prefix+'usr/lib/libsandy.dylib' in strings.splitlines(), 'wrong sandbox library prefix'
         assert 'dev.tqmane.gunshot.ipc' in strings.splitlines(), 'sandbox profile missing from client'
         assert 'dev.tqmane.gunshot.discovery' in strings.splitlines(), 'XPC discovery missing from client'
-    daemon_links=subprocess.check_output(['otool','-L',str(r/'usr/libexec/gotohpd')],text=True)
-    assert 'rocketbootstrap' in daemon_links.lower(), daemon_links
     launch=plistlib.loads((r/'Library/LaunchDaemons/dev.tqmane.gunshot.plist').read_bytes())
     assert launch['UserName']=='mobile'
     assert launch['MachServices']=={'dev.tqmane.gunshot.service':True,'dev.tqmane.gunshot.discovery':True}

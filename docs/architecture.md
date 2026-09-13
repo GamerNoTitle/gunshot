@@ -23,6 +23,8 @@ The submodule is immutable during builds. Script string anchors intentionally fa
 
 ## Transport and storage boundary
 
+Jailbreak clients use direct Mach lookup and, when needed, a restricted libSandy profile plus authenticated XPC discovery.
+
 Only Photos and Google Photos with the expected signing identifiers and executable locations are accepted, using the kernel Mach audit trailer. The signing identifier is derived from an audit-token-bound SecTask; the supplementary path check uses the token PID. PID recycling cannot substitute the signing identity. IPC fails closed if Security SPI is unavailable.
 
 Messages are simple Mach messages (no port/OOL descriptors), with a fixed maximum buffer and validated length. JSON has no filesystem path operation and cannot provide its own role. Only the audit-verified Google Photos process can mutate accounts and options over IPC for the in-app settings page. The internal settings role remains for the jailed adapter; the daemon never grants that role to a client. Approved Photos clients can begin/append/seal media jobs. Daemon-only conditions updates never arrive via a client-supplied role.

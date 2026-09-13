@@ -6,4 +6,4 @@ Description: Independent Google Photos upload service with in-app settings and q
 Maintainer: tqmane
 Author: tqmane
 Section: Tweaks
-Depends: firmware (>= 15.0), mobilesubstrate, com.rpetrich.rocketbootstrap (>= 1.0.10), com.opa334.libsandy (>= 1.1.6)
+Depends: firmware (>= 15.0), mobilesubstrate, com.opa334.libsandy (>= 1.1.6)

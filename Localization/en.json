@@ -106,7 +106,6 @@
   "Original media resources are unavailable.": "Original media resources are unavailable.",
   "GoToHP request failed. Check the account, storage and queue in this app.": "GoToHP request failed. Check the account, storage and queue in this app.",
   "GoToHP request failed. Check the daemon, account and queue.": "GoToHP request failed. Check the daemon, account and queue.",
-  "GoToHP daemon unavailable. Check installation and RocketBootstrap.": "GoToHP daemon unavailable. Check installation and RocketBootstrap.",
   "Accounts, quality, background restrictions and upload queue are managed by gotohpd.": "Accounts, quality, background restrictions and upload queue are managed by gotohpd.",
   "Open GoToHP settings": "Open GoToHP settings",
   "Paste an EmbeddedSetup oauth_token or complete gotohp credential. Stored privately in this app, sent to Google, and hidden after saving.": "Paste an EmbeddedSetup oauth_token or complete gotohp credential. Stored privately in this app, sent to Google, and hidden after saving.",

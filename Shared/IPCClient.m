@@ -1,6 +1,7 @@
 #import "GSLocalization.h"
 #import "IPCProtocol.h"
 #include <stddef.h>
+#include <string.h>
 #import "GSMachTransport.h"
 #import "GSSandboxAccess.h"
 #import "GSDiscovery.h"
@@ -20,38 +21,27 @@ static NSError *GSIPCError(NSString *message,const char *stage,kern_return_t cod
 static kern_return_t GSLookupDaemon(mach_port_t *server,NSMutableArray *trace,const char **stage) {
  // Acquire the calling task's current bootstrap port, including user-domain
  // changes, instead of relying on libSystem's process-global cached value.
- mach_port_t bootstrap=MACH_PORT_NULL,broker=MACH_PORT_NULL;
- int profileCode=0;BOOL profileAttempted=NO;
- kern_return_t discoveryCode=KERN_SUCCESS;const char *discoveryStage=NULL;
+ mach_port_t bootstrap=MACH_PORT_NULL;
  *stage="lookup.bootstrap";
  kern_return_t kr=task_get_bootstrap_port(mach_task_self(),&bootstrap);GSTrace(trace,*stage,kr);
  if(kr!=KERN_SUCCESS)return kr;
  *stage="lookup.direct";kr=bootstrap_look_up(bootstrap,GS_SERVICE,server);GSTrace(trace,*stage,kr);
  if(kr==KERN_SUCCESS)goto done;
- // BOOTSTRAP_NOT_PRIVILEGED: the service can be running but hidden by the
- // app sandbox. Ask libSandy for our packaged, signing-ID-restricted profile.
- // Its iOS 16 adapter also handles profiles that disallow Mach extensions.
- if(kr==1100){
-  profileAttempted=YES;profileCode=GSApplyIPCSandboxProfile();
+ // A running LaunchDaemon may be denied (1100) or absent from the calling
+ // app's bootstrap namespace (1102). Apply only our signing-ID-restricted
+ // profile, then let privileged XPC discovery resolve the daemon if needed.
+ if(kr==1100||kr==1102){
+  int profileCode=GSApplyIPCSandboxProfile();
   *stage="sandbox.profile";
   GSSandboxAdapterState adapter=GSGetSandboxAdapterState();
   [trace addObject:@{@"stage":@(*stage),@"code":@(profileCode),@"adapterActive":@(adapter.active),@"uploadRedirected":@(adapter.uploadRedirected),@"discoveryRedirected":@(adapter.discoveryRedirected)}];
   if(profileCode==0){
    *stage="lookup.authorized";kr=bootstrap_look_up(bootstrap,GS_SERVICE,server);GSTrace(trace,*stage,kr);
    if(kr==KERN_SUCCESS)goto done;
-   discoveryCode=GSDiscoverDaemon(server,5000,&discoveryStage);GSTrace(trace,discoveryStage,discoveryCode);
-   if(discoveryCode==KERN_SUCCESS){kr=KERN_SUCCESS;*stage=discoveryStage;goto done;}
-  }
+   kr=GSDiscoverDaemon(server,5000,stage);GSTrace(trace,*stage,kr);
+  }else kr=profileCode;
  }
- *stage="lookup.redirected";kr=bootstrap_look_up(bootstrap,"cy:rbs:" GS_SERVICE,server);GSTrace(trace,*stage,kr);
- if(kr==KERN_SUCCESS)goto done;
- *stage="lookup.broker";kr=bootstrap_look_up(bootstrap,"com.apple.ReportCrash.SimulateCrash",&broker);GSTrace(trace,*stage,kr);
- if(kr!=KERN_SUCCESS)goto done;
- kr=GSLookupBrokerWithStage(broker,GS_SERVICE,server,5000,stage);GSTrace(trace,*stage,kr);
- mach_port_deallocate(mach_task_self(),broker);
 done:
- if(kr!=KERN_SUCCESS&&discoveryStage){*stage=discoveryStage;kr=discoveryCode;}
- if(kr==1100&&profileAttempted&&profileCode!=0){*stage="sandbox.profile";kr=profileCode;}
  mach_port_deallocate(mach_task_self(),bootstrap);return kr;
 }
 NSDictionary *GSRequest(NSDictionary *request, NSError **error) {
