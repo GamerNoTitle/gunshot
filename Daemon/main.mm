@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #import "../Shared/IPCProtocol.h"
+#import "GSDaemonRunLoop.h"
+#import "../Shared/GSDiscovery.h"
 #include "../.build/libgotohp.h"
 
 static const char *GSRole(audit_token_t token) {
@@ -22,12 +24,12 @@ static const char *GSRole(audit_token_t token) {
  NSString *bundle=CFBridgingRelease(identifier);char path[4096]={0};
  if(pathForPID((int)token.val[5],path,sizeof(path))<=0)return NULL;
  NSString *exe=[NSString stringWithUTF8String:path];
- if([bundle isEqualToString:@"com.apple.Preferences"] && ([exe isEqualToString:@"/Applications/Preferences.app/Preferences"]||[exe isEqualToString:@"/System/Applications/Preferences.app/Preferences"]))return "settings";
  if([bundle isEqualToString:@"com.apple.mobileslideshow"] && [exe hasSuffix:@"/MobileSlideShow.app/MobileSlideShow"] && ([exe hasPrefix:@"/Applications/"]||[exe hasPrefix:@"/System/Applications/"]))return "photos";
  if([bundle isEqualToString:@"com.google.photos"] && [exe hasSuffix:@"/GooglePhotos.app/GooglePhotos"] && ([exe hasPrefix:@"/private/var/containers/Bundle/Application/"]||[exe hasPrefix:@"/var/containers/Bundle/Application/"]))return "googlephotos";
  return NULL;
 }
 static BOOL GSOnline=NO, GSWiFi=NO; // Accessed only on the conditions queue.
+static bool GSAuthorizeDiscovery(audit_token_t token){return GSRole(token)!=NULL;}
 static void GSConditions(void) {
  BOOL online=GSOnline,wifi=GSWiFi,charging=NO;
  typedef CFTypeRef (*PowerInfo)(void);typedef CFStringRef (*PowerType)(CFTypeRef);
@@ -45,6 +47,7 @@ int main(int argc,char **argv) { @autoreleasepool {
  if(getuid()!=501 || GunshotInitialize((char *)GS_STATE_PATH)!=0)return 1;
  mach_port_t port=MACH_PORT_NULL;
  if(bootstrap_check_in(bootstrap_port,GS_SERVICE,&port)!=KERN_SUCCESS)return 2;
+ if(!GSStartDiscoveryService(port,GSAuthorizeDiscovery))return 5;
  if(rocketbootstrap_unlock(GS_SERVICE)!=KERN_SUCCESS)return 3;
  dispatch_queue_t conditionsQueue=dispatch_queue_create("dev.tqmane.gunshot.conditions",DISPATCH_QUEUE_SERIAL);
  nw_path_monitor_t monitor=nw_path_monitor_create();nw_path_monitor_set_queue(monitor,conditionsQueue);
@@ -52,6 +55,7 @@ int main(int argc,char **argv) { @autoreleasepool {
  dispatch_source_t timer=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,conditionsQueue);
  dispatch_source_set_timer(timer,DISPATCH_TIME_NOW,5*NSEC_PER_SEC,NSEC_PER_SEC);
  dispatch_source_set_event_handler(timer,^{@autoreleasepool{GSConditions();}});dispatch_resume(timer);
+ return GSRunDaemonService(^{
  const size_t capacity=sizeof(GSMessage)+sizeof(mach_msg_max_trailer_t);
  while(true){@autoreleasepool{
  GSMessage *m=(GSMessage *)calloc(1,capacity);
@@ -73,4 +77,5 @@ int main(int argc,char **argv) { @autoreleasepool {
  kr=mach_msg(&m->header,MACH_SEND_MSG|MACH_SEND_TIMEOUT,m->header.msgh_size,0,MACH_PORT_NULL,1000,MACH_PORT_NULL);
  if(kr!=KERN_SUCCESS)mach_msg_destroy(&m->header);free(m);
  }}
+ })?0:4;
  }}

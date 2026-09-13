@@ -2,6 +2,10 @@
 #import "GSPanel.h"
 #import "GSExporter.h"
 #import "GSNativeAccount.h"
+#import "GSAccountConnection.h"
+#if !GS_JAILED
+#import "GSNativeRelay.h"
+#endif
 #import "GSNativeRouting.h"
 #import "GSUploadDiagnostics.h"
 #import "GSUnlimitedStorage.h"
@@ -21,8 +25,8 @@
 #else
 #define GS_BACKUP_TITLE GSL(@"Route manual backups through GoToHP")
 #define GS_BACKUP_HELP GSL(@"Applies to the manual Back up now action.")
-#define GS_ACCOUNT_HELP GSL(@"Add an account in Settings → GoToHP.")
-#define GS_QUEUED_HELP GSL(@"Uploads continue after you close the app.")
+#define GS_ACCOUNT_HELP GSL(@"Connect or refresh your account.")
+#define GS_QUEUED_HELP GSL(@"Queued uploads continue while authorization is available. Reopen Google Photos to refresh authorization when needed.")
 #define GS_AUTH_HELP GSL(@"Paste an EmbeddedSetup oauth_token or complete gotohp credential. Sent only to gotohpd and Google, and hidden after saving.")
 #endif
 @interface GSPanel () <PHPickerViewControllerDelegate>
@@ -44,9 +48,6 @@
  [super viewDidLoad];GSInstallNativeRouting();GSInstallUploadDiagnostics();GSInstallUnlimitedStorage();self.title=@"GoToHP";self.jobs=@[];self.statusText=GSL(@"Checking the connection…");self.statusLanguage=GSLanguage();
  self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:GSL(@"Done") style:UIBarButtonItemStylePlain target:self action:@selector(close)];
  self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:self.settingsMode?GSL(@"Reconnect"):GSL(@"Add") style:UIBarButtonItemStylePlain target:self action:@selector(primary)];
-#if !GS_JAILED
- if(self.settingsMode)self.navigationItem.rightBarButtonItem.title=GSL(@"Account");
-#endif
 #if GS_JAILED
  self.navigationItem.prompt=nil;
 #endif
@@ -62,18 +63,12 @@
  self.tableView.backgroundColor=UIColor.systemGroupedBackgroundColor;
  self.tableView.tintColor=[UIColor colorWithRed:0.10 green:0.45 blue:0.91 alpha:1];
  self.navigationController.navigationBar.tintColor=self.tableView.tintColor;
-#if GS_JAILED
- if(GSIsGooglePhotos()&&GSNativeAccountSummary()){[self connectNativeAccount];return;}
-#endif
  [self refresh];
 }
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];[self updateNavigationLabels];[self reloadTablePreservingPosition];}
 - (void)updateNavigationLabels{
  self.navigationItem.leftBarButtonItem.title=GSL(@"Done");
  self.navigationItem.rightBarButtonItem.title=self.settingsMode?GSL(@"Reconnect"):GSL(@"Add");
-#if !GS_JAILED
- if(self.settingsMode)self.navigationItem.rightBarButtonItem.title=GSL(@"Account");
-#endif
  if(self.navigationItem.rightBarButtonItems.count>1)self.navigationItem.rightBarButtonItems[1].title=self.settingsMode?GSL(@"Uploads"):GSL(@"Settings");
 }
 - (void)chooseLanguage{
@@ -141,6 +136,10 @@
  else if([options[@"wifiOnly"]boolValue]&&![page[@"wifi"]boolValue])readiness=GSL(@"Waiting for Wi-Fi");
  else if([options[@"chargingOnly"]boolValue]&&![page[@"charging"]boolValue])readiness=GSL(@"Waiting for charging");
  NSString *authorization=GSL(@"Account configured");
+#if !GS_JAILED
+ if([accounts[@"nativeAuthorization"]isEqual:@"ready"])authorization=GSL(@"Authenticated");
+ else if([accounts[@"nativeAuthorization"]isEqual:@"waiting"])readiness=GSL(@"Open Google Photos and reconnect to refresh authorization.");
+#endif
 #if GS_JAILED
  NSDictionary *runtime=GSEmbeddedRuntimeSnapshot();
  if([runtime[@"authorization"]isEqual:@"validated"])authorization=GSL(@"Authenticated");
@@ -161,9 +160,7 @@
  if(!self.settingsMode)return @[@{@"title":GSL(@"Uploads"),@"rows":@[@14],@"footer":GS_QUEUED_HELP}];
  NSMutableArray *groups=[NSMutableArray array];
  NSArray *accountRows=@[@13,@6,@7];
-#if GS_JAILED
  if(GSIsGooglePhotos())accountRows=@[@13];
-#endif
  [groups addObject:@{@"title":GSL(@"Account"),@"rows":accountRows}];
  [groups addObject:@{@"title":GSL(@"Upload settings"),@"rows":@[@0,@1,@2,@3,@4,@5],@"footer":[GSL(@"Pixel 1 requests original quality without storage usage (Pixel XL). Quality is fixed when queued. Verify storage usage and original data in Google Photos.\n") stringByAppendingString:GS_QUEUED_HELP]}];
  if(GSIsGooglePhotos())[groups addObject:@{@"title":GSL(@"Google Photos integration"),@"rows":@[@10],@"footer":GS_BACKUP_HELP}];
@@ -280,25 +277,25 @@
 }
 - (void)sheet:(UIAlertController *)sheet{sheet.popoverPresentationController.sourceView=self.view;sheet.popoverPresentationController.sourceRect=CGRectMake(self.view.bounds.size.width/2,80,1,1);[self presentViewController:sheet animated:YES completion:nil];}
 - (void)primary{if(self.busy)return;if(self.settingsMode)[self addAccount];else if(self.sharedItems.count){NSArray *items=self.sharedItems;self.sharedItems=nil;if([items.firstObject isKindOfClass:PHAsset.class])[self importAssets:items];else[self importURLs:items];}else[self choose];}
-#if GS_JAILED
 - (void)connectNativeAccount{
  NSDictionary *account=GSNativeAccountSummary();
  if(!account){[self message:GSL(@"Could not retrieve the Google Photos account. Reopen the profile menu.")];return;}
  self.stateGeneration++;self.nativeAuthorizationFailed=NO;self.busy=YES;[self message:GSL(@"Checking the signed-in Google Photos account…")];
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
   NSError *error=nil;
+#if GS_JAILED
   GSRequest(@{@"op":@"account_native",@"account":account[@"email"],@"nativeID":account[@"identifier"]},&error);
+#else
+  GSConnectDaemonAccount(account,&error);
+#endif
   dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;
    if(error){self.nativeAuthorizationFailed=YES;[self message:GSL(@"Google Photos authorization failed. Check your sign-in, then tap Reconnect.")];return;}
    [self refresh];
   });
  });
 }
-#endif
 - (void)addAccount{
-#if GS_JAILED
  if(GSIsGooglePhotos()){[self connectNativeAccount];return;}
-#endif
  UIAlertController *a=[UIAlertController alertControllerWithTitle:GSL(@"Add Google account") message:GS_AUTH_HELP preferredStyle:UIAlertControllerStyleAlert];
  [a addTextFieldWithConfigurationHandler:^(UITextField *f){f.secureTextEntry=YES;f.autocorrectionType=UITextAutocorrectionTypeNo;f.autocapitalizationType=UITextAutocapitalizationTypeNone;f.placeholder=@"oauth_token / credential";}];
  [a addAction:[UIAlertAction actionWithTitle:GSL(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
@@ -308,6 +305,11 @@
  NSMutableDictionary *snapshot=[GSUploadDiagnosticsSnapshot() mutableCopy];
  snapshot[@"manualRouting"]=GSNativeRoutingSnapshot();
  snapshot[@"unlimitedStorage"]=GSUnlimitedStorageSnapshot();
+ snapshot[@"accountConnection"]=GSAccountConnectionSnapshot();
+#if !GS_JAILED
+ snapshot[@"ipc"]=GSIPCDiagnosticsSnapshot();
+ snapshot[@"nativeAuthentication"]=GSNativeRelaySnapshot();
+#endif
 #if GS_JAILED
  snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
  snapshot[@"backupRouting"]=GSBackupRequestsSnapshot();

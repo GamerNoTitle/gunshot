@@ -5,9 +5,19 @@ stage=pathlib.Path(sys.argv[1]);prefix=sys.argv[2].rstrip('/')
 root=stage
 def plist(path,data):
     path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(plistlib.dumps(data))
-service={'Label':'dev.tqmane.gunshot','ProgramArguments':[prefix+'/usr/libexec/gotohpd'],'UserName':'mobile','GroupName':'mobile','RunAtLoad':True,'KeepAlive':True,'ThrottleInterval':10,'MachServices':{'dev.tqmane.gunshot.service':True},'ProcessType':'Background','Umask':63}
+service={'Label':'dev.tqmane.gunshot','ProgramArguments':[prefix+'/usr/libexec/gotohpd'],'UserName':'mobile','GroupName':'mobile','RunAtLoad':True,'KeepAlive':True,'ThrottleInterval':10,'MachServices':{'dev.tqmane.gunshot.service':True,'dev.tqmane.gunshot.discovery':True},'ProcessType':'Background','Umask':63}
 plist(root/'Library/LaunchDaemons/dev.tqmane.gunshot.plist',service)
-plist(root/'Library/PreferenceLoader/Preferences/Gunshot.plist',{'entry':{'bundle':'GunshotPrefs','cell':'PSLinkCell','detail':'GSRootListController','label':'GoToHP'}})
+# Installed by the package manager as root; never writable by mobile.
+# No wildcard process IDs, filesystem grants or access to unrelated services.
+profile=root/'Library/libSandy/dev.tqmane.gunshot.ipc.plist'
+plist(profile,{'AllowedProcesses':['com.google.photos','com.apple.mobileslideshow'],
+               # Mirror sandyd's own two-class grant. A process may accept only
+               # the global-name class; a returned token alone is not access.
+               'Extensions':[{'type':'mach','extension_class':extension_class,'mach_name':name}
+                             for name in ('dev.tqmane.gunshot.service','dev.tqmane.gunshot.discovery')
+                             for extension_class in ('com.apple.app-sandbox.mach',
+                                                     'com.apple.security.exception.mach-lookup.global-name')]})
+profile.chmod(0o644)
 control=stage/'DEBIAN';control.mkdir(parents=True,exist_ok=True)
 launch=prefix+'/Library/LaunchDaemons/dev.tqmane.gunshot.plist'
 # Package root only; persistent user data always stays under /var/mobile.

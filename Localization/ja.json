@@ -118,5 +118,8 @@
   "Done": "完了",
   "Japanese": "日本語",
   "Show unlimited storage": "無制限ストレージを表示",
-  "Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged.": "変更はプロフィールメニューを開き直すと反映されます。無制限ストレージは表示のみの変更で、容量上限や画質には影響しません。"
+  "Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged.": "変更はプロフィールメニューを開き直すと反映されます。無制限ストレージは表示のみの変更で、容量上限や画質には影響しません。",
+  "GoToHP daemon connection failed.": "GoToHP daemon との接続に失敗しました。",
+  "Queued uploads continue while authorization is available. Reopen Google Photos to refresh authorization when needed.": "認証が有効な間は、アプリを閉じてもキューの送信が続きます。認証の更新が必要になったらGoogle Photosを開いてください。",
+  "Open Google Photos and reconnect to refresh authorization.": "Google Photosでアカウントを再接続して、認証を更新してください。"
 }

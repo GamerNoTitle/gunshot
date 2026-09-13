@@ -29,21 +29,46 @@ with tempfile.TemporaryDirectory() as d:
         linked=subprocess.check_output(['otool','-L',str(binary)],text=True)
         assert '@rpath/GunshotJailed.dylib' in linked, linked
         dependencies="\n".join(linked.splitlines()[2:])
-        for name in ('rocketbootstrap','substrate','ellekit','Preferences.framework','/var/jb/'):
+        for name in ('rocketbootstrap','libsandy','substrate','ellekit','Preferences.framework','/var/jb/'):
             assert name.lower() not in dependencies.lower(), linked
         for line in linked.splitlines()[2:]:
             assert line.strip().startswith(('/System/Library/Frameworks/','/usr/lib/')), line
         assert subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()=='arm64'
         sys.exit(0)
     r=Path(d)/prefix
-    for p in ['usr/libexec/gotohpd','Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib','Library/PreferenceBundles/GunshotPrefs.bundle/GunshotPrefs']:
+    deps=subprocess.check_output(['dpkg-deb','-f',str(deb),'Depends'],text=True)
+    assert 'com.opa334.libsandy (>= 1.1.6)' in deps, deps
+    assert 'preferenceloader' not in deps.lower(), deps
+    assert not (r/'Library/PreferenceLoader/Preferences/Gunshot.plist').exists()
+    assert not (r/'Library/PreferenceBundles/GunshotPrefs.bundle').exists()
+    profile=r/'Library/libSandy/dev.tqmane.gunshot.ipc.plist'
+    assert profile.stat().st_mode & 0o777 == 0o644
+    assert plistlib.loads(profile.read_bytes())=={
+        'AllowedProcesses':['com.google.photos','com.apple.mobileslideshow'],
+        'Extensions':[
+            {'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':'dev.tqmane.gunshot.service'},
+            {'type':'mach','extension_class':'com.apple.security.exception.mach-lookup.global-name','mach_name':'dev.tqmane.gunshot.service'},
+            {'type':'mach','extension_class':'com.apple.app-sandbox.mach','mach_name':'dev.tqmane.gunshot.discovery'},
+            {'type':'mach','extension_class':'com.apple.security.exception.mach-lookup.global-name','mach_name':'dev.tqmane.gunshot.discovery'}]}
+    for p in ['usr/libexec/gotohpd','Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib']:
         assert (r/p).is_file(), p
+    # The crashing legacy RocketBootstrap client must not be linked into apps.
+    # Only the daemon uses RocketBootstrap to unlock its registered service.
+    for p in ['Library/MobileSubstrate/DynamicLibraries/Gunshot.dylib']:
+        linked=subprocess.check_output(['otool','-L',str(r/p)],text=True)
+        assert 'rocketbootstrap' not in linked.lower(), linked
+        symbols=subprocess.check_output(['nm','-u',str(r/p)],text=True)
+        assert '_rocketbootstrap_look_up' not in symbols, symbols
+        strings=subprocess.check_output(['strings',str(r/p)],text=True)
+        assert '/'+prefix+'usr/lib/libsandy.dylib' in strings.splitlines(), 'wrong sandbox library prefix'
+        assert 'dev.tqmane.gunshot.ipc' in strings.splitlines(), 'sandbox profile missing from client'
+        assert 'dev.tqmane.gunshot.discovery' in strings.splitlines(), 'XPC discovery missing from client'
+    daemon_links=subprocess.check_output(['otool','-L',str(r/'usr/libexec/gotohpd')],text=True)
+    assert 'rocketbootstrap' in daemon_links.lower(), daemon_links
     launch=plistlib.loads((r/'Library/LaunchDaemons/dev.tqmane.gunshot.plist').read_bytes())
     assert launch['UserName']=='mobile'
+    assert launch['MachServices']=={'dev.tqmane.gunshot.service':True,'dev.tqmane.gunshot.discovery':True}
     assert launch['ProgramArguments']==['/'+prefix+'usr/libexec/gotohpd']
     assert 'StandardOutPath' not in launch and 'StandardErrorPath' not in launch
 
-    info=plistlib.loads((r/'Library/PreferenceBundles/GunshotPrefs.bundle/Info.plist').read_bytes())
-    assert info['NSPrincipalClass']=='GSRootListController'
-    assert info['CFBundleExecutable']=='GunshotPrefs'
     assert not (r/'var/jb').exists(), 'package prefix applied twice'

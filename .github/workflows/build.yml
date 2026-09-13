@@ -52,6 +52,35 @@ jobs:
           version=$(xcrun --sdk iphoneos --show-sdk-version)
           mkdir -p "$THEOS/sdks"
           ln -s "$sdk" "$THEOS/sdks/iPhoneOS${version}.sdk"
+      - name: Mach reply-port transport
+        if: matrix.scheme == 'rootless'
+        run: |
+          mkdir -p .build
+          clang -fobjc-arc -framework Foundation tests/mach_transport.m -o .build/mach-transport-test
+          .build/mach-transport-test
+          clang -fobjc-arc -framework Foundation tests/ipc_client.m -o .build/ipc-client-test
+          .build/ipc-client-test
+          clang -fobjc-arc -framework Foundation tests/sandbox_access.m -o .build/sandbox-access-test
+          .build/sandbox-access-test
+          clang -fobjc-arc -framework Foundation '-DTHEOS_PACKAGE_INSTALL_PREFIX="/var/jb"' tests/sandbox_access.m -o .build/sandbox-access-rootless-test
+          .build/sandbox-access-rootless-test
+          clang -fblocks tests/discovery.c -o .build/discovery-test
+          .build/discovery-test
+          clang -fblocks Shared/GSDiscovery.c Daemon/GSDiscoveryService.c tests/discovery_launchd.c -o .build/discovery-launchd-test
+          python3 scripts/test-discovery-launchd.py .build/discovery-launchd-test
+          clang -fobjc-arc -framework Foundation -framework CoreFoundation tests/daemon_runloop.m -o .build/daemon-runloop-test
+          .build/daemon-runloop-test
+      - name: Jailbreak native account relay
+        if: matrix.scheme == 'rootless'
+        run: |
+          clang -fobjc-arc -DGS_TEST_DAEMON_RELAY=1 -DGS_TEST_AUTOCONNECT=1 -framework Foundation UI/GSNativeAccount.m UI/GSNativeRelay.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-relay-test
+          .build/native-relay-test
+          clang -fobjc-arc -DGS_TEST_DAEMON_RELAY=1 -DGS_TEST_AUTOCONNECT=1 -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m UI/GSNativeRelay.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-relay-legacy-test
+          .build/native-relay-legacy-test
+          clang -fobjc-arc -DGS_JAILED=1 -DGS_TEST_AUTOCONNECT=1 -framework Foundation UI/GSNativeAccount.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-autoconnect-jailed-test
+          .build/native-autoconnect-jailed-test
+          clang -fobjc-arc -DGS_JAILED=1 -DGS_TEST_AUTOCONNECT=1 -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-autoconnect-jailed-legacy-test
+          .build/native-autoconnect-jailed-legacy-test
       - name: Native routing contract
         if: matrix.scheme == 'jailed'
         run: |
@@ -99,12 +128,12 @@ jobs:
           .build/native-account-legacy-test
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/menu-shims -Itests/native-shims UI/GSAccountMenu.m tests/account_menu.m -o .build/account-menu-legacy-test
           .build/account-menu-legacy-test
-      - name: Forward-compatible modern host contracts
+      - name: API detection independent of host version
         if: matrix.scheme == 'jailed'
         run: |
           clang -fobjc-arc -framework Foundation tests/photos_compatibility.m -o .build/photos-compatibility-test
           .build/photos-compatibility-test
-          for version in 7.93.0 7.100.0 8.0.0; do
+          for version in 7.20.1 7.50.0 7.93.0 8.0.0 unknown; do
             export GS_TEST_PHOTOS_VERSION="$version"
             .build/unlimited-storage-test
             .build/unlimited-storage-test incompatible-abi
@@ -116,6 +145,9 @@ jobs:
             .build/upload-diagnostics-test
             .build/native-account-test
             .build/account-menu-test
+            .build/backup-requests-legacy-test
+            .build/photos-integration-legacy-test
+            .build/native-account-legacy-test
           done
       - name: UIKit settings presentation smoke
         if: matrix.scheme == 'jailed'

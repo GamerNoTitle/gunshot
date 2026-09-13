@@ -4,7 +4,7 @@
 
 A Google Photos uploader for jailbreak, sideloading and LiveContainer, using the Go core from [xob0t/gotohp](https://github.com/xob0t/gotohp). Jailbreak builds upload through a separate daemon; jailed builds run inside Google Photos.
 
-**Development build.** Supports the fixed **7.20.2** adapter and a **7.92.0+** adapter that checks the native APIs each feature needs. The versions audited from supplied IPAs are **7.20.2 (iOS 16.1+)** and **7.92.0 (iOS 18.0+)**; these are reference versions, not an upper-version limit. Later releases are enabled when their APIs match, but are not device-verified. See the [compatibility audit](docs/analysis/google-photos-7.20.2.md).
+**Development build.** Automatically selects compatible legacy or modern native APIs **per feature**, without a version-number allowlist. The IPA-audited reference versions are **7.20.2 (iOS 16.1+)** and **7.92.0 (iOS 18.0+)**. Other releases can work when their APIs match; this is not a claim of device verification. See the [compatibility audit](docs/analysis/google-photos-7.20.2.md).
 
 ## Screenshots
 
@@ -29,7 +29,7 @@ An unofficial project unaffiliated with Google or Apple, provided **as is, witho
 >
 > 1. Install Google Photos without injection and complete Google sign-in.
 > 2. Close the app, then install/enable the jailbreak tweak or update the same app with the injected IPA. Preserve the **signing account, bundle identifier and app data**. In LiveContainer, enable the tweak or update the IPA in the **same guest/data container**.
-> 3. Open **Google Photos profile menu → GoToHP settings**.
+> 3. Open **Google Photos**. GoToHP automatically connects the signed-in account once native sign-in is ready. Use **Profile menu → GoToHP settings** to change upload settings or retry with **Reconnect**.
 >
 > Do not delete the logged-in app/guest or create a new data container. Session retention is not guaranteed, including when moving from the App Store version to a separately signed app. See the [installation guide](docs/jailed.md).
 
@@ -37,15 +37,17 @@ An unofficial project unaffiliated with Google or Apple, provided **as is, witho
 
 Get `gotohp-tweak-jailed` from [GitHub Actions](https://github.com/tqmane/gunshot/actions): it contains the `.deb`, `GunshotJailed.dylib` and notices. Use the [installation guide](docs/jailed.md) to inject the package or import the dylib into LiveContainer.
 
-GoToHP connects the signed-in Google Photos account. Choose **Uploads → Choose photos and videos** to upload. **Keep Google Photos in the foreground**; jailed uploads cannot continue after the app closes.
+GoToHP automatically connects the signed-in account when Google Photos opens; opening GoToHP settings is not required. Choose **Uploads → Choose photos and videos** to upload. **Keep Google Photos in the foreground**; jailed uploads cannot continue after the app closes.
 
-On jailed Google Photos 7.20.2 and compatible 7.92.0+ releases, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/full-upload-replacement.md).
+On jailed Google Photos with compatible native APIs, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/full-upload-replacement.md).
 
 ### Jailbreak
 
-Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` from GitHub Actions with your package manager. RocketBootstrap, PreferenceLoader and a substrate-compatible injection system are required. **If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.**
+Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` from GitHub Actions with your package manager. RocketBootstrap, libSandy 1.1.6 or later ([opa334’s repository](https://opa334.github.io/)) and a substrate-compatible injection system are required. Install with a package manager so it resolves these dependencies. The package includes a restricted libSandy profile for the GoToHP daemon; libSandy itself is installed as a shared system dependency. **If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.**
 
-In **Settings → GoToHP → Open GoToHP settings**, import an account using the [upstream sign-in instructions](https://github.com/xob0t/gotohp#sign-in). Upload from Google Photos' GoToHP settings, the Apple Photos GoToHP button or a supported **Upload with GoToHP** share action. Keep the app open until media reaches the queue; the daemon then continues independently.
+Opening **Google Photos** automatically connects the account already signed into the app. No token paste or visit to GoToHP settings is required. Use **Profile menu → GoToHP settings** to change options or retry with **Reconnect**. Jailbreak packages do not add an iOS Settings entry or require PreferenceLoader. Upload from this page, the Apple Photos GoToHP button or a supported **Upload with GoToHP** share action.
+
+Keep Google Photos open until media reaches the queue. The daemon can continue using its in-memory authorization after the app closes. Native authorization is refreshed by Google Photos while it runs; the daemon retains each bearer for at most five minutes. When authorization is unavailable or the daemon restarts, pending jobs wait for Google Photos to reopen and refresh it without consuming retries. This does not provide indefinite authentication refresh while the host is closed. [Authentication details](docs/analysis/native-account.md).
 
 ## Quality and queue
 

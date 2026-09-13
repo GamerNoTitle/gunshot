@@ -13,7 +13,7 @@ func roleAllowed(role, op string) bool {
 	}
 	common := op == "upload_summary" || op == "job" || op == "ping" || op == "list" || op == "accounts" || op == "options" || op == "retry" || op == "cancel" || op == "clear_completed" || op == "retry_failed"
 	if role == "settings" || role == "googlephotos" {
-		return common || (role == "googlephotos" && (op == "begin" || op == "append" || op == "seal")) || op == "configure" || op == "account_add" || op == "account_native" || op == "account_remove" || op == "account_select"
+		return common || (role == "googlephotos" && (op == "begin" || op == "append" || op == "seal" || op == "account_native" || op == "native_bearer" || op == "native_bearer_clear")) || op == "configure" || op == "account_add" || op == "account_remove" || op == "account_select"
 	}
 	if role == "photos" {
 		return common || op == "begin" || op == "append" || op == "seal"
@@ -89,7 +89,7 @@ func (e *Engine) handle(r Request, role string) (any, error) {
 			next = end
 		}
 		return map[string]any{"jobs": e.state.Jobs[start:end], "next": next, "online": e.online, "wifi": e.wifi, "charging": e.charging}, nil
-	case "accounts", "account_native", "account_add", "account_remove", "account_select":
+	case "accounts", "account_native", "native_bearer", "native_bearer_clear", "account_add", "account_remove", "account_select":
 		return e.accounts(r)
 	case "begin":
 		if !accountExists(r.Account) {

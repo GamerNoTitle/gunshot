@@ -1,8 +1,8 @@
 ARCHS = arm64
 include $(THEOS)/makefiles/common.mk
 TOOL_NAME = gotohpd
-gotohpd_FILES = main.mm
-gotohpd_CFLAGS = -fobjc-arc -I../Shared
+gotohpd_FILES = main.mm GSDiscoveryService.c
+gotohpd_CFLAGS = -fobjc-arc -fblocks -I../Shared
 gotohpd_CCFLAGS = -std=c++17
 gotohpd_FRAMEWORKS = Foundation Security Network IOKit CoreFoundation
 gotohpd_LIBRARIES = rocketbootstrap resolv

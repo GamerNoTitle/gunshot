@@ -1,6 +1,6 @@
 # Google Photos 7.20.2 compatibility audit
 
-This adapter targets the supplied **Google Photos 7.20.2**, build **7.20.738660793**, alongside the modern **7.92.0+** adapter. 7.20.2 and 7.92.0 are the IPA-audited reference versions, not an upper-version allowlist. Later modern releases are eligible without editing the version list; each feature still requires matching Objective-C signatures. Other releases below 7.92.0 do not use the legacy adapter. Device validation is still required; a binary audit and mocked contracts do not establish successful authentication or uploads against Google's servers.
+The supplied **Google Photos 7.20.2**, build **7.20.738660793**, and **7.92.0** are IPA-audited reference versions. Adapters are now selected per feature from the actual classes, selectors and exact Objective-C signatures, without a version-number gate. Authentication, completion callbacks, storage UI and quality UI can independently use different API generations. Device validation is still required; binary audits and mocked contracts do not establish successful authentication or uploads against Google's servers.
 
 ## Input and OS requirements
 
@@ -54,10 +54,73 @@ The macOS CI runs both 7.92.0 and 7.20.2 contracts. Legacy fixtures omit the new
 
 Real-device checks still needed on 7.20.2: login-first installation, native account refresh, settings/menu tap, unlimited display on/off after reopening the menu, original JPEG/HEIC/video/Live Photo upload, manual and automatic handoff, completion refresh without relaunch, cancellation/network loss, and upgrade/downgrade behavior. Jailed uploads require the app to remain active; this is not a background-execution entitlement change.
 
-## Later modern releases
+## Automatic API detection
 
-Version components are compared numerically: 7.92.1, 7.93, 7.100, 8.0, and higher select the modern adapter. Missing, malformed, or unrelated-host metadata is rejected. The separate `auditedHostVersion` diagnostic field is true only for the two reference releases; it does not block use of later versions.
+The host executable must be GooglePhotos. Version metadata only informs the `auditedHostVersion` diagnostic field; missing, unfamiliar, older and future version strings do not disable compatible APIs. A matching modern API is preferred; a matching legacy API can be used independently by each feature. Missing or incompatible signatures disable the affected path rather than guessing an argument type. Shared menu and routing hooks retain their own ABI checks.
 
-CI also reruns the modern native contracts with simulated version metadata 7.93.0, 7.100.0, and 8.0.0. These are compatibility tests using the reference API shape, **not analysis or real-device tests of those app releases**. Changed private API semantics can still require an adapter update even when a signature is unchanged.
+CI runs both API shapes, mixed completion classes and malformed signatures, and reruns modern and legacy contracts under unrelated version metadata. These are simulated API contracts, not device verification of uninspected app releases. Private API behavior can still change without a signature change.
+
+## Jailbreak daemon lookup
+
+The 2026-09-13 17:55 crash reports `EXC_GUARD / SEND_INVALID_REPLY` in RocketBootstrap called by `GSRequest`. Choicy isolation did not eliminate this path. The client now uses a locally owned reply port marked `MPO_REPLY_PORT` on iOS 16+ for the broker lookup and daemon RPC. It first tries direct and redirected launchd lookup, then the existing RocketBootstrap broker with bounded waits and validated descriptors. Client binaries no longer link RocketBootstrap; the daemon still uses it to unlock the service. The broker's access policy and daemon audit-token authorization are preserved. Gunshot does not install global Mach hooks or change process guard settings. The scoped libSandy access adapter described below is used when the app sandbox denies lookup.
+
+The transport is based on the published [RocketBootstrap lookup protocol](https://github.com/rpetrich/RocketBootstrap/blob/master/rocketbootstrap_internal.h). Apple's [reply-port validation](https://github.com/apple-oss-distributions/xnu/blob/xnu-8792.61.2/osfmk/ipc/ipc_right.c) requires a reply-designated port for destinations enforcing reply semantics. The log identifies the failing path, but does not expose the broker's kernel port flags; this remains a device-validation target. A macOS test performs actual Mach exchanges against a reply-enforcing endpoint and checks success, denied/malformed responses, timeout and port cleanup.
 
 If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.
+
+### Connected process versus reachable service
+
+A subsequent device report shows `gotohpd` running in `user/501`, with its Mach service active and no prior exit. This excludes a missing executable or an exited daemon at the time of that report, but does not prove that initialization has completed or that the app/broker can resolve and use the endpoint. A user-domain service listing alone does not establish a namespace mismatch.
+
+The client now acquires the calling task's current bootstrap port for each lookup and releases that right, rather than relying on the process-global cached bootstrap port. On failure, the settings status includes the failing stage and hexadecimal return code. Export diagnostics includes an `ipc` snapshot with per-request lookup results, broker response classification and transport reachability. It contains no request/response payloads, credentials, account names or raw Mach port numbers. A valid empty broker response is distinguished from a malformed reply, timeout or missing broker. This adds the evidence needed to diagnose the remaining device connection failure; it does not claim that the device failure is resolved.
+
+The daemon's Mach receive loop also previously occupied the main thread indefinitely after `rocketbootstrap_unlock`. RocketBootstrap [registers a Darwin notification observer and schedules run-loop work](https://github.com/rpetrich/RocketBootstrap/blob/master/Tweak.x) to restore unlocked names when its broker restarts. The daemon now serves requests serially on a dedicated queue while keeping its main CFRunLoop active. A native test verifies that a Darwin notification reaches the main thread while the service worker is blocked. This repairs a registration-recovery defect; the supplied launchctl listing cannot establish whether a broker restart caused this particular failure. Request audit-token authorization and the wire protocol are unchanged.
+
+
+### Confirmed sandbox lookup denial
+
+The next exported diagnostic reports `lookup.bootstrap = 0` and **1100 (`0x44c`) for direct, redirected and broker lookup**. Apple's [bootstrap definitions](https://github.com/apple-oss-distributions/launchd/blob/main/liblaunch/bootstrap.h) identify this as `BOOTSTRAP_NOT_PRIVILEGED`, not `BOOTSTRAP_UNKNOWN_SERVICE` (1102). The broker request has not been sent at that point. Together with the running service listing, this identifies a client lookup authorization failure; changing reply-port flags or restarting a healthy daemon does not grant access.
+
+On direct lookup denial, the jailbreak client now calls `libSandy_applyProfile("dev.tqmane.gunshot.ipc")` and retries its own service. The [libSandy profile mechanism](https://github.com/opa334/libSandy#sandbox-profiles-implemented-in-libsandy-explained) restricts grants by process signing identifier. The root-owned profile is included in both jailbreak packages and allows only `com.google.photos`, `com.apple.mobileslideshow` and `com.apple.Preferences` to request the `com.apple.app-sandbox.mach` and `com.apple.security.exception.mach-lookup.global-name` extensions for the upload and discovery services (`dev.tqmane.gunshot.service` and `dev.tqmane.gunshot.discovery`). It grants no filesystem access, wildcard identities or access to other services. Daemon audit-token/signing-ID/path authorization remains mandatory after lookup.
+
+libSandy 1.1.6 or later is a declared jailbreak package dependency, loaded from the Theos install prefix; it is not copied into or required by jailed packages. Its [iOS 16 adapter](https://github.com/opa334/libSandy/blob/main/libSandy.c) redirects only profile-authorized lookup names (plus its own provider) if the host sandbox cannot consume Mach extensions. Gunshot retains the library for the process lifetime and does not cache failed application attempts. If direct lookup already works, this path is not invoked.
+
+Diagnostics include `sandbox.profile` (-1: library missing/load failed; -2: API missing; 1: provider unavailable; 2: profile restricted; 0: profile returned extensions) and, after successful application, `lookup.authorized`. A successful profile call alone never marks IPC reachable: lookup and daemon RPC must still succeed. When profile application fails and the fallback lookups are also denied, settings reports the profile failure instead of hiding it behind a generic broker error. These codes contain no extension tokens or account data.
+
+Native fixtures cover denied lookup followed by profile application and a real Mach RPC, denied lookup despite successful profile application, dependency/provider/restriction failures, retry recovery and reply-right cleanup. Package checks validate the exact profile, permissions, dependency and library path for each jailbreak scheme; jailed packages remain independent. These tests do not exercise the physical device's sandbox or sandyd service, so device confirmation remains required.
+
+
+### Profile success followed by denied raw lookup
+
+The next diagnostic has `sandbox.profile = 0`, but `lookup.authorized`, `lookup.redirected` and `lookup.broker` still return 1100. This confirms that libSandy is loaded and has returned extensions; it does **not** confirm that the raw bootstrap lookup is authorized. Reinstalling the same dependency cannot address this result. The [libSandy client](https://github.com/opa334/libSandy/blob/main/libSandy.m) reports success when it receives tokens and, when necessary, enables an [adapter for XPC lookup requests](https://github.com/opa334/libSandy/blob/main/libSandy.c). Gunshot's raw bootstrap retry did not establish a working route on this device.
+
+The jailbreak daemon now publishes a small XPC discovery service alongside its existing Mach upload service. After successful profile application and an unsuccessful raw lookup, the client connects using `xpc_connection_create_mach_service` with no bootstrap preflight. This lets libxpc perform the lookup through the API family handled by libSandy. The discovery service returns a copy of the daemon's Mach send right to authorized callers; upload/account operations continue through the existing bounded JSON/Mach transport. The discovery endpoint accepts a protocol version, not an arbitrary service name, filesystem path, account token or upload request.
+
+Discovery checks the peer's kernel audit token with the same UID, signing-ID and executable-path authorization as upload RPC. The returned port does not bypass the original per-request authorization. The libSandy profile contains only these two GoToHP services and the same three allowed signing IDs. Service, queue and send-right lifetime follow the daemon; the client bounds discovery to five seconds and safely discards late replies. The `discovery.*` diagnostic stages distinguish connection failure, rejection, invalid response/port and timeout before the normal request stages.
+
+The native test runs a real anonymous XPC listener (test-only) and checks port transfer, peer audit identity, denied/invalid requests, timeout, late replies and send-right cleanup. An IPC fixture reproduces this report's exact sequence (profile success → raw lookup denied → discovery → Mach RPC). Package checks require both launchd services and both narrowly scoped profile entries. These tests cover protocol and lifetime behavior; they cannot confirm the jailbreak's on-device libSandy lookup adapter. Device validation remains necessary.
+
+
+### Registered daemon, invalid discovery connection
+
+A later `launchctl print` shows `state = running`, no exits, and both `dev.tqmane.gunshot.discovery` and `dev.tqmane.gunshot.service` active. The updated service configuration is loaded. The corresponding app trace reaches `sandbox.profile = 0` but fails at `discovery.connection`. The previous code mapped every non-dictionary XPC reply to `KERN_FAILURE` (5), so that number is not an underlying launchd error and cannot identify the cause by itself.
+
+The client was creating the discovery connection with flags 0, based on the daemon's `user/501` execution listing. It now uses [`XPC_CONNECTION_MACH_SERVICE_PRIVILEGED`](https://developer.apple.com/documentation/xpc/xpc_connection_mach_service_privileged), which identifies the target as a LaunchDaemon. The execution user is not a reason to treat it as a LaunchAgent or to rely on the app's lookup namespace. This corrects the client configuration; the supplied status listing alone cannot prove it is the sole reason for the device failure.
+
+XPC failures now distinguish `discovery.invalid`, `discovery.interrupted`, `discovery.terminating`, and an unclassified `discovery.error`. The `sandbox.profile` trace also records read-only libSandy adapter metadata: `adapterActive`, `uploadRedirected` and `discoveryRedirected` (0/1, or -1 when that provider version does not expose introspection). This separates successful token issuance from active lookup redirection without logging extension tokens or mutating libSandy's internal state.
+
+In addition to anonymous-listener tests, macOS CI now registers a disposable system LaunchDaemon running as the normal CI user. The production discovery client resolves its named service and receives its Mach port. The fixture is removed on completion. This exercises launchd lookup and startup, which the original anonymous-listener test did not cover. Jailbreak sandbox/provider behavior still requires device testing.
+
+
+### Provider reachable, lookup adapter inactive
+
+Diagnostic 5 shows `sandbox.profile = 0`, `adapterActive = 0`, `uploadRedirected = 0`, `discoveryRedirected = 0`, followed by raw lookup denial (1100) and `discovery.invalid`. The [libSandy client](https://github.com/opa334/libSandy/blob/main/libSandy.m) enables its adapter only when connecting to sandyd itself still fails; it reports profile success upon receiving tokens without requiring successful consumption. The adapter flags therefore explain why no redirected lookup was attempted; they are not an error by themselves.
+
+Gunshot's profile issued only `com.apple.app-sandbox.mach`. By comparison, [sandyd's own global profile](https://github.com/opa334/libSandy/blob/main/sandyd/main.m) issues both that class and `com.apple.security.exception.mach-lookup.global-name`. The packaged Gunshot profile now mirrors this two-class pattern for each of its two exact service names, keeping the same three allowed signing IDs. It adds no filesystem grants or unrelated service names. No provider globals, hooks or transport implementations are changed.
+
+Package verification requires exactly four Mach grants (two classes × two services). The expected device result is successful `lookup.authorized`; adapter flags may correctly remain zero. The source and diagnostic identify the missing class as a concrete compatibility gap, but device lookup is still needed to confirm that this host accepts the second class. Install the full Debian package so the updated profile is included.
+
+
+### Device connection confirmed; native authentication follows
+
+Diagnostic 6 and the user's report confirm `lookup.direct=0`, successful send/receive and `stage=connected` after the two-class profile correction. The remaining issue is the missing jailbreak native-account provider, addressed by the [native authentication relay](native-account.md#jailbreakの認証リレー診断6の接続成功後). With iOS Settings integration removed, the current package grants lookup only to Google Photos and Apple Photos; the four exact Mach extensions remain unchanged.

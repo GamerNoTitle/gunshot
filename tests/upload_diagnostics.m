@@ -15,10 +15,11 @@
 #import <objc/message.h>
 #include <assert.h>
 static NSString *version=@"unsupported";
+static BOOL host=NO;
 @interface GSProbeBundle : NSObject
 @end
 @implementation GSProbeBundle
-- (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?@"GooglePhotos":version;}
+- (id)objectForInfoDictionaryKey:(NSString *)key{return [key isEqual:@"CFBundleExecutable"]?(host?@"GooglePhotos":@"OtherApp"):version;}
 @end
 static id MainBundle(id object,SEL selector){static id b;if(!b)b=[GSProbeBundle new];return b;}
 @interface GSPrivateResult : NSObject
@@ -86,7 +87,7 @@ int main(void){@autoreleasepool{
 
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)MainBundle);
  GSInstallUploadDiagnostics();assert(!GSUploadDiagnosticsAvailable());
- version=GSFixtureVersion;GSInstallUploadDiagnostics();assert(GSUploadDiagnosticsAvailable());
+ host=YES;version=GSFixtureVersion;GSInstallUploadDiagnostics();assert(GSUploadDiagnosticsAvailable());
  GMUUploadRequest *request=[GMUUploadRequest new];[request start];
  assert(called==1&&[GSUploadDiagnosticsSnapshot()[@"events"]count]==0);
  GSSetUploadDiagnostics(YES);id result=[GSPrivateResult new],error=[GSPrivateResult new];

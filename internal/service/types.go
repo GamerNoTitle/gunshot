@@ -85,6 +85,7 @@ type Progress struct {
 }
 type Runner func(context.Context, []string, string, string, func(Progress)) (string, error)
 type Engine struct {
+	nativeRelay            *nativeRelay
 	importHashes           map[string][]hash.Hash
 	mu                     sync.Mutex
 	root                   string

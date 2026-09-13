@@ -71,7 +71,7 @@ static id GSBackupStatus(id controller,SEL selector,IMP original){
  return status;
 }
 void GSInstallPhotosIntegration(void){
- if(GSInstalled||!GSIsGooglePhotos()||GSPhotosHostProfile()==GSPhotosUnsupported)return;
+ if(GSInstalled||!GSIsGooglePhotos()||!GSPhotosHostSupported())return;
  GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSSynchronizers=[NSMapTable strongToWeakObjectsMapTable];GSInstalled=YES;
  Class sync=NSClassFromString(@"PHSUserItemsSynchronizer");
  Method fetch=class_getInstanceMethod(sync,NSSelectorFromString(@"fetchData"));
@@ -82,7 +82,9 @@ void GSInstallPhotosIntegration(void){
   }
   GSSyncAvailable=YES;
  }
- if(GSPhotosLegacyHost()){
+ BOOL modern=GSPhotosHasMethod(NSClassFromString(@"PHSOneUpInfoPanelDetailsViewController"),@"getBackupStatusModelData","@16@0:8")&&
+  GSPhotosHasMethod(NSClassFromString(@"PHSOneUpInfoPanelBackupStatusData"),@"initWithBackupStatus:backupStatusSubtitle:learnMoreLink:","@40@0:8@16@24@32");
+ if(!modern){
   Class details=NSClassFromString(@"PHSOneUpInfoPanelDetailsViewController");
   SEL status=NSSelectorFromString(@"modelForBackedupStatus"),factory=NSSelectorFromString(@"contentViewModelWithTitle:subtitle:subtitleContainsHTML:image:");
   Method sm=class_getInstanceMethod(details,status),fm=class_getInstanceMethod(details,factory);

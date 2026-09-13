@@ -4,7 +4,7 @@
 #import <objc/runtime.h>
 #include <assert.h>
 
-static NSString *Version=@"unsupported",*Executable=@"GooglePhotos";
+static NSString *Version=@"unsupported",*Executable=@"OtherApp";
 static BOOL ResourcesReady,ThrowDuringEncode;
 static NSUInteger Actions,CellCalls;
 @interface GSStorageFixtureBundle : NSObject @end
