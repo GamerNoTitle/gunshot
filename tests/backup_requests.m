@@ -61,7 +61,14 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (_Bool)didStart{return NO;}
 - (void)didCompleteWithSuccess:(_Bool)success resultantMediaItem:(id)item GS_ERROR_LABEL:(GS_ERROR_TYPE)error{if(success&&!error)successes++;else failures++;}
 @end
-@interface GMUAssetUploadRequest : GMUUploadRequest
+@protocol ProgressRequest <NSObject>
+@property(nonatomic,strong) PHAsset *asset;
+@property(nonatomic,strong) id delegate;
+- (double)progress;
+- (void)start;
+- (void)cancel;
+@end
+@interface GMUAssetUploadRequest : GMUUploadRequest <ProgressRequest>
 @property(nonatomic,strong) PHAsset *asset;
 - (void)start;
 - (_Bool)shouldTimeout;
@@ -73,7 +80,7 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)cancel{}
 @end
 // A separate class as in the real app, not a subclass of GMUAssetUploadRequest.
-@interface GMULivePhotoSingleUploadRequest : NSObject
+@interface GMULivePhotoSingleUploadRequest : NSObject <ProgressRequest>
 @property(nonatomic,strong) Credentials *credentials;
 @property(nonatomic,strong) id delegate;
 - (double)progress;
@@ -122,13 +129,13 @@ static void Stateless(id object,SEL selector,id asset,BOOL cellular,id progress,
 @end
 @implementation ProgressDelegate
 - (void)uploadRequestDidProgress:(id)request{
- assert(NSThread.isMainThread);self.notifications++;self.displayedProgress=[request progress];
+ assert(NSThread.isMainThread);self.notifications++;self.displayedProgress=[(id<ProgressRequest>)request progress];
  assert(self.displayedProgress>=0&&self.displayedProgress<=1);
 }
 @end
 static void CheckProgress(void){
  for(Class c in @[GMUAssetUploadRequest.class,GMULivePhotoSingleUploadRequest.class]){
-  id r=Request(c,primaryAccount.accountID);[r asset].mediaType=PHAssetMediaTypeVideo;
+  id<ProgressRequest> r=Request(c,primaryAccount.accountID);[r asset].mediaType=PHAssetMediaTypeVideo;
   ProgressDelegate *dialog=[ProgressDelegate new];[r setDelegate:dialog];
   assert([r progress]==0.125); // Unintercepted native progress is unchanged.
   NSUInteger before=queued,finished=successes+failures;
@@ -146,7 +153,7 @@ static void CheckProgress(void){
   holdJob=NO;Drain(finished+1);assert([r progress]==1&&nativePayload==0);
  }
  // A cancelled native dialog must not receive further Go progress callbacks.
- id r=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
+ id<ProgressRequest> r=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
  ProgressDelegate *dialog=[ProgressDelegate new];[r setDelegate:dialog];
  holdJob=YES;uploadedBytes=100;totalBytes=400;[r start];Await(^BOOL{return dialog.displayedProgress==0.25;});
  [r cancel];NSUInteger events=dialog.notifications;uploadedBytes=300;
