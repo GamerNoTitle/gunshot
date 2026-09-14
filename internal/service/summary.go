@@ -48,33 +48,39 @@ func diagnosticFailure(code string) string {
 	}
 }
 
+type mediaSummary struct {
+	States       map[string]int `json:"states"`
+	FailureCodes map[string]int `json:"failureCodes"`
+}
+
 // Caller holds e.mu. No account, asset, filename, hash, token or media key is
 // exported. Profiles describe the immutable job policy, not verified cloud data.
 func (e *Engine) uploadSummary() map[string]any {
-	media := map[string]any{}
-	for _, job := range e.state.Jobs {
-		kind := diagnosticMediaType(job.Resources)
-		if media[kind] == nil {
-			media[kind] = map[string]any{"states": map[string]int{}, "failureCodes": map[string]int{}}
-		}
-		entry := media[kind].(map[string]any)
-		entry["states"].(map[string]int)[job.State]++
-		if job.Error != "" || job.State == "failed" {
-			entry["failureCodes"].(map[string]int)[diagnosticFailure(job.Error)]++
-		}
-	}
 	modes := map[string]any{}
+	counts := map[string]map[string]int{}
 	for _, mode := range []struct {
 		name, model string
 		policy      int
 	}{{"original", "Pixel XL", 3}, {"saver", "Pixel 2", 1}, {"quota", "Pixel 8", 3}} {
-		counts := map[string]int{}
-		for _, job := range e.state.Jobs {
-			if job.Quality == mode.name {
-				counts[job.State]++
-			}
+		states := map[string]int{}
+		counts[mode.name] = states
+		modes[mode.name] = map[string]any{"model": mode.model, "storagePolicy": mode.policy, "uploadQuality": 1, "states": states}
+	}
+	media := map[string]*mediaSummary{}
+	for _, job := range e.state.Jobs {
+		if states := counts[job.Quality]; states != nil {
+			states[job.State]++
 		}
-		modes[mode.name] = map[string]any{"model": mode.model, "storagePolicy": mode.policy, "uploadQuality": 1, "states": counts}
+		kind := diagnosticMediaType(job.Resources)
+		entry := media[kind]
+		if entry == nil {
+			entry = &mediaSummary{States: map[string]int{}, FailureCodes: map[string]int{}}
+			media[kind] = entry
+		}
+		entry.States[job.State]++
+		if job.Error != "" || job.State == "failed" {
+			entry.FailureCodes[diagnosticFailure(job.Error)]++
+		}
 	}
 	conditions := map[string]bool{"online": e.online, "wifi": e.wifi, "charging": e.charging, "paused": e.state.Options.Paused}
 	return map[string]any{"completionRevision": e.state.CompletionRevision, "defaultQuality": e.state.Options.Quality, "profiles": modes, "mediaTypes": media, "conditions": conditions, "serverQualityVerified": false}

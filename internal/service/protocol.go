@@ -71,11 +71,15 @@ func (e *Engine) handle(r Request, role string) (any, error) {
 		if r.Options == nil || !r.Options.valid() {
 			return nil, errRequest
 		}
+		changed := e.state.Options != *r.Options
 		e.state.Options = *r.Options
 		if r.Options.Paused || (r.Options.WiFiOnly && !e.wifi) || (r.Options.ChargingOnly && !e.charging) {
 			for _, c := range e.active {
 				c()
 			}
+		}
+		if !changed {
+			return nil, nil
 		}
 		return nil, e.save()
 	case "list":
@@ -97,22 +101,30 @@ func (e *Engine) handle(r Request, role string) (any, error) {
 		}
 		return e.begin(r, role)
 	case "clear_completed":
-		next := []*Job{}
+		next := e.state.Jobs[:0]
 		for _, j := range e.state.Jobs {
-			if j.State != "completed" && j.State != "cancelled" {
+			if j.State == "completed" || j.State == "cancelled" {
+				delete(e.jobsByID, j.ID)
+			} else {
 				next = append(next, j)
 			}
 		}
+		if len(next) == len(e.state.Jobs) {
+			return nil, nil
+		}
+		clear(e.state.Jobs[len(next):]) // Release removed jobs held by the backing array.
 		e.state.Jobs = next
 		return nil, e.save()
 	case "retry_failed":
+		changed := false
 		for _, j := range e.state.Jobs {
 			if j.State == "failed" {
-				j.State = "pending"
-				j.Attempts = 0
-				j.Next = 0
-				j.CancelRequested = false
+				j.resetRetry()
+				changed = true
 			}
+		}
+		if !changed {
+			return nil, nil
 		}
 		return nil, e.save()
 	}
@@ -153,10 +165,7 @@ func (e *Engine) handle(r Request, role string) (any, error) {
 		if j.State != "failed" {
 			return nil, errRequest
 		}
-		j.State = "pending"
-		j.Attempts = 0
-		j.Next = 0
-		j.CancelRequested = false
+		j.resetRetry()
 		return nil, e.save()
 	}
 	return nil, errRequest

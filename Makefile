@@ -2,8 +2,9 @@ TARGET := iphone:clang:latest:15.0
 ARCHS = arm64 arm64e
 INSTALL_TARGET_PROCESSES = GooglePhotos MobileSlideShow
 include $(THEOS)/makefiles/common.mk
+include UI/sources.mk
 TWEAK_NAME = Gunshot
-Gunshot_FILES = Tweak.xm Shared/IPCClient.m Shared/GSSandboxAccess.m Shared/GSDiscovery.c UI/GSPanel.m UI/GSBatchImport.m UI/GSAlbumPicker.m UI/GSAccountMenu.m UI/GSNativeAccount.m UI/GSNativeRelay.m UI/GSAccountConnection.m UI/GSExporter.m UI/GSNativeRouting.m UI/GSBackupRequests.m UI/GSPhotosIntegration.m UI/GSUploadMonitor.m UI/GSBackupLifecycle.m UI/GSUploadDiagnostics.m UI/GSUnlimitedStorage.m
+Gunshot_FILES = Tweak.xm Shared/IPCClient.m Shared/GSSandboxAccess.m Shared/GSDiscovery.c $(addprefix UI/,$(GUNSHOT_UI_FILES))
 Gunshot_CFLAGS = -fobjc-arc -fblocks -IShared
 Gunshot_FRAMEWORKS = UIKit Foundation Photos PhotosUI
 include $(THEOS_MAKE_PATH)/tweak.mk

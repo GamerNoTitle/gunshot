@@ -1,60 +1,26 @@
-# Google Photos アプリ解析結果・総合索引
+# Google Photos アプリ解析の索引
 
-提供 IPA に対してこれまで行った解析結果の入口です。**アプリ全機能の意味・動作を解析し終えたという意味ではありません。** 全件抽出した metadata と、処理まで追った箇所、未確認の箇所を以下に整理しています。
+提供 IPA の静的解析、現在の実装、検証項目への入口です。クラスや selector の存在確認、mock test、実機・サーバーでの確認は区別してください。
 
-## 読みたい情報から探す
+| 対象 | 参照先 |
+| --- | --- |
+| 7.20.2 / 7.92.0 の API・ABI 差分、必要 OS | [互換性監査](google-photos-7.20.2.md) / [7.20.2 contracts](objc/7.20.2-contracts.json) |
+| 全クラス・instance selector・encoding・static IMP | [機械可読索引と検索方法](objc/README.md) / [入力 hash・件数](objc/manifest.json) |
+| 手動・自動バックアップの使い方、対応経路、診断 | [バックアップ転送](../native-routing.md) |
+| 共通要求の移譲・再照合・画質 | [処理の解析と回帰修正](backup-routing.md) |
+| native completion の内部依存 | [限定した関数の静的解析](completion-analysis.md) |
+| 原本画質の表示と完了後同期 | [画質表示と同期](original-quality-display.md) |
+| native SSO・ログイン中のアカウントとの連携 | [認証とアカウントメニュー](native-account.md) |
+| 設定メニューのタップ処理 | [UI の解析と修正](account-menu-tap.md) |
+| 純正の無制限ストレージ表示 | [表示専用 hook](unlimited-storage.md) |
+| Go uploader・認証・永続キュー・IPC | [実装構成](../architecture.md) |
+| パッケージの利用・jailed / LiveContainer | [README](../../README.md) / [jailed](../jailed.md) |
+| 実機で確認すべき項目 | [検証チェックリスト](../device-validation.md) / [一括取込](../bulk-import.md) |
 
-| 対象 | 参照先 | 確認水準 |
-| --- | --- | --- |
-| 7.20.2 の旧版対応・ABI 差分・必要 OS | [7.20.2 互換性監査](google-photos-7.20.2.md) / [contracts](objc/7.20.2-contracts.json) | 添付 IPA の metadata・対象関数の逆アセンブル。実機確認待ち |
-| 初代 Pixel の原本・iPhone の節約表示・完了後同期 | [画質表示と同期](original-quality-display.md) | upstream 2 実装、7.92.0 の enum / 表示 call path、利用者の Web 確認 |
-| 全クラス名・instance selector・encoding・static IMP | [機械可読全件索引](objc/README.md) | metadata 抽出済み |
-| 入力同定・件数・SHA-256 | [manifest](objc/manifest.json) | 対象 2 image の照合情報 |
-| upload / backup / Live Photo / account 周辺のクラス | [アップロード関連クラス索引](upload-symbols.md) | 今回参照したクラスの全 instance method |
-| jailed / jailbreak の手動・自動バックアップ要求 | [backup-routing.md](backup-routing.md) | 要求の移譲・再照合・画質。診断 8 の ID 型混同と回帰修正を記録 |
-| 手動バックアップ action | [native-routing.md](../native-routing.md) | host / ABI 確認、hook 実装、mock test |
-| 自動バックアップ・Scotty・legacy の境界 | [full-upload-replacement.md](../full-upload-replacement.md) | metadata・一部 call path 確認、実機は未確認 |
-| native completion の内部依存 | [completion-analysis.md](completion-analysis.md) | 限定した関数の逆アセンブル追跡 |
-| Go uploader / 認証 / commit / Live Photo | [architecture.md](../architecture.md) | upstream source と iOS bridge の解析 |
-| iOS 側の構成・画質・queue | [README](../../README.md) | 実装と CI。実機 upload は未確認 |
-| `.deb` 注入・jailed・LiveContainer | [jailed.md](../jailed.md) | ビルド / 配布手順 |
-| 実機で確認すべき項目 | [device-validation.md](../device-validation.md) | 実行待ちの検証項目 |
-| 未解析領域と限界 | [coverage.md](coverage.md) | 網羅性の境界 |
+## 解析範囲と限界
 
-- [純正の無制限ストレージ表示](unlimited-storage.md): native state / 翻訳リソース / 表示専用 hook / 既定オンの切替。
+instance-method 索引は 7.92.0 の本体と generated framework の 2 image が対象です。class method、category、Swift-only / C / C++ 関数、拡張 executable、全 call graph は対象外です。具体的な抽出範囲は[索引の説明](objc/README.md#抽出範囲と限界)を参照してください。
 
-## 7.92.0 の対象アプリ
+通常の PHAsset バックアップは転送・再照合の実装がありますが、locked folder の暗号化・鍵管理、編集 / CNDE / 生成コンテンツ、共有・partner sharing、既存 background URLSession まで網羅した保証はありません。native DB の schema / mutation 全体、私有 protobuf の全 descriptor、検索・顔認識・Lens・memories 等の全機能も未解析です。
 
-- 提供ファイル: `com.google.photos-7.92.0-eeveedecrypter.ipa`
-- Bundle ID: `com.google.photos`
-- Executable: `GooglePhotos`
-- Version: `7.92.0` / MinimumOSVersion: `18.0`
-- `NSPhotoLibraryUsageDescription`: 存在を確認
-- metadata 抽出先: メイン executable と `GooglePhotos_GeneratedFramework.framework`
-- 総数: **26,183 class entries / 165,016 instance-method entries**（image 別件数の和）
-
-クラス名や selector はコード検索用の識別子です。索引の名前から機能の実装や API 対応を推定して「確認済み」にしないでください。例えば account 関連 selector の存在確認と、実際の account/token format の確認は別です。
-
-## GoToHP から参照する native 境界
-
-| 境界 | 主なクラス・selector | 実装での扱い |
-| --- | --- | --- |
-| 手動 backup | PHSBackupActionBehaviorImpl / PHSActionsGridModel → backupLocalAssets: | 共通要求がある場合は純正スケジューラーへ渡す。API 適合時のみ opt-in 転送 |
-| 選択 asset | PHSLocalAsset → phAsset / isLocked | PhotoKit asset を解決、locked を転送対象にしない |
-| native asset request | GMUAssetUploadRequest → start / completion | 両方式で GoToHP へ移譲し、完了後に純正の fingerprint 再照合 |
-| native Live Photo | GMULivePhotoSingleUploadRequest | PHAsset 原本ペアを転送。純正完了は実サーバー再照合で判定 |
-| Swift transport | ScottyUploadServiceImpl → uploadWithAsset:… / statelessUploadWithAsset:… | 適合する API の payload fallback を転送有効時に停止 |
-| legacy transport | GMUUploadRequest → startFetcher | 転送有効時と再照合中の native payload を停止 |
-| native result | resultantMediaItem / metadata / dedupInfo | 空 object や mediaKey string で成功を偽装しない |
-| UIKit 入口 | UIWindow / UIActivityViewController | 常設ボタン・共有 action。実機 UI 検証待ち |
-
-## 検証履歴
-
-- [PR #1](https://github.com/tqmane/gunshot/pull/1): daemon / bridge / queue / UI の初期実装。
-- [PR #2](https://github.com/tqmane/gunshot/pull/2): jailed / LiveContainer 用成果物、アプリ内設定、手動 action 転送。
-- [PR #8](https://github.com/tqmane/gunshot/pull/8) / [PR #9](https://github.com/tqmane/gunshot/pull/9): 共通要求の手動・自動転送、原本表示と完了後の同期。現在は jailbreak にも組込み、[診断 7](backup-routing.md) の欠落を修正。
-- [PR #3](https://github.com/tqmane/gunshot/pull/3): 全置換に必要な native uploader の受動診断。
-- [診断版 CI](https://github.com/tqmane/gunshot/actions/runs/34673212132): Go / C ABI / native mock tests / 3方式の iOS build・package check 成功。実機互換性の証明ではありません。
-
-- [ログイン中アカウントの認証とアカウントメニュー](native-account.md) — jailed の SSO bridge、ログイン拒否の再現条件、メニュー移動。
-- [設定メニューのタップ処理と UI 修正](account-menu-tap.md) — dismiss 前のイベント取得、表示先の解決、設定画面の再構成。
+native account 連携は実装済みですが、静的解析や CI は実認証、サーバー側の画質・quota、Live Photo の pairing / commit / 再生、端末での動作の証明にはなりません。未解析・未検証という記載から、機能の有無や安全性を断定しないでください。

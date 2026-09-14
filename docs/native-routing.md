@@ -34,4 +34,30 @@ jailed / LiveContainer では Google Photos を前面で開いてください。
 旧手動 `backupLocalAssets:` の互換処理はソースに残りますが、共通要求の ABI が
 不適合なら設定から手動・自動連携を新たに有効化できません。
 locked folder・編集専用・共有専用など、任意の全経路の置換は保証しません。
-[対応範囲と検証項目](full-upload-replacement.md)。
+[実機検証項目](device-validation.md)。
+
+## 対応範囲
+
+| 経路 | 現在の扱い |
+| --- | --- |
+| GMUAssetUploadRequest.start | 手動・自動の PHAsset 原本を GoToHP の永続キューへ転送 |
+| GMULivePhotoSingleUploadRequest.start | 写真・pairedVideo を一組で転送し、純正のサーバー再照合で完了判定 |
+| 純正の完了 callback | 旧版の数値 errorCode / 新版の NSError を自動選択。成功結果を捏造しない |
+| GMUUploadRequest.startFetcher / startCNDEUpload | 転送有効時・再照合中の native payload fallback を停止 |
+| Swift Scotty / statelessUpload | 対応 ABI が存在する場合に payload fallback を停止。7.20.2 では該当 Swift class は未検出 |
+| GoToHP の設定から直接送信 | 共通の完了監視が純正 fetchData に表示更新を要求 |
+| locked folder / 編集専用 / 共有専用 / 既存 background URLSession | 全経路の移譲を検証できていない。通常の PHAsset バックアップと同等とは扱わない |
+
+Go の completed / mediaKey だけでは、純正側のバックアップ成功を保証しません。
+
+## 診断
+
+GoToHP 設定の **Upload diagnostics** を有効にし、標準操作を試して
+**Export diagnostics** を使います。`backupRouting` の intercepted / queued /
+nativeReconciled、`photosIntegration` の syncRequested、`completionMonitor` の
+syncSignals / uploadSummary を確認できます。
+
+標準経路そのものを調べるときだけ転送を OFF にします。その場合は純正送信となり、
+GoToHP の画質 policy は適用されません。診断はトークン・写真・account ID・mediaKey・
+HTTP 本文を記録しません。CI は API fixture、Go queue、パッケージ構成を検証しますが、
+Google サーバーの再照合や端末での表示時間を証明するものではありません。

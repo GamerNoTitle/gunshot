@@ -63,6 +63,7 @@ func (e *Engine) begin(r Request, owner string) (any, error) {
 		e.importHashes[id][i] = sha256.New()
 	}
 	e.state.Jobs = append(e.state.Jobs, j)
+	e.jobsByID[id] = j
 	if err := e.save(); err != nil {
 		return nil, err
 	}
@@ -147,21 +148,31 @@ func (e *Engine) seal(j *Job) (any, error) {
 	}
 	return map[string]any{"id": j.ID}, nil
 }
+func (j *Job) resetRetry() {
+	j.State = "pending"
+	j.Attempts = 0
+	j.Next = 0
+	j.CancelRequested = false
+}
+
 func (e *Engine) Tick() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.stopped || e.fault || e.state.Options.Paused || !e.online || (e.state.Options.WiFiOnly && !e.wifi) || (e.state.Options.ChargingOnly && !e.charging) {
 		return
 	}
+	now := time.Now().Unix()
 	for _, j := range e.state.Jobs {
 		if len(e.active) >= e.state.Options.Concurrent {
 			return
 		}
-		if j.State != "pending" || j.Next > time.Now().Unix() {
+		if j.State != "pending" || j.Next > now {
 			continue
 		}
 		// Missing/expired host authorization waits without consuming retry budget.
-		if e.nativeAuthorization(j.Account) == "waiting" { continue }
+		if e.nativeAuthorization(j.Account) == "waiting" {
+			continue
+		}
 		j.State = "preparing"
 		if j.Quality == "original" {
 			j.OriginalPolicy = 1
@@ -235,7 +246,9 @@ func (e *Engine) execute(ctx context.Context, snapshot Job, paths []string) {
 		j.State = "pending"
 		j.Error = "paused"
 	case e.nativeAuthorization(j.Account) == "waiting":
-		if j.Attempts > 0 { j.Attempts-- }
+		if j.Attempts > 0 {
+			j.Attempts--
+		}
 		j.State = "pending"
 		j.Error = "waiting_for_native_auth"
 		j.Next = 0

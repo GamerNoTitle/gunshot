@@ -23,7 +23,7 @@ The submodule is immutable during builds. Script string anchors intentionally fa
 
 ## Transport and storage boundary
 
-Jailbreak clients use direct Mach lookup and, when needed, a restricted libSandy profile plus authenticated XPC discovery.
+Jailbreak clients use direct Mach lookup and, when needed, a restricted libSandy profile plus authenticated XPC discovery. `Shared/GSXPC.h` supplies C ABI declarations (not an implementation) for SDKs without XPC headers, with explicit object ownership. The macOS discovery fixtures exercise these declarations against libxpc.
 
 Only Photos and Google Photos with the expected signing identifiers and executable locations are accepted, using the kernel Mach audit trailer. The signing identifier is derived from an audit-token-bound SecTask; the supplementary path check uses the token PID. PID recycling cannot substitute the signing identity. IPC fails closed if Security SPI is unavailable.
 

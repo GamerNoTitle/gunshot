@@ -39,7 +39,7 @@ Google・Apple とは無関係の非公式プロジェクトです。**現状の
 
 Google Photosの起動時にログイン中アカウントへ自動接続します。GoToHP設定を開く必要はありません。**アップロード → 写真・動画を選択**からアップロードできます。**Google Photos は前面で開いたままにしてください。** jailed 版はアプリを閉じると送信を継続できません。
 
-jailed / 純正APIに互換性のあるGoogle Photosの**手動・自動バックアップを GoToHP へ送る**は既定 OFF です。有効にして送信先を確認すると、GoToHP を開かずに対応するバックアップ操作を転送します。自動バックアップには Google Photos 側のバックアップも ON にしてください。[対応経路](docs/analysis/backup-routing.md)と[未対応の範囲](docs/full-upload-replacement.md)。
+jailed / 純正APIに互換性のあるGoogle Photosの**手動・自動バックアップを GoToHP へ送る**は既定 OFF です。有効にして送信先を確認すると、GoToHP を開かずに対応するバックアップ操作を転送します。自動バックアップには Google Photos 側のバックアップも ON にしてください。[対応経路](docs/analysis/backup-routing.md)と[未対応の範囲](docs/native-routing.md)。
 
 ### Jailbreak
 
