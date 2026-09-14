@@ -18,12 +18,10 @@
 #import <objc/message.h>
 #include <assert.h>
 #include <stdatomic.h>
-// Include the adapter so this fixture can shorten only its timer intervals.
-#import "../UI/GSBackupRequests.m"
 static BOOL remoteMatch=YES;
 static atomic_ulong queued,conditionReads,cancelRequests;
+static atomic_long uploadedBytes,totalBytes;
 static NSUInteger nativeStarts,nativePayload,successes,failures;
-static NSUInteger nativeLookups,nativePreparations;
 static atomic_bool foreground=YES,online=YES,wifi=YES,charging=YES,paused=NO,holdJob=NO,failJob=NO,switchDuringExport=NO;
 static PHSAccount *primaryAccount,*otherAccount;
 @implementation PHAsset @end
@@ -39,7 +37,7 @@ NSDictionary *GSRequest(NSDictionary *request,NSError **error){
  if([request[@"op"]isEqual:@"accounts"])return @{@"selected":@"test@example.com"};
  if([request[@"op"]isEqual:@"options"])return @{@"quality":@"original",@"wifiOnly":@YES,@"chargingOnly":@YES,@"paused":@(atomic_load(&paused))};
  if([request[@"op"]isEqual:@"upload_summary"]){conditionReads++;return @{@"conditions":@{@"online":@(atomic_load(&online)),@"wifi":@(atomic_load(&wifi)),@"charging":@(atomic_load(&charging)),@"paused":@(atomic_load(&paused))}};}
- if([request[@"op"]isEqual:@"job"])return atomic_load(&holdJob)?@{@"state":@"pending"}:atomic_load(&failJob)?@{@"state":@"failed"}:@{@"state":@"completed",@"mediaKey":@"real-server-key"};
+ if([request[@"op"]isEqual:@"job"])return atomic_load(&holdJob)?@{@"state":@"uploading",@"uploaded":@(atomic_load(&uploadedBytes)),@"total":@(atomic_load(&totalBytes))}:atomic_load(&failJob)?@{@"state":@"failed"}:@{@"state":@"completed",@"mediaKey":@"real-server-key"};
  if([request[@"op"]isEqual:@"cancel"])cancelRequests++;
  return @{};
 }
@@ -51,46 +49,34 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 @implementation Credentials @end
 @interface GMUUploadRequest : NSObject
 @property(nonatomic,strong) Credentials *credentials;
+@property(nonatomic,strong) id delegate;
+- (double)progress;
 - (void)startFetcher;
 - (_Bool)didStart;
 - (void)didCompleteWithSuccess:(_Bool)success resultantMediaItem:(id)item GS_ERROR_LABEL:(GS_ERROR_TYPE)error;
 @end
 @implementation GMUUploadRequest
+- (double)progress{return 0.125;}
 - (void)startFetcher{nativePayload++;}
 - (_Bool)didStart{return NO;}
 - (void)didCompleteWithSuccess:(_Bool)success resultantMediaItem:(id)item GS_ERROR_LABEL:(GS_ERROR_TYPE)error{if(success&&!error)successes++;else failures++;}
 @end
 @interface GMUAssetUploadRequest : GMUUploadRequest
 @property(nonatomic,strong) PHAsset *asset;
-@property(nonatomic) BOOL fingerprintLookup,silentLookup;
-@property(nonatomic) NSUInteger missesRemaining;
-@property(nonatomic,strong) id lastFingerprint;
 - (void)start;
 - (_Bool)shouldTimeout;
 - (void)cancel;
-- (void)existenceCheckDidFailWithFingerprint:(id)fingerprint;
-- (void)lookup:(id)fingerprint;
 @end
 @implementation GMUAssetUploadRequest
-- (void)start{nativeStarts++;if(self.fingerprintLookup)[self lookup:[NSObject new]];else if(remoteMatch)[self didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];else[self startFetcher];}
-- (_Bool)shouldTimeout{return self.asset.mediaType!=PHAssetMediaTypeVideo;}
+- (void)start{nativeStarts++;if(remoteMatch)[self didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];else[self startFetcher];}
+- (_Bool)shouldTimeout{return YES;}
 - (void)cancel{}
-- (void)lookup:(id)fingerprint{
- nativeLookups++;if(self.lastFingerprint)assert(self.lastFingerprint==fingerprint);self.lastFingerprint=fingerprint;
- if(self.silentLookup)return;
- if(self.missesRemaining){self.missesRemaining--;[self existenceCheckDidFailWithFingerprint:fingerprint];}
- else [self didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
-}
-#ifdef GS_TEST_LEGACY
-- (void)fingerprintDidComplete:(id)fingerprint{[self lookup:fingerprint];}
-#else
-- (void)fingerprintDidComplete:(id)fingerprint error:(id)error{assert(!error);[self lookup:fingerprint];}
-#endif
-- (void)existenceCheckDidFailWithFingerprint:(id)fingerprint{nativePreparations++;[self startFetcher];}
 @end
 // A separate class as in the real app, not a subclass of GMUAssetUploadRequest.
 @interface GMULivePhotoSingleUploadRequest : NSObject
 @property(nonatomic,strong) Credentials *credentials;
+@property(nonatomic,strong) id delegate;
+- (double)progress;
 - (_Bool)didStart;
 @property(nonatomic,strong) PHAsset *asset;
 - (void)start;
@@ -99,6 +85,7 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)didCompleteWithError:(id)error resultantMediaItem:(id)item;
 @end
 @implementation GMULivePhotoSingleUploadRequest
+- (double)progress{return 0.125;}
 - (_Bool)didStart{return NO;}
 - (void)start{if([self didStart])return;nativeStarts++;[self didCompleteWithError:nil resultantMediaItem:@"live-server-item"];}
 - (_Bool)shouldTimeout{return YES;}
@@ -127,56 +114,45 @@ static void Await(BOOL(^done)(void)){NSDate *deadline=[NSDate dateWithTimeInterv
 static void Drain(NSUInteger expected){NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];while(successes+failures<expected&&deadline.timeIntervalSinceNow>0)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];assert(successes+failures==expected);}
 static void Scotty(id object,SEL selector,id asset,BOOL cellular,BOOL background,id start,id progress,void(^released)(void),void(^done)(id,id)){nativePayload++;if(released)released();if(done)done(@"native-result",nil);}
 static void Stateless(id object,SEL selector,id asset,BOOL cellular,id progress,void(^done)(id,id)){nativePayload++;if(done)done(@"native-result",nil);}
-static GMUAssetUploadRequest *Video(NSUInteger misses,BOOL silent){
- GMUAssetUploadRequest *r=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
- r.asset.mediaType=PHAssetMediaTypeVideo;r.fingerprintLookup=YES;r.missesRemaining=misses;r.silentLookup=silent;return r;
+// The audited manual dialog aggregates request.progress when this delegate fires.
+@interface ProgressDelegate : NSObject
+@property(nonatomic) NSUInteger notifications;
+@property(nonatomic) double displayedProgress;
+- (void)uploadRequestDidProgress:(id)request;
+@end
+@implementation ProgressDelegate
+- (void)uploadRequestDidProgress:(id)request{
+ assert(NSThread.isMainThread);self.notifications++;self.displayedProgress=[request progress];
+ assert(self.displayedProgress>=0&&self.displayedProgress<=1);
 }
-static void Reconciliation(void){
- GSReconcileDelay=0.01;GSReconcileTimeout=1;
- NSUInteger before=queued,finished=successes+failures,lookups=nativeLookups,ok=successes;
- GMUAssetUploadRequest *video=Video(2,NO);[video start];Drain(finished+1);
- assert(queued==before+1&&nativeLookups==lookups+3&&successes==ok+1&&nativePreparations==0&&nativePayload==0);
- // All-negative server results fail once, without a second export or payload.
- before=queued;finished=successes+failures;lookups=nativeLookups;
- video=Video(100,NO);[video start];Drain(finished+1);
- assert(queued==before+1&&nativeLookups==lookups+1+GSReconcileRetryLimit&&successes==ok+1&&nativePreparations==0);
- // The native video API may never time out. A late completion must not deliver
- // a second result after our deadline has already released the request.
- GSReconcileTimeout=0.1;finished=successes+failures;
- video=Video(0,YES);[video start];Drain(finished+1);assert(![video shouldTimeout]);
- [video didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
- [video existenceCheckDidFailWithFingerprint:video.lastFingerprint];
- [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
- assert(successes+failures==finished+1&&GSReconciling.count==0);
- GSReconcileTimeout=1;GSReconcileDelay=0.05;
- // Cancellation, disabling routing and account changes invalidate a queued retry.
- for(NSUInteger mode=0;mode<3;mode++){
-  finished=successes+failures;lookups=nativeLookups;video=Video(2,NO);[video start];
-  Await(^BOOL{return [objc_getAssociatedObject(video,&GSTransferKey) retryPending];});
-  if(mode==0)[video cancel];else if(mode==1)GSSetNativeRouting(NO,nil);else GSFixtureSelectAccount(otherAccount);
-  if(mode==0){[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];assert(successes+failures==finished);}
-  else Drain(finished+1);
-  assert(nativeLookups==lookups+1&&GSReconciling.count==0);
-  GSSetNativeRouting(YES,@"test@example.com");GSFixtureSelectAccount(primaryAccount);
+@end
+static void CheckProgress(void){
+ for(Class c in @[GMUAssetUploadRequest.class,GMULivePhotoSingleUploadRequest.class]){
+  id r=Request(c,primaryAccount.accountID);[r asset].mediaType=PHAssetMediaTypeVideo;
+  ProgressDelegate *dialog=[ProgressDelegate new];[r setDelegate:dialog];
+  assert([r progress]==0.125); // Unintercepted native progress is unchanged.
+  NSUInteger before=queued,finished=successes+failures;
+  holdJob=YES;uploadedBytes=100;totalBytes=0;[r start];Await(^BOOL{return queued==before+1;});
+  assert([r progress]==0&&dialog.notifications==0); // Unknown length is not NaN/100%.
+  totalBytes=400;Await(^BOOL{return dialog.displayedProgress==0.25;});
+  assert(successes+failures==finished);
+  uploadedBytes=300;Await(^BOOL{return dialog.displayedProgress==0.75;});
+  // Paused/unchanged byte counts do not simulate progress or spam the delegate.
+  NSUInteger events=dialog.notifications;
+  [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.1]];
+  assert(dialog.notifications==events&&dialog.displayedProgress==0.75);
+  uploadedBytes=400;Await(^BOOL{return dialog.displayedProgress==1;});
+  assert(successes+failures==finished); // Transfer progress never completes the job.
+  holdJob=NO;Drain(finished+1);assert([r progress]==1&&nativePayload==0);
  }
- // Two requests for the same asset each own their reconciliation guard.
- finished=successes+failures;
- GMUAssetUploadRequest *first=Video(0,YES),*second=Video(0,YES);
- first.asset.mediaType=second.asset.mediaType=PHAssetMediaTypeImage;
- second.asset.localIdentifier=first.asset.localIdentifier;
- holdJob=YES;before=queued;[first start];[second start];Await(^BOOL{return queued==before+2;});holdJob=NO;
- Await(^BOOL{return [GSReconciling countForObject:first.asset.localIdentifier]==2;});
- assert(![first shouldTimeout]&&![second shouldTimeout]);
- GSSetNativeRouting(NO,nil);[first cancel];assert(GSBlockNative());
- [second didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
- assert(successes+failures==finished+1&&!GSBlockNative());
- // Disabled routing preserves the native miss path.
- before=nativePreparations;NSUInteger payload=nativePayload;
- video=Video(1,NO);[video start];assert(nativePreparations==before+1&&nativePayload==payload+1);
- GSSetNativeRouting(YES,@"test@example.com");
- NSDictionary *d=GSBackupRequestsSnapshot();
- assert([d[@"reconcileExhausted"]unsignedIntegerValue]==1&&[d[@"reconcileTimedOut"]unsignedIntegerValue]==1);
- NSLog(@"PASS video visibility retries, retry exhaustion, missing/late completion, cancellation, account/toggle changes and overlapping reconciliation");
+ // A cancelled native dialog must not receive further Go progress callbacks.
+ id r=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
+ ProgressDelegate *dialog=[ProgressDelegate new];[r setDelegate:dialog];
+ holdJob=YES;uploadedBytes=100;totalBytes=400;[r start];Await(^BOOL{return dialog.displayedProgress==0.25;});
+ [r cancel];NSUInteger events=dialog.notifications;uploadedBytes=300;
+ [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.1]];
+ assert(dialog.notifications==events&&[r progress]==0.125);holdJob=NO;
+ NSLog(@"PASS native video/Live Photo progress 25/75/100%%, unknown totals, unchanged progress, cancellation and separate native completion");
 }
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)Bundle);
@@ -248,7 +224,7 @@ int main(void){@autoreleasepool{
  [invalidAuth start];Drain(finished+1);assert(queued==before&&nativeStarts==starts);
  ((GSFixtureIdentity *)primaryAccount->_ssoIdentity).hasValidAuth=YES;
  assert(GSNativeIdentityMatches(@"fixture-user-A"));
- Reconciliation();
+ CheckProgress();
  NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, original resources, account binding, duplicate start, cancellation and native fallback blocking");
  return 0;
 }}

@@ -119,7 +119,7 @@ jobs:
           .build/native-routing-test
           clang -fobjc-arc -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/silent-jailed-routing-test
           .build/silent-jailed-routing-test
-          clang -fobjc-arc -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m tests/backup_requests.m -o .build/backup-requests-test
+          clang -fobjc-arc -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/backup-requests-test
           .build/backup-requests-test
           clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSPhotosIntegration.m tests/photos_integration.m -o .build/photos-integration-test
           .build/photos-integration-test
@@ -132,9 +132,9 @@ jobs:
       - name: Jailbreak backup routing and shared completion monitor
         if: matrix.scheme == 'rootless'
         run: |
-          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m tests/backup_requests.m -o .build/daemon-backup-test
+          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/daemon-backup-test
           .build/daemon-backup-test
-          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m tests/backup_requests.m -o .build/daemon-backup-legacy-test
+          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/daemon-backup-legacy-test
           .build/daemon-backup-legacy-test
           clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSUploadMonitor.m UI/GSPhotosIntegration.m tests/upload_monitor.m -o .build/upload-monitor-test
           .build/upload-monitor-test
@@ -148,7 +148,7 @@ jobs:
           .build/native-routing-legacy-test
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeRouting.m tests/native_routing.m -o .build/silent-jailed-routing-legacy-test
           .build/silent-jailed-routing-legacy-test
-          clang -fobjc-arc -DGS_TEST_LEGACY=1 -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m tests/backup_requests.m -o .build/backup-requests-legacy-test
+          clang -fobjc-arc -DGS_TEST_LEGACY=1 -DGS_JAILED=1 -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/backup-requests-legacy-test
           .build/backup-requests-legacy-test
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/native-shims UI/GSPhotosIntegration.m tests/photos_integration.m -o .build/photos-integration-legacy-test
           .build/photos-integration-legacy-test
