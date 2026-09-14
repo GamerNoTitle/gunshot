@@ -25,11 +25,11 @@ Google・Apple とは無関係の非公式プロジェクトです。**現状の
 ## インストールと使い方
 
 > [!IMPORTANT]
-> **まず注入なしで Google Photos へのログインを試してください。** 成功する場合はログイン後に tweak を導入・有効化します。Sideloadly では注入なしでも拒否される場合があります。その場合は[導入ガイド](docs/jailed.md#sideloadly)を確認してください。
+> **Google アカウントへのログイン前に tweak を導入・有効化してください。** サイドロードでは、最初から **GunshotJailed** を注入した IPA を使います。互換性のある Google Photos の SSO 内で再署名後の識別子と共有 Keychain の権限不足を自動補正するため、別途 Sideload Spoofer は不要です。ログイン成功の実機検証は未完了です。[導入ガイド](docs/jailed.md#sideloadly)。
 >
-> 1. 注入なしの Google Photos をインストールし、Google アカウントへログインします。
-> 2. アプリを終了し、jailbreak では tweak を導入・有効化、サイドロードでは注入済み IPA を上書きします。**同じ署名アカウント・Bundle ID・アプリデータ**を維持してください。LiveContainer では**同じ guest／データコンテナ**で tweak を有効化するか IPA を更新します。
-> 3. **Google Photosを起動**します。ログイン情報の準備ができるとGoToHPが自動接続します。画質などの変更や失敗時の「再接続」は、**プロフィールメニュー → GoToHP の設定**から行えます。
+> 1. jailbreak では tweak を導入・有効化し、サイドロードでは **GunshotJailed** 注入済みの Google Photos IPA をインストールします。LiveContainer では起動前に dylib を取り込み、Google Photos の guest で有効化します。
+> 2. tweak を有効にした状態で **Google Photos を起動**し、Google アカウントへログインします。既存環境を更新するときは、**同じ署名アカウント・Bundle ID・アプリデータ**、LiveContainer では**同じ guest／データコンテナ**を維持してください。
+> 3. ログイン情報の準備ができると GoToHP が自動接続します。画質などの変更や失敗時の「再接続」は、**プロフィールメニュー → GoToHP の設定**から行えます。
 >
 > ログイン済みアプリ・guest の削除や、新しいデータコンテナの作成は避けてください。App Store 版から別署名のアプリへ移す場合など、ログイン状態の維持は保証されません。[詳しい導入手順](docs/jailed.md)。
 

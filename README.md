@@ -25,12 +25,11 @@ An unofficial project unaffiliated with Google or Apple, provided **as is, witho
 ## Install and use
 
 > [!IMPORTANT]
-> **Try Google sign-in without injection first.** If it succeeds, sign in before installing or enabling the tweak. Google can reject Sideloadly builds even without injection; see the [installation guide](docs/jailed.md#sideloadly) for that case.
-> If sign-in fails before injection, inject **GunshotJailed** and retry. It corrects the re-signed app identifier within compatible Google Photos SSO APIs and handles missing shared-Keychain access automatically. No separate Sideload Spoofer is required for these corrections. Device sign-in verification is still pending.
+> **Install and enable the tweak before Google sign-in.** For sideloading, inject **GunshotJailed** into the IPA first. It corrects the re-signed app identifier within compatible Google Photos SSO APIs and handles missing shared-Keychain access automatically. No separate Sideload Spoofer is required for these corrections. Device sign-in verification is still pending.
 >
-> 1. Install Google Photos without injection and complete Google sign-in.
-> 2. Close the app, then install/enable the jailbreak tweak or update the same app with the injected IPA. Preserve the **signing account, bundle identifier and app data**. In LiveContainer, enable the tweak or update the IPA in the **same guest/data container**.
-> 3. Open **Google Photos**. GoToHP automatically connects the signed-in account once native sign-in is ready. Use **Profile menu → GoToHP settings** to change upload settings or retry with **Reconnect**.
+> 1. Install/enable the jailbreak tweak, or install Google Photos from an IPA with **GunshotJailed** injected. In LiveContainer, import the dylib and enable it for the Google Photos guest before launching.
+> 2. Open **Google Photos** with the tweak enabled and sign in to your Google account. When updating an existing installation, preserve the **signing account, bundle identifier and app data**, or the **same guest/data container** in LiveContainer.
+> 3. GoToHP automatically connects the signed-in account once native sign-in is ready. Use **Profile menu → GoToHP settings** to change upload settings or retry with **Reconnect**.
 >
 > Do not delete the logged-in app/guest or create a new data container. Session retention is not guaranteed, including when moving from the App Store version to a separately signed app. See the [installation guide](docs/jailed.md).
 

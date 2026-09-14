@@ -15,6 +15,9 @@
 @property(atomic) BOOL cancelled;
 @property(atomic) BOOL cancelGo;
 @property(atomic) BOOL reconciling;
+@property(atomic) BOOL finished;
+@property(nonatomic) BOOL retryPending;
+@property(nonatomic) NSUInteger reconcileRetries;
 @property(atomic,copy) NSString *jobID;
 @property(nonatomic,copy) NSString *account;
 // SSO userID string; native request credentials.accountID is a separate object.
@@ -26,7 +29,10 @@ static char GSTransferKey;
 static BOOL GSInstalled;
 static NSObject *GSLock;
 static NSMutableDictionary *GSCounts;
-static NSMutableSet *GSReconciling;
+static NSCountedSet *GSReconciling;
+// Allow server visibility to catch up without exporting/uploading the video again.
+static NSTimeInterval GSReconcileDelay=2,GSReconcileTimeout=120;
+static const NSUInteger GSReconcileRetryLimit=5;
 static BOOL GSMethod(id object,NSString *name,const char *encoding){
  Method m=class_getInstanceMethod(object_getClass(object),NSSelectorFromString(name));return m&&!strcmp(method_getTypeEncoding(m),encoding);
 }
@@ -60,7 +66,7 @@ static BOOL GSStillAuthorized(GSBackupTransfer *transfer){
 }
 static void GSStart(id request,SEL selector,IMP original){
  GSBackupTransfer *existing=objc_getAssociatedObject(request,&GSTransferKey);
- if(existing){if(existing.reconciling)((void(*)(id,SEL))original)(request,selector);return;}
+ if(existing){if(existing.reconciling&&!existing.cancelled&&!existing.finished)((void(*)(id,SEL))original)(request,selector);return;}
  if(!GSNativeRoutingEnabled()){((void(*)(id,SEL))original)(request,selector);return;}
  PHAsset *asset=GSGet(request,@"asset");
  // Export the PHAsset original, not a compressed GMUUploadAsset.
@@ -111,41 +117,90 @@ static void GSStart(id request,SEL selector,IMP original){
     if(!GSNativeIdentityMatches(transfer.identityIdentifier)||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSCount(@"authorizationChanged");GSFail(request,2);return;}
     // Refresh native backup state from the server; GSGuard blocks re-upload.
     transfer.reconciling=YES;@synchronized(GSLock){[GSReconciling addObject:transfer.localID];}
+    // Some native video requests disable shouldTimeout. Bound reconciliation
+    // separately from the Go upload, which retains its existing 24-hour limit.
+    __weak id weakRequest=request;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(GSReconcileTimeout*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+     id pending=weakRequest;GSBackupTransfer *t=objc_getAssociatedObject(pending,&GSTransferKey);
+     if(t.reconciling&&!t.cancelled&&!t.finished){GSCount(@"reconcileTimedOut");GSFail(pending,6);}
+    });
     GSCount(@"reconciling");((void(*)(id,SEL))original)(request,selector);
    });
   });
  });
 }
 static void GSReplace(Class c,SEL s,IMP replacement){Method m=class_getInstanceMethod(c,s);if(!class_addMethod(c,s,replacement,method_getTypeEncoding(m)))method_setImplementation(class_getInstanceMethod(c,s),replacement);}
-static void GSFinish(id request,BOOL success){
+static BOOL GSFinish(id request,BOOL success){
  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);
- if(t.localID)@synchronized(GSLock){[GSReconciling removeObject:t.localID];}
- if(t.reconciling)GSCount(success?@"nativeReconciled":@"reconcileFailed");
+ if(!t)return YES;
+ @synchronized(t){
+  if(t.finished||t.cancelled)return NO;
+  t.finished=YES;
+  if(t.reconciling){
+   @synchronized(GSLock){[GSReconciling removeObject:t.localID];}
+   t.reconciling=NO;GSCount(success?@"nativeReconciled":@"reconcileFailed");
+  }
+ }
+ return YES;
 }
 static void GSBindCompletion(Class c,BOOL live){
  SEL s=NSSelectorFromString(live?@"didCompleteWithError:resultantMediaItem:":GSPhotosAssetCompletion(c));
  IMP old=method_getImplementation(class_getInstanceMethod(c,s));
- if(live)GSReplace(c,s,imp_implementationWithBlock(^(id request,id error,id result){GSFinish(request,error==nil);((void(*)(id,SEL,id,id))old)(request,s,error,result);}));
- else if(GSPhotosCompletionForClass(c)==GSPhotosCompletionCode)GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,NSInteger code){GSFinish(request,success);((void(*)(id,SEL,BOOL,id,NSInteger))old)(request,s,success,result,code);}));
- else GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,id error){GSFinish(request,success&&error==nil);((void(*)(id,SEL,BOOL,id,id))old)(request,s,success,result,error);}));
+ if(live)GSReplace(c,s,imp_implementationWithBlock(^(id request,id error,id result){if(GSFinish(request,error==nil))((void(*)(id,SEL,id,id))old)(request,s,error,result);}));
+ else if(GSPhotosCompletionForClass(c)==GSPhotosCompletionCode)GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,NSInteger code){if(GSFinish(request,success))((void(*)(id,SEL,BOOL,id,NSInteger))old)(request,s,success,result,code);}));
+ else GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,id error){if(GSFinish(request,success&&error==nil))((void(*)(id,SEL,BOOL,id,id))old)(request,s,success,result,error);}));
 }
 static void GSBindStart(Class c){
  SEL s=NSSelectorFromString(@"start");IMP original=method_getImplementation(class_getInstanceMethod(c,s));
  GSReplace(c,s,imp_implementationWithBlock(^(id request){GSStart(request,s,original);}));
  SEL started=NSSelectorFromString(@"didStart");IMP oldStarted=method_getImplementation(class_getInstanceMethod(c,started));
- GSReplace(c,started,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled?YES:((BOOL(*)(id,SEL))oldStarted)(request,started);}));
+ GSReplace(c,started,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled&&!t.finished?YES:((BOOL(*)(id,SEL))oldStarted)(request,started);}));
  SEL timeout=NSSelectorFromString(@"shouldTimeout");IMP oldTimeout=method_getImplementation(class_getInstanceMethod(c,timeout));
- GSReplace(c,timeout,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled?NO:((BOOL(*)(id,SEL))oldTimeout)(request,timeout);}));
+ GSReplace(c,timeout,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled&&!t.finished?NO:((BOOL(*)(id,SEL))oldTimeout)(request,timeout);}));
  SEL cancel=NSSelectorFromString(@"cancel");IMP oldCancel=method_getImplementation(class_getInstanceMethod(c,cancel));
  GSReplace(c,cancel,imp_implementationWithBlock(^(id request){
-  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);t.cancelGo=GSUploadHostForeground();t.cancelled=YES;
-  if(t.localID)@synchronized(GSLock){[GSReconciling removeObject:t.localID];}
+  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);
+  @synchronized(t){
+   t.cancelGo=GSUploadHostForeground();t.cancelled=YES;
+   if(t.reconciling){@synchronized(GSLock){[GSReconciling removeObject:t.localID];}t.reconciling=NO;}
+  }
   // Background cancellation preserves the Go job for foreground resumption.
   if(t.jobID&&t.cancelGo)dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{GSRequest(@{@"op":@"cancel",@"id":t.jobID},nil);});
   ((void(*)(id,SEL))oldCancel)(request,cancel);
  }));
 }
 static BOOL GSBlockNative(void){BOOL active;@synchronized(GSLock){active=GSReconciling.count>0;}return GSNativeRoutingEnabled()||active;}
+static void GSBindReconciliation(Class c){
+ SEL miss=NSSelectorFromString(@"existenceCheckDidFailWithFingerprint:");
+ // 7.20.2 takes only the fingerprint; 7.92.0 also takes NSError.
+ BOOL modern=GSPhotosHasMethod(c,@"fingerprintDidComplete:error:","v32@0:8@16@24");
+ SEL retry=NSSelectorFromString(modern?@"fingerprintDidComplete:error:":@"fingerprintDidComplete:");
+ if(!GSPhotosHasMethod(c,NSStringFromSelector(miss),"v24@0:8@16")||
+    !GSPhotosHasMethod(c,NSStringFromSelector(retry),modern?"v32@0:8@16@24":"v24@0:8@16"))return;
+ IMP original=method_getImplementation(class_getInstanceMethod(c,miss));
+ GSReplace(c,miss,imp_implementationWithBlock(^(id request,id fingerprint){
+  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);
+  if(!t&&!GSBlockNative()){((void(*)(id,SEL,id))original)(request,miss,fingerprint);return;}
+  // Stop before fetchBytesForAsset / video preparation, not just startFetcher.
+  dispatch_async(dispatch_get_main_queue(),^{
+   if(t.cancelled||t.finished)return;
+   if(!t.reconciling||!fingerprint){GSCount(@"nativePayloadBlocked");GSFail(request,4);return;}
+   if(!GSStillAuthorized(t)||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSCount(@"authorizationChanged");GSFail(request,2);return;}
+   if(t.retryPending)return;
+   if(t.reconcileRetries>=GSReconcileRetryLimit){GSCount(@"reconcileExhausted");GSFail(request,6);return;}
+   NSTimeInterval delay=GSReconcileDelay*(1UL<<t.reconcileRetries++);t.retryPending=YES;
+   GSCount(@"reconcileRetries");__weak id weakRequest=request;
+   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(delay*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+    id pending=weakRequest;
+    if(!pending||t.cancelled||t.finished)return;
+    t.retryPending=NO;
+    if(!GSStillAuthorized(t)||!GSNativeAccountMatches(GSGet(GSGet(pending,@"credentials"),@"accountID"))){GSCount(@"authorizationChanged");GSFail(pending,2);return;}
+    if(modern)((void(*)(id,SEL,id,id))objc_msgSend)(pending,retry,fingerprint,nil);
+    else ((void(*)(id,SEL,id))objc_msgSend)(pending,retry,fingerprint);
+   });
+  });
+ }));
+}
 static void GSGuard(id request,SEL selector,IMP original){
  if(GSBlockNative()||objc_getAssociatedObject(request,&GSTransferKey)){GSCount(@"nativePayloadBlocked");GSFail(request,4);return;}
  ((void(*)(id,SEL))original)(request,selector);
@@ -180,8 +235,9 @@ void GSInstallBackupRequests(void){
  if(GSPhotosCompletionForClass(asset)==GSPhotosCompletionUnavailable)return;
  Method ac=class_getInstanceMethod(asset,NSSelectorFromString(GSPhotosAssetCompletion(asset))),lc=class_getInstanceMethod(live,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"));
  if(!ac||!lc||strcmp(method_getTypeEncoding(ac),GSPhotosAssetCompletionABI(asset))||strcmp(method_getTypeEncoding(lc),"v32@0:8@16@24"))return;
- GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSReconciling=[NSMutableSet set];
+ GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSReconciling=[NSCountedSet set];
  GSBindStart(asset);GSBindStart(live);GSBindCompletion(asset,NO);GSBindCompletion(live,YES);
+ GSBindReconciliation(asset);
  SEL s=NSSelectorFromString(@"startFetcher");IMP original=method_getImplementation(fetch);GSReplace(base,s,imp_implementationWithBlock(^(id request){GSGuard(request,s,original);}));
  Class media=NSClassFromString(@"GMUUploadMediaRequest");SEL cnde=NSSelectorFromString(@"startCNDEUpload");Method cm=class_getInstanceMethod(media,cnde);
  if(cm&&!strcmp(method_getTypeEncoding(cm),"v16@0:8")){IMP old=method_getImplementation(cm);GSReplace(media,cnde,imp_implementationWithBlock(^(id request){GSGuard(request,cnde,old);}));}

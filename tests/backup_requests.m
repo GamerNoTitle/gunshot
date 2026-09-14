@@ -18,9 +18,12 @@
 #import <objc/message.h>
 #include <assert.h>
 #include <stdatomic.h>
+// Include the adapter so this fixture can shorten only its timer intervals.
+#import "../UI/GSBackupRequests.m"
 static BOOL remoteMatch=YES;
 static atomic_ulong queued,conditionReads,cancelRequests;
 static NSUInteger nativeStarts,nativePayload,successes,failures;
+static NSUInteger nativeLookups,nativePreparations;
 static atomic_bool foreground=YES,online=YES,wifi=YES,charging=YES,paused=NO,holdJob=NO,failJob=NO,switchDuringExport=NO;
 static PHSAccount *primaryAccount,*otherAccount;
 @implementation PHAsset @end
@@ -59,14 +62,31 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 @end
 @interface GMUAssetUploadRequest : GMUUploadRequest
 @property(nonatomic,strong) PHAsset *asset;
+@property(nonatomic) BOOL fingerprintLookup,silentLookup;
+@property(nonatomic) NSUInteger missesRemaining;
+@property(nonatomic,strong) id lastFingerprint;
 - (void)start;
 - (_Bool)shouldTimeout;
 - (void)cancel;
+- (void)existenceCheckDidFailWithFingerprint:(id)fingerprint;
+- (void)lookup:(id)fingerprint;
 @end
 @implementation GMUAssetUploadRequest
-- (void)start{nativeStarts++;if(remoteMatch)[self didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];else[self startFetcher];}
-- (_Bool)shouldTimeout{return YES;}
+- (void)start{nativeStarts++;if(self.fingerprintLookup)[self lookup:[NSObject new]];else if(remoteMatch)[self didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];else[self startFetcher];}
+- (_Bool)shouldTimeout{return self.asset.mediaType!=PHAssetMediaTypeVideo;}
 - (void)cancel{}
+- (void)lookup:(id)fingerprint{
+ nativeLookups++;if(self.lastFingerprint)assert(self.lastFingerprint==fingerprint);self.lastFingerprint=fingerprint;
+ if(self.silentLookup)return;
+ if(self.missesRemaining){self.missesRemaining--;[self existenceCheckDidFailWithFingerprint:fingerprint];}
+ else [self didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
+}
+#ifdef GS_TEST_LEGACY
+- (void)fingerprintDidComplete:(id)fingerprint{[self lookup:fingerprint];}
+#else
+- (void)fingerprintDidComplete:(id)fingerprint error:(id)error{assert(!error);[self lookup:fingerprint];}
+#endif
+- (void)existenceCheckDidFailWithFingerprint:(id)fingerprint{nativePreparations++;[self startFetcher];}
 @end
 // A separate class as in the real app, not a subclass of GMUAssetUploadRequest.
 @interface GMULivePhotoSingleUploadRequest : NSObject
@@ -107,6 +127,55 @@ static void Await(BOOL(^done)(void)){NSDate *deadline=[NSDate dateWithTimeInterv
 static void Drain(NSUInteger expected){NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];while(successes+failures<expected&&deadline.timeIntervalSinceNow>0)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];assert(successes+failures==expected);}
 static void Scotty(id object,SEL selector,id asset,BOOL cellular,BOOL background,id start,id progress,void(^released)(void),void(^done)(id,id)){nativePayload++;if(released)released();if(done)done(@"native-result",nil);}
 static void Stateless(id object,SEL selector,id asset,BOOL cellular,id progress,void(^done)(id,id)){nativePayload++;if(done)done(@"native-result",nil);}
+static GMUAssetUploadRequest *Video(NSUInteger misses,BOOL silent){
+ GMUAssetUploadRequest *r=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
+ r.asset.mediaType=PHAssetMediaTypeVideo;r.fingerprintLookup=YES;r.missesRemaining=misses;r.silentLookup=silent;return r;
+}
+static void Reconciliation(void){
+ GSReconcileDelay=0.01;GSReconcileTimeout=1;
+ NSUInteger before=queued,finished=successes+failures,lookups=nativeLookups,ok=successes;
+ GMUAssetUploadRequest *video=Video(2,NO);[video start];Drain(finished+1);
+ assert(queued==before+1&&nativeLookups==lookups+3&&successes==ok+1&&nativePreparations==0&&nativePayload==0);
+ // All-negative server results fail once, without a second export or payload.
+ before=queued;finished=successes+failures;lookups=nativeLookups;
+ video=Video(100,NO);[video start];Drain(finished+1);
+ assert(queued==before+1&&nativeLookups==lookups+1+GSReconcileRetryLimit&&successes==ok+1&&nativePreparations==0);
+ // The native video API may never time out. A late completion must not deliver
+ // a second result after our deadline has already released the request.
+ GSReconcileTimeout=0.1;finished=successes+failures;
+ video=Video(0,YES);[video start];Drain(finished+1);assert(![video shouldTimeout]);
+ [video didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
+ [video existenceCheckDidFailWithFingerprint:video.lastFingerprint];
+ [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+ assert(successes+failures==finished+1&&GSReconciling.count==0);
+ GSReconcileTimeout=1;GSReconcileDelay=0.05;
+ // Cancellation, disabling routing and account changes invalidate a queued retry.
+ for(NSUInteger mode=0;mode<3;mode++){
+  finished=successes+failures;lookups=nativeLookups;video=Video(2,NO);[video start];
+  Await(^BOOL{return [objc_getAssociatedObject(video,&GSTransferKey) retryPending];});
+  if(mode==0)[video cancel];else if(mode==1)GSSetNativeRouting(NO,nil);else GSFixtureSelectAccount(otherAccount);
+  if(mode==0){[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];assert(successes+failures==finished);}
+  else Drain(finished+1);
+  assert(nativeLookups==lookups+1&&GSReconciling.count==0);
+  GSSetNativeRouting(YES,@"test@example.com");GSFixtureSelectAccount(primaryAccount);
+ }
+ // Two requests for the same asset each own their reconciliation guard.
+ finished=successes+failures;
+ GMUAssetUploadRequest *first=Video(0,YES),*second=Video(0,YES);
+ second.asset.localIdentifier=first.asset.localIdentifier;
+ holdJob=YES;before=queued;[first start];[second start];Await(^BOOL{return queued==before+2;});holdJob=NO;
+ Await(^BOOL{return [GSReconciling countForObject:first.asset.localIdentifier]==2;});
+ GSSetNativeRouting(NO,nil);[first cancel];assert(GSBlockNative());
+ [second didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
+ assert(successes+failures==finished+1&&!GSBlockNative());
+ // Disabled routing preserves the native miss path.
+ before=nativePreparations;NSUInteger payload=nativePayload;
+ video=Video(1,NO);[video start];assert(nativePreparations==before+1&&nativePayload==payload+1);
+ GSSetNativeRouting(YES,@"test@example.com");
+ NSDictionary *d=GSBackupRequestsSnapshot();
+ assert([d[@"reconcileExhausted"]unsignedIntegerValue]==1&&[d[@"reconcileTimedOut"]unsignedIntegerValue]==1);
+ NSLog(@"PASS video visibility retries, retry exhaustion, missing/late completion, cancellation, account/toggle changes and overlapping reconciliation");
+}
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)Bundle);
  primaryAccount=GSFixtureMakeAccount(@"fixture-user-A",@"test@example.com");
@@ -177,6 +246,7 @@ int main(void){@autoreleasepool{
  [invalidAuth start];Drain(finished+1);assert(queued==before&&nativeStarts==starts);
  ((GSFixtureIdentity *)primaryAccount->_ssoIdentity).hasValidAuth=YES;
  assert(GSNativeIdentityMatches(@"fixture-user-A"));
+ Reconciliation();
  NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, original resources, account binding, duplicate start, cancellation and native fallback blocking");
  return 0;
 }}
