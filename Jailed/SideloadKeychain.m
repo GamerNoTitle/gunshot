@@ -1,6 +1,7 @@
 #import "SideloadKeychain.h"
 #import "../Shared/GSPhotosCompatibility.h"
 #import <Security/Security.h>
+#import <LocalAuthentication/LocalAuthentication.h>
 #import <objc/message.h>
 #include <stdlib.h>
 
@@ -20,12 +21,13 @@ void GSInstallSideloadKeychain(void){
   @catch(NSException *exception){return;}
   if(![group isKindOfClass:NSString.class]||![group length])return;
   // Check access only: no credentials, item attributes, or authentication UI.
+  LAContext *context=[LAContext new];context.interactionNotAllowed=YES;
   NSDictionary *query=@{(__bridge id)kSecClass:(__bridge id)kSecClassGenericPassword,
    (__bridge id)kSecAttrAccessGroup:group,
    (__bridge id)kSecAttrService:@"dev.tqmane.gunshot.sso-access-probe",
    (__bridge id)kSecAttrAccount:@"access-group-check",
    (__bridge id)kSecMatchLimit:(__bridge id)kSecMatchLimitOne,
-   (__bridge id)kSecUseAuthenticationUI:(__bridge id)kSecUseAuthenticationUIFail};
+   (__bridge id)kSecUseAuthenticationContext:context};
   if(SecItemCopyMatching((__bridge CFDictionaryRef)query,NULL)!=errSecMissingEntitlement)return;
   // The signed app lacks this shared group. Use SSO's own private mode.
   class_replaceMethod(configuration,NSSelectorFromString(@"usePrivateKeychain"),

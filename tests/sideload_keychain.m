@@ -67,7 +67,8 @@ static OSStatus GSFixtureCopy(CFDictionaryRef query,CFTypeRef *result){
  assert([attributes[(__bridge id)kSecAttrService]isEqual:@"dev.tqmane.gunshot.sso-access-probe"]);
  assert([attributes[(__bridge id)kSecAttrAccount]isEqual:@"access-group-check"]);
  assert([attributes[(__bridge id)kSecMatchLimit]isEqual:(__bridge id)kSecMatchLimitOne]);
- assert([attributes[(__bridge id)kSecUseAuthenticationUI]isEqual:(__bridge id)kSecUseAuthenticationUIFail]);
+ LAContext *context=attributes[(__bridge id)kSecUseAuthenticationContext];
+ assert([context isKindOfClass:LAContext.class]&&context.interactionNotAllowed);
  return Status;
 }
 int main(int argc,char **argv){@autoreleasepool{

@@ -93,7 +93,7 @@ jobs:
         if: matrix.scheme == 'jailed'
         run: |
           mkdir -p .build
-          clang -fobjc-arc -framework Foundation -framework Security tests/sideload_keychain.m -o .build/sideload-keychain-test
+          clang -fobjc-arc -framework Foundation -framework Security -framework LocalAuthentication tests/sideload_keychain.m -o .build/sideload-keychain-test
           .build/sideload-keychain-test
           for mode in native-private wrong-host livecontainer missing-configuration missing-helper configuration-abi helper-abi; do
             .build/sideload-keychain-test "$mode"
