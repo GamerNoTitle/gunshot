@@ -22,6 +22,8 @@ static BOOL remoteMatch=YES;
 static atomic_ulong queued,conditionReads,cancelRequests;
 static atomic_long uploadedBytes,totalBytes;
 static NSUInteger nativeStarts,nativePayload,successes,failures;
+static NSUInteger backgroundQueueCompletions;
+static BOOL backgroundFingerprintError;
 static atomic_bool foreground=YES,online=YES,wifi=YES,charging=YES,paused=NO,holdJob=NO,failJob=NO,switchDuringExport=NO;
 static PHSAccount *primaryAccount,*otherAccount;
 @implementation PHAsset @end
@@ -99,6 +101,73 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)cancel{}
 - (void)didCompleteWithError:(id)error resultantMediaItem:(id)item{if(item&&!error)successes++;else failures++;}
 @end
+@interface GMUBackgroundAssetUploadRequest : NSObject <ProgressRequest>
+@property(nonatomic,strong) Credentials *credentials;
+@property(nonatomic,strong) id delegate;
+- (double)progress;
+- (_Bool)didStart;
+@property(nonatomic,strong) PHAsset *asset;
+- (void)start;
+- (_Bool)shouldTimeout;
+- (void)cancel;
+- (void)finishUpload;
+- (void)beginUploadMediaRequestWithFingerprint:(id)fingerprint;
+#ifdef GS_TEST_LEGACY
+- (void)handleErrorWithCode:(NSInteger)code;
+#else
+- (void)handleError:(id)error;
+#endif
+// Unlike the foreground request, this takes an object in both audited IPAs.
+- (void)blueprintDidComplete:(BOOL)success mediaItem:(id)item error:(id)error;
+@end
+@implementation GMUBackgroundAssetUploadRequest
+- (double)progress{return 0.125;}
+- (_Bool)didStart{return NO;}
+- (void)start{
+ nativeStarts++;
+ if(backgroundFingerprintError){
+#ifdef GS_TEST_LEGACY
+  [self handleErrorWithCode:73];
+#else
+  [self handleError:[NSError errorWithDomain:@"fixture" code:73 userInfo:nil]];
+#endif
+ }else if(remoteMatch)[self finishUpload];
+ else[self beginUploadMediaRequestWithFingerprint:@"missing-fingerprint"];
+}
+- (_Bool)shouldTimeout{return YES;}
+- (void)cancel{}
+- (void)finishUpload{backgroundQueueCompletions++;successes++;}
+#ifdef GS_TEST_LEGACY
+- (void)handleErrorWithCode:(NSInteger)code{assert(code);backgroundQueueCompletions++;failures++;}
+#else
+- (void)handleError:(id)error{assert(error);backgroundQueueCompletions++;failures++;}
+#endif
+- (void)beginUploadMediaRequestWithFingerprint:(id)fingerprint{
+ // The real class sends through a background NSURLSession, bypassing startFetcher.
+ nativePayload++;[self blueprintDidComplete:YES mediaItem:nil error:nil];
+}
+- (void)blueprintDidComplete:(BOOL)success mediaItem:(id)item error:(id)error{if(success&&!error)successes++;else failures++;}
+@end
+// A separate Live Photo scheduler variant with the same live completion.
+@interface GMULivePhotoUploadRequest : NSObject <ProgressRequest>
+@property(nonatomic,strong) Credentials *credentials;
+@property(nonatomic,strong) id delegate;
+- (double)progress;
+- (_Bool)didStart;
+@property(nonatomic,strong) PHAsset *asset;
+- (void)start;
+- (_Bool)shouldTimeout;
+- (void)cancel;
+- (void)didCompleteWithError:(id)error resultantMediaItem:(id)item;
+@end
+@implementation GMULivePhotoUploadRequest
+- (double)progress{return 0.125;}
+- (_Bool)didStart{return NO;}
+- (void)start{if([self didStart])return;nativeStarts++;[self didCompleteWithError:nil resultantMediaItem:@"live-upload-server-item"];}
+- (_Bool)shouldTimeout{return YES;}
+- (void)cancel{}
+- (void)didCompleteWithError:(id)error resultantMediaItem:(id)item{if(item&&!error)successes++;else failures++;}
+@end
 static id Request(Class c,id account){id r=[c new];PHAsset *asset=[PHAsset new];asset.localIdentifier=NSUUID.UUID.UUIDString;[r setAsset:asset];Credentials *cred=[Credentials new];cred.accountID=account;[r setCredentials:cred];return r;}
 @interface PHSLocalAsset : NSObject
 @property(nonatomic,strong) PHAsset *phAsset;
@@ -134,7 +203,7 @@ static void Stateless(id object,SEL selector,id asset,BOOL cellular,id progress,
 }
 @end
 static void CheckProgress(void){
- for(Class c in @[GMUAssetUploadRequest.class,GMULivePhotoSingleUploadRequest.class]){
+ for(Class c in @[GMUAssetUploadRequest.class,GMULivePhotoSingleUploadRequest.class,GMUBackgroundAssetUploadRequest.class,GMULivePhotoUploadRequest.class]){
   id<ProgressRequest> r=Request(c,primaryAccount.accountID);[r asset].mediaType=PHAssetMediaTypeVideo;
   ProgressDelegate *dialog=[ProgressDelegate new];[r setDelegate:dialog];
   assert([r progress]==0.125); // Unintercepted native progress is unchanged.
@@ -160,6 +229,30 @@ static void CheckProgress(void){
  [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.1]];
  assert(dialog.notifications==events&&[r progress]==0.125);holdJob=NO;
  NSLog(@"PASS native video/Live Photo progress 25/75/100%%, unknown totals, unchanged progress, cancellation and separate native completion");
+}
+static void CheckBackground(void){
+ for(NSString *outcome in @[@"match",@"missing",@"fingerprint-error",@"go-error"]){
+  remoteMatch=![outcome isEqual:@"missing"];backgroundFingerprintError=[outcome isEqual:@"fingerprint-error"];failJob=[outcome isEqual:@"go-error"];
+  BOOL success=[outcome isEqual:@"match"];
+  NSUInteger before=queued,finished=successes+failures,passed=successes,payload=nativePayload,released=backgroundQueueCompletions;
+  NSDictionary *prior=GSBackupRequestsSnapshot();
+  GMUBackgroundAssetUploadRequest *request=Request(GMUBackgroundAssetUploadRequest.class,primaryAccount.accountID);
+  request.asset.mediaType=PHAssetMediaTypeVideo;[request start];Drain(finished+1);
+  assert(queued==before+1&&successes==passed+(success?1:0)&&nativePayload==payload);
+  assert(backgroundQueueCompletions==released+1); // Failures must release the native queue too.
+  NSDictionary *after=GSBackupRequestsSnapshot();
+  assert([after[@"nativeReconciled"]unsignedIntegerValue]==[prior[@"nativeReconciled"]unsignedIntegerValue]+(success?1:0));
+  assert([after[@"reconcileFailed"]unsignedIntegerValue]==[prior[@"reconcileFailed"]unsignedIntegerValue]+(!success&&!failJob?1:0));
+  assert([after[@"nativePayloadBlocked"]unsignedIntegerValue]==[prior[@"nativePayloadBlocked"]unsignedIntegerValue]+([outcome isEqual:@"missing"]?1:0));
+  // A stale reconciliation ID would keep blocking even after routing is disabled.
+  GSSetNativeRouting(NO,nil);
+  [[GMUUploadRequest new]startFetcher];
+  [Request(GMUBackgroundAssetUploadRequest.class,primaryAccount.accountID)beginUploadMediaRequestWithFingerprint:@"plain"];
+  assert(nativePayload==payload+2);
+  GSSetNativeRouting(YES,@"test@example.com");
+ }
+ remoteMatch=YES;backgroundFingerprintError=NO;failJob=NO;
+ NSLog(@"PASS background existence-match cleanup, fingerprint error cleanup, Go failure queue release, native payload blocking and routing disabled passthrough");
 }
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)Bundle);
@@ -232,6 +325,7 @@ int main(void){@autoreleasepool{
  ((GSFixtureIdentity *)primaryAccount->_ssoIdentity).hasValidAuth=YES;
  assert(GSNativeIdentityMatches(@"fixture-user-A"));
  CheckProgress();
- NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, original resources, account binding, duplicate start, cancellation and native fallback blocking");
+ CheckBackground();
+ NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, background video and live-upload proxying, original resources, account binding, duplicate start, cancellation and native fallback blocking");
  return 0;
 }}

@@ -8,7 +8,11 @@ GMUUploadMediaRequest.uploadFetcherDidCompleteWithData:error: → native complet
 の backupLocalAssets: だけで、別の手動操作と自動バックアップを捕まえていません。
 
 jailed / rootless / rootful ともアプリ起動時に GMUAssetUploadRequest.start と
-GMULivePhotoSingleUploadRequest.start を捕まえます。両者の asset は、7.92.0 の
+GMULivePhotoSingleUploadRequest.start を捕まえます。動画などのバックグラウンド
+要求（GMUBackgroundAssetUploadRequest.start）と、もう一方の
+Live Photo 変種（GMULivePhotoUploadRequest.start）も同じ PHAsset 原本の転送と
+純正の fingerprint 再照合で扱います。該当 class が存在しない版では従来の 2 要求
+のみが有効になり、起動時の ABI 照合で可否を決めます。各要求の asset は、両 IPA の
 ivar メタデータで PHAsset と確認済みです。credentials は
 GMUUploadRequestCredentials → PHSBaseWithAccountID.accountID を通して、現在の
 PHSAccountManagerImpl.viewingAccount.accountID と比較します。
@@ -21,8 +25,13 @@ PHSAccountManagerImpl.viewingAccount.accountID と比較します。
 3. Go のジョブが実際に completed となり、mediaKey が存在するまで待機。
 4. 元の start を再開し、Google の既存 fingerprint 確認でサーバーの実データを
    照合する。ネイティブの成功結果・PhotosMCMediaItem は捏造しない。
-5. native の startFetcher / startCNDEUpload / Scotty の送信へ進んだ場合は失敗として
+5. native の startFetcher / startCNDEUpload / Scotty、または background の
+   beginUploadMediaRequestWithFingerprint: へ進んだ場合は失敗として
    止める。GoToHP の失敗を純正アップロードへ自動フォールバックしない。
+
+background の照合成功は finishUpload、早期エラーは 7.20.2 の
+handleErrorWithCode:／7.92.0 の handleError: で終了するため、各経路で再照合状態を
+解除します。blueprintDidComplete:mediaItem:error: は両版とも NSError 型です。
 
 fingerprintDidComplete:error: の逆アセンブルでは
 `enqueueRequestWithCredentials:fingerprint:completion:`、
