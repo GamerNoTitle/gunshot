@@ -8,6 +8,7 @@
 #import "../Shared/IPCProtocol.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#include <math.h>
 
 // Audited manual/automatic backup: Go commits, then native lookup confirms the
 // remote item. Block native payload fallback; report success only after lookup.
@@ -15,6 +16,8 @@
 @property(atomic) BOOL cancelled;
 @property(atomic) BOOL cancelGo;
 @property(atomic) BOOL reconciling;
+@property(atomic) BOOL finished;
+@property(atomic) double progress;
 @property(atomic,copy) NSString *jobID;
 @property(nonatomic,copy) NSString *account;
 // SSO userID string; native request credentials.accountID is a separate object.
@@ -58,6 +61,23 @@ static BOOL GSCanPrepare(NSDictionary *options){
 static BOOL GSStillAuthorized(GSBackupTransfer *transfer){
  return !transfer.cancelled&&GSNativeRoutingEnabled()&&[GSNativeRoutingAccount()isEqual:transfer.account]&&GSNativeIdentityMatches(transfer.identityIdentifier);
 }
+static void GSReportProgress(id request,GSBackupTransfer *transfer,NSDictionary *state){
+ NSNumber *uploaded=state[@"uploaded"],*total=state[@"total"];
+ if(![uploaded isKindOfClass:NSNumber.class]||![total isKindOfClass:NSNumber.class]||
+    !isfinite(uploaded.doubleValue)||!isfinite(total.doubleValue)||total.doubleValue<=0)return;
+ double progress=fmin(1,fmax(0,uploaded.doubleValue/total.doubleValue));
+ dispatch_async(dispatch_get_main_queue(),^{
+  if(transfer.cancelled||transfer.finished||transfer.reconciling||transfer.progress==progress)return;
+  if(!GSNativeIdentityMatches(transfer.identityIdentifier)||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID")))return;
+  if(!GSMethod(request,@"progress","d16@0:8"))return;
+  transfer.progress=progress;
+  id delegate=GSGet(request,@"delegate");
+  if(GSMethod(delegate,@"uploadRequestDidProgress:","v24@0:8@16")){
+   ((void(*)(id,SEL,id))objc_msgSend)(delegate,NSSelectorFromString(@"uploadRequestDidProgress:"),request);
+   GSCount(@"progressUpdates");
+  }
+ });
+}
 static void GSStart(id request,SEL selector,IMP original){
  GSBackupTransfer *existing=objc_getAssociatedObject(request,&GSTransferKey);
  if(existing){if(existing.reconciling)((void(*)(id,SEL))original)(request,selector);return;}
@@ -100,6 +120,7 @@ static void GSStart(id request,SEL selector,IMP original){
    while(job&&!transfer.cancelled&&deadline.timeIntervalSinceNow>0){@autoreleasepool{
     NSDictionary *state=GSRequest(@{@"op":@"job",@"id":job},&error);
     if(!state)break;
+    GSReportProgress(request,transfer,state);
     NSString *phase=state[@"state"];
     if([phase isEqual:@"completed"]){completed=[state[@"mediaKey"]length]>0;break;}
     if([phase isEqual:@"failed"]||[phase isEqual:@"cancelled"])break;
@@ -119,6 +140,7 @@ static void GSStart(id request,SEL selector,IMP original){
 static void GSReplace(Class c,SEL s,IMP replacement){Method m=class_getInstanceMethod(c,s);if(!class_addMethod(c,s,replacement,method_getTypeEncoding(m)))method_setImplementation(class_getInstanceMethod(c,s),replacement);}
 static void GSFinish(id request,BOOL success){
  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);
+ t.finished=YES;if(success)t.progress=1;
  if(t.localID)@synchronized(GSLock){[GSReconciling removeObject:t.localID];}
  if(t.reconciling)GSCount(success?@"nativeReconciled":@"reconcileFailed");
 }
@@ -143,6 +165,17 @@ static void GSBindStart(Class c){
   // Background cancellation preserves the Go job for foreground resumption.
   if(t.jobID&&t.cancelGo)dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{GSRequest(@{@"op":@"cancel",@"id":t.jobID},nil);});
   ((void(*)(id,SEL))oldCancel)(request,cancel);
+ }));
+}
+static void GSBindProgress(Class c){
+ SEL selector=NSSelectorFromString(@"progress");
+ if(!GSPhotosHasMethod(c,@"progress","d16@0:8")||!GSPhotosHasMethod(c,@"delegate","@16@0:8"))return;
+ IMP original=method_getImplementation(class_getInstanceMethod(c,selector));
+ // Live Photo progress is computed from native child uploads and has no setter.
+ // Both request types expose Go's byte progress through the same native getter.
+ GSReplace(c,selector,imp_implementationWithBlock(^double(id request){
+  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);
+  return t&&!t.cancelled?t.progress:((double(*)(id,SEL))original)(request,selector);
  }));
 }
 static BOOL GSBlockNative(void){BOOL active;@synchronized(GSLock){active=GSReconciling.count>0;}return GSNativeRoutingEnabled()||active;}
@@ -182,6 +215,7 @@ void GSInstallBackupRequests(void){
  if(!ac||!lc||strcmp(method_getTypeEncoding(ac),GSPhotosAssetCompletionABI(asset))||strcmp(method_getTypeEncoding(lc),"v32@0:8@16@24"))return;
  GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSReconciling=[NSMutableSet set];
  GSBindStart(asset);GSBindStart(live);GSBindCompletion(asset,NO);GSBindCompletion(live,YES);
+ GSBindProgress(asset);GSBindProgress(live);
  SEL s=NSSelectorFromString(@"startFetcher");IMP original=method_getImplementation(fetch);GSReplace(base,s,imp_implementationWithBlock(^(id request){GSGuard(request,s,original);}));
  Class media=NSClassFromString(@"GMUUploadMediaRequest");SEL cnde=NSSelectorFromString(@"startCNDEUpload");Method cm=class_getInstanceMethod(media,cnde);
  if(cm&&!strcmp(method_getTypeEncoding(cm),"v16@0:8")){IMP old=method_getImplementation(cm);GSReplace(media,cnde,imp_implementationWithBlock(^(id request){GSGuard(request,cnde,old);}));}

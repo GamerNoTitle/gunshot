@@ -20,6 +20,7 @@
 #include <stdatomic.h>
 static BOOL remoteMatch=YES;
 static atomic_ulong queued,conditionReads,cancelRequests;
+static atomic_long uploadedBytes,totalBytes;
 static NSUInteger nativeStarts,nativePayload,successes,failures;
 static atomic_bool foreground=YES,online=YES,wifi=YES,charging=YES,paused=NO,holdJob=NO,failJob=NO,switchDuringExport=NO;
 static PHSAccount *primaryAccount,*otherAccount;
@@ -36,7 +37,7 @@ NSDictionary *GSRequest(NSDictionary *request,NSError **error){
  if([request[@"op"]isEqual:@"accounts"])return @{@"selected":@"test@example.com"};
  if([request[@"op"]isEqual:@"options"])return @{@"quality":@"original",@"wifiOnly":@YES,@"chargingOnly":@YES,@"paused":@(atomic_load(&paused))};
  if([request[@"op"]isEqual:@"upload_summary"]){conditionReads++;return @{@"conditions":@{@"online":@(atomic_load(&online)),@"wifi":@(atomic_load(&wifi)),@"charging":@(atomic_load(&charging)),@"paused":@(atomic_load(&paused))}};}
- if([request[@"op"]isEqual:@"job"])return atomic_load(&holdJob)?@{@"state":@"pending"}:atomic_load(&failJob)?@{@"state":@"failed"}:@{@"state":@"completed",@"mediaKey":@"real-server-key"};
+ if([request[@"op"]isEqual:@"job"])return atomic_load(&holdJob)?@{@"state":@"uploading",@"uploaded":@(atomic_load(&uploadedBytes)),@"total":@(atomic_load(&totalBytes))}:atomic_load(&failJob)?@{@"state":@"failed"}:@{@"state":@"completed",@"mediaKey":@"real-server-key"};
  if([request[@"op"]isEqual:@"cancel"])cancelRequests++;
  return @{};
 }
@@ -48,16 +49,26 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 @implementation Credentials @end
 @interface GMUUploadRequest : NSObject
 @property(nonatomic,strong) Credentials *credentials;
+@property(nonatomic,strong) id delegate;
+- (double)progress;
 - (void)startFetcher;
 - (_Bool)didStart;
 - (void)didCompleteWithSuccess:(_Bool)success resultantMediaItem:(id)item GS_ERROR_LABEL:(GS_ERROR_TYPE)error;
 @end
 @implementation GMUUploadRequest
+- (double)progress{return 0.125;}
 - (void)startFetcher{nativePayload++;}
 - (_Bool)didStart{return NO;}
 - (void)didCompleteWithSuccess:(_Bool)success resultantMediaItem:(id)item GS_ERROR_LABEL:(GS_ERROR_TYPE)error{if(success&&!error)successes++;else failures++;}
 @end
-@interface GMUAssetUploadRequest : GMUUploadRequest
+@protocol ProgressRequest <NSObject>
+@property(nonatomic,strong) PHAsset *asset;
+@property(nonatomic,strong) id delegate;
+- (double)progress;
+- (void)start;
+- (void)cancel;
+@end
+@interface GMUAssetUploadRequest : GMUUploadRequest <ProgressRequest>
 @property(nonatomic,strong) PHAsset *asset;
 - (void)start;
 - (_Bool)shouldTimeout;
@@ -69,8 +80,10 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)cancel{}
 @end
 // A separate class as in the real app, not a subclass of GMUAssetUploadRequest.
-@interface GMULivePhotoSingleUploadRequest : NSObject
+@interface GMULivePhotoSingleUploadRequest : NSObject <ProgressRequest>
 @property(nonatomic,strong) Credentials *credentials;
+@property(nonatomic,strong) id delegate;
+- (double)progress;
 - (_Bool)didStart;
 @property(nonatomic,strong) PHAsset *asset;
 - (void)start;
@@ -79,6 +92,7 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)didCompleteWithError:(id)error resultantMediaItem:(id)item;
 @end
 @implementation GMULivePhotoSingleUploadRequest
+- (double)progress{return 0.125;}
 - (_Bool)didStart{return NO;}
 - (void)start{if([self didStart])return;nativeStarts++;[self didCompleteWithError:nil resultantMediaItem:@"live-server-item"];}
 - (_Bool)shouldTimeout{return YES;}
@@ -107,6 +121,46 @@ static void Await(BOOL(^done)(void)){NSDate *deadline=[NSDate dateWithTimeInterv
 static void Drain(NSUInteger expected){NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];while(successes+failures<expected&&deadline.timeIntervalSinceNow>0)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];assert(successes+failures==expected);}
 static void Scotty(id object,SEL selector,id asset,BOOL cellular,BOOL background,id start,id progress,void(^released)(void),void(^done)(id,id)){nativePayload++;if(released)released();if(done)done(@"native-result",nil);}
 static void Stateless(id object,SEL selector,id asset,BOOL cellular,id progress,void(^done)(id,id)){nativePayload++;if(done)done(@"native-result",nil);}
+// The audited manual dialog aggregates request.progress when this delegate fires.
+@interface ProgressDelegate : NSObject
+@property(nonatomic) NSUInteger notifications;
+@property(nonatomic) double displayedProgress;
+- (void)uploadRequestDidProgress:(id)request;
+@end
+@implementation ProgressDelegate
+- (void)uploadRequestDidProgress:(id)request{
+ assert(NSThread.isMainThread);self.notifications++;self.displayedProgress=[(id<ProgressRequest>)request progress];
+ assert(self.displayedProgress>=0&&self.displayedProgress<=1);
+}
+@end
+static void CheckProgress(void){
+ for(Class c in @[GMUAssetUploadRequest.class,GMULivePhotoSingleUploadRequest.class]){
+  id<ProgressRequest> r=Request(c,primaryAccount.accountID);[r asset].mediaType=PHAssetMediaTypeVideo;
+  ProgressDelegate *dialog=[ProgressDelegate new];[r setDelegate:dialog];
+  assert([r progress]==0.125); // Unintercepted native progress is unchanged.
+  NSUInteger before=queued,finished=successes+failures;
+  holdJob=YES;uploadedBytes=100;totalBytes=0;[r start];Await(^BOOL{return queued==before+1;});
+  assert([r progress]==0&&dialog.notifications==0); // Unknown length is not NaN/100%.
+  totalBytes=400;Await(^BOOL{return dialog.displayedProgress==0.25;});
+  assert(successes+failures==finished);
+  uploadedBytes=300;Await(^BOOL{return dialog.displayedProgress==0.75;});
+  // Paused/unchanged byte counts do not simulate progress or spam the delegate.
+  NSUInteger events=dialog.notifications;
+  [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.1]];
+  assert(dialog.notifications==events&&dialog.displayedProgress==0.75);
+  uploadedBytes=400;Await(^BOOL{return dialog.displayedProgress==1;});
+  assert(successes+failures==finished); // Transfer progress never completes the job.
+  holdJob=NO;Drain(finished+1);assert([r progress]==1&&nativePayload==0);
+ }
+ // A cancelled native dialog must not receive further Go progress callbacks.
+ id<ProgressRequest> r=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
+ ProgressDelegate *dialog=[ProgressDelegate new];[r setDelegate:dialog];
+ holdJob=YES;uploadedBytes=100;totalBytes=400;[r start];Await(^BOOL{return dialog.displayedProgress==0.25;});
+ [r cancel];NSUInteger events=dialog.notifications;uploadedBytes=300;
+ [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.1]];
+ assert(dialog.notifications==events&&[r progress]==0.125);holdJob=NO;
+ NSLog(@"PASS native video/Live Photo progress 25/75/100%%, unknown totals, unchanged progress, cancellation and separate native completion");
+}
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)Bundle);
  primaryAccount=GSFixtureMakeAccount(@"fixture-user-A",@"test@example.com");
@@ -177,6 +231,7 @@ int main(void){@autoreleasepool{
  [invalidAuth start];Drain(finished+1);assert(queued==before&&nativeStarts==starts);
  ((GSFixtureIdentity *)primaryAccount->_ssoIdentity).hasValidAuth=YES;
  assert(GSNativeIdentityMatches(@"fixture-user-A"));
+ CheckProgress();
  NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, original resources, account binding, duplicate start, cancellation and native fallback blocking");
  return 0;
 }}
