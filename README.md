@@ -26,6 +26,7 @@ An unofficial project unaffiliated with Google or Apple, provided **as is, witho
 
 > [!IMPORTANT]
 > **Try Google sign-in without injection first.** If it succeeds, sign in before installing or enabling the tweak. Google can reject Sideloadly builds even without injection; see the [installation guide](docs/jailed.md#sideloadly) for that case.
+> If sign-in fails before injection, inject **GunshotJailed** and retry. It corrects the re-signed app identifier within compatible Google Photos SSO APIs and handles missing shared-Keychain access automatically. No separate Sideload Spoofer is required for these corrections. Device sign-in verification is still pending.
 >
 > 1. Install Google Photos without injection and complete Google sign-in.
 > 2. Close the app, then install/enable the jailbreak tweak or update the same app with the injected IPA. Preserve the **signing account, bundle identifier and app data**. In LiveContainer, enable the tweak or update the IPA in the **same guest/data container**.

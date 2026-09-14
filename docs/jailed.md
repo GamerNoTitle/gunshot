@@ -36,7 +36,9 @@ Windows / macOS の [Sideloadly](https://sideloadly.io/)で、復号済み Googl
 
 初回の信頼 / Developer Mode、Windows の iTunes / iCloud などの接続環境は [Sideloadly FAQ](https://sideloadly.io/faq) に従ってください。
 
-jailed 版は起動時に、純正 SSO の共有 Keychain グループを利用できるか確認します。iOS が権限不足（`-34018`）を返した場合だけ、純正のアプリ専用 Keychain 設定を使います。7.20.2 / 7.92.0 の両 IPA でこの設定を確認済みです。Google 側の「安全性を確認できない」という拒否の解消は未確認です。LiveContainer ではこの補正を行いません。Sideloadly で引き続き拒否され、LiveContainer ではログインできる場合は、LiveContainer を利用してください。
+jailed 版は起動時に、再署名で変わった識別子を Google Photos の SSO 内で `com.google.photos` に補正します。共有 Keychain に権限不足（`-34018`）がある場合は、純正のアプリ専用 Keychain 設定も使います。この補正に別途 Sideload Spoofer を入れる必要はありません。未注入でもログインを拒否される場合は、jailed 版を注入して再試行してください。
+
+7.20.2 / 7.92.0 の認証経路を解析し、互換 API の有無で適用します。LiveContainer では適用しません。Google 側の拒否が解消するかは実機検証が必要です。診断 JSON の `sideloadIdentity` に補正の適用状態を記録します（識別子・認証 URL・トークンは記録しません）。
 
 ### 他の注入ツール・手動注入
 

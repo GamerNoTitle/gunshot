@@ -7,6 +7,8 @@
 #import "GSAccountConnection.h"
 #if !GS_JAILED
 #import "GSNativeRelay.h"
+#else
+#import "../Jailed/SideloadIdentity.h"
 #endif
 #import "GSNativeRouting.h"
 #import "GSUploadDiagnostics.h"
@@ -318,6 +320,7 @@
 #endif
 #if GS_JAILED
  snapshot[@"runtime"]=GSEmbeddedRuntimeSnapshot();
+ snapshot[@"sideloadIdentity"]=GSSideloadIdentitySnapshot();
 #endif
  NSData *json=[NSJSONSerialization dataWithJSONObject:snapshot options:NSJSONWritingPrettyPrinted error:nil];
  NSURL *file=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"gotohp-upload-diagnostics.json"]];
