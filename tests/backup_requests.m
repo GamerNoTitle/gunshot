@@ -99,6 +99,49 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)cancel{}
 - (void)didCompleteWithError:(id)error resultantMediaItem:(id)item{if(item&&!error)successes++;else failures++;}
 @end
+@interface GMUBackgroundAssetUploadRequest : NSObject
+@property(nonatomic,strong) Credentials *credentials;
+- (_Bool)didStart;
+@property(nonatomic,strong) PHAsset *asset;
+- (void)start;
+- (_Bool)shouldTimeout;
+- (void)cancel;
+- (void)blueprintDidComplete:(BOOL)success mediaItem:(id)item GS_ERROR_LABEL:(GS_ERROR_TYPE)error;
+@end
+@implementation GMUBackgroundAssetUploadRequest
+- (_Bool)didStart{return NO;}
+- (void)start{nativeStarts++;[self blueprintDidComplete:YES mediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];}
+- (_Bool)shouldTimeout{return YES;}
+- (void)cancel{}
+- (void)blueprintDidComplete:(BOOL)success mediaItem:(id)item GS_ERROR_LABEL:(GS_ERROR_TYPE)error{if(success&&!error)successes++;else failures++;}
+@end
+// A separate Live Photo scheduler variant with the same live completion.
+@interface GMULivePhotoUploadRequest : NSObject
+@property(nonatomic,strong) Credentials *credentials;
+- (_Bool)didStart;
+@property(nonatomic,strong) PHAsset *asset;
+- (void)start;
+- (_Bool)shouldTimeout;
+- (void)cancel;
+- (void)didCompleteWithError:(id)error resultantMediaItem:(id)item;
+@end
+@implementation GMULivePhotoUploadRequest
+- (_Bool)didStart{return NO;}
+- (void)start{if([self didStart])return;nativeStarts++;[self didCompleteWithError:nil resultantMediaItem:@"live-upload-server-item"];}
+- (_Bool)shouldTimeout{return YES;}
+- (void)cancel{}
+- (void)didCompleteWithError:(id)error resultantMediaItem:(id)item{if(item&&!error)successes++;else failures++;}
+@end
+@interface GMUVideoStagedAssetRequest : GMUAssetUploadRequest
+- (PHAsset *)videoAsset;
+@end
+@implementation GMUVideoStagedAssetRequest {
+ PHAsset *_stagedVideo;
+}
+- (instancetype)init{if((self=[super init])){_stagedVideo=[PHAsset new];_stagedVideo.localIdentifier=NSUUID.UUID.UUIDString;}return self;}
+- (PHAsset *)asset{return (PHAsset *)(id)@"foreground-staged-payload";}
+- (PHAsset *)videoAsset{return _stagedVideo;}
+@end
 static id Request(Class c,id account){id r=[c new];PHAsset *asset=[PHAsset new];asset.localIdentifier=NSUUID.UUID.UUIDString;[r setAsset:asset];Credentials *cred=[Credentials new];cred.accountID=account;[r setCredentials:cred];return r;}
 @interface PHSLocalAsset : NSObject
 @property(nonatomic,strong) PHAsset *phAsset;
@@ -189,17 +232,22 @@ int main(void){@autoreleasepool{
  id wrong=Request(GMUAssetUploadRequest.class,otherAccount.accountID);[wrong start];Drain(4);assert(queued==2&&failures==1);
  remoteMatch=NO;id missing=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[missing start];Drain(5);assert(queued==3&&nativePayload==0&&failures==2);
  id live=Request(GMULivePhotoSingleUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[live start];Drain(6);assert(queued==4&&successes==4);
- id cancel=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[cancel start];[cancel cancel];[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];assert(queued==4);
+ remoteMatch=YES;
+ // Background video uploads must proxy through Go (Pixel profile), not natively as iOS.
+ id bgVideo=Request(GMUBackgroundAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[bgVideo start];Drain(7);assert(queued==5&&successes==5&&nativePayload==0);
+ id liveUpload=Request(GMULivePhotoUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[liveUpload start];Drain(8);assert(queued==6&&successes==6&&nativePayload==0);
+ id staged=Request(GMUVideoStagedAssetRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[staged start];Drain(9);assert(queued==7&&successes==7&&nativePayload==0);
+ id cancel=Request(GMUAssetUploadRequest.class,[[GIPGaiaAccountID alloc]initWithGaiaID:@"fixture-user-A"]);[cancel start];[cancel cancel];[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];assert(queued==7);
 #ifndef GS_TEST_LEGACY
  __block NSUInteger released=0,denied=0;
  ((void(*)(id,SEL,id,BOOL,BOOL,id,id,id,id))objc_msgSend)([sc new],upload,nil,NO,YES,nil,nil,^{released++;},^(id data,id error){assert(!data&&error);denied++;});
  ((void(*)(id,SEL,id,BOOL,id,id))objc_msgSend)([sc new],stateless,nil,NO,nil,^(id data,id error){assert(!data&&error);denied++;});
  assert(released==1&&denied==2&&nativePayload==0);
- NSDictionary *d=GSBackupRequestsSnapshot();assert([d[@"nativeReconciled"]integerValue]==3&&[d[@"nativePayloadBlocked"]integerValue]==3);
+  NSDictionary *d=GSBackupRequestsSnapshot();assert([d[@"nativeReconciled"]integerValue]==6&&[d[@"nativePayloadBlocked"]integerValue]==3);
 #else
- NSDictionary *d=GSBackupRequestsSnapshot();assert([d[@"nativeReconciled"]integerValue]==3&&[d[@"nativePayloadBlocked"]integerValue]==1);
+  NSDictionary *d=GSBackupRequestsSnapshot();assert([d[@"nativeReconciled"]integerValue]==6&&[d[@"nativePayloadBlocked"]integerValue]==1);
 #endif
- remoteMatch=YES;[[PHSActionsGridModel new]backupLocalAssets:@[[PHAsset new]]];Drain(7);assert(queued==5&&successes==5&&nativePayload==0);
+  remoteMatch=YES;[[PHSActionsGridModel new]backupLocalAssets:@[[PHAsset new]]];Drain(10);assert(queued==8&&successes==8&&nativePayload==0);
  // The native scheduler must wait for each configured condition, then hand off
  // without opening settings, spending retries, or starting native payloads.
  atomic_bool *conditions[]={&online,&wifi,&charging,&paused};
@@ -232,6 +280,6 @@ int main(void){@autoreleasepool{
  ((GSFixtureIdentity *)primaryAccount->_ssoIdentity).hasValidAuth=YES;
  assert(GSNativeIdentityMatches(@"fixture-user-A"));
  CheckProgress();
- NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, original resources, account binding, duplicate start, cancellation and native fallback blocking");
+ NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, background video and live-upload proxying, staged video asset fallback, original resources, account binding, duplicate start, cancellation and native fallback blocking");
  return 0;
 }}

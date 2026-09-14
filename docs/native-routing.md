@@ -14,7 +14,12 @@ GoToHP に渡します。IPA の解析基準は **7.20.2 / 7.92.0** で、版番
 4. 自動バックアップには Google Photos 本体のバックアップも ON にします。
 
 元のスケジューラーと delegate を維持し、共通の `GMUAssetUploadRequest` /
-`GMULivePhotoSingleUploadRequest` で PhotoKit 原本を転送します。Go の実際の
+`GMULivePhotoSingleUploadRequest` で PhotoKit 原本を転送します。動画などの
+バックグラウンド要求（`GMUBackgroundAssetUploadRequest`、blueprint 完了）と、
+もう一方の Live Photo 変種（`GMULivePhotoUploadRequest`）も同じく転送します。
+該当 class が存在しない版では従来の 2 要求のみが有効になり、起動時の ABI 照合で
+可否を決めます。新版で video 側に置かれる場合に備え、`asset` が PHAsset で
+なければ `videoAsset` の PHAsset を使います。Go の実際の
 完了後に純正の fingerprint 照合を再開し、成功を確認します。GoToHP 単独の
 アップロードも前景の完了監視で検知し、純正のアカウント別 fetchData による
 表示更新を要求します。設定を開いたままにする必要や、毎回の再起動はありません。
@@ -41,7 +46,9 @@ locked folder・編集専用・共有専用など、任意の全経路の置換�
 | 経路 | 現在の扱い |
 | --- | --- |
 | GMUAssetUploadRequest.start | 手動・自動の PHAsset 原本を GoToHP の永続キューへ転送 |
+| GMUBackgroundAssetUploadRequest.start | 動画などのバックグラウンド要求を同じく GoToHP の永続キューへ転送（blueprint 完了で再照合） |
 | GMULivePhotoSingleUploadRequest.start | 写真・pairedVideo を一組で転送し、純正のサーバー再照合で完了判定 |
+| GMULivePhotoUploadRequest.start | もう一方の Live Photo 要求変種を同じく一組で転送 |
 | 純正の完了 callback | 旧版の数値 errorCode / 新版の NSError を自動選択。成功結果を捏造しない |
 | GMUUploadRequest.startFetcher / startCNDEUpload | 転送有効時・再照合中の native payload fallback を停止 |
 | Swift Scotty / statelessUpload | 対応 ABI が存在する場合に payload fallback を停止。7.20.2 では該当 Swift class は未検出 |

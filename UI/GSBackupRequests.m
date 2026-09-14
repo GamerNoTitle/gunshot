@@ -44,6 +44,10 @@ static void GSFail(id request,NSInteger code){
   ((void(*)(id,SEL,BOOL,id,NSInteger))objc_msgSend)(request,NSSelectorFromString(GSPhotosAssetCompletion(object_getClass(request))),NO,nil,code);
  else if(GSMethod(request,@"didCompleteWithSuccess:resultantMediaItem:error:","v36@0:8B16@20@28"))
   ((void(*)(id,SEL,BOOL,id,id))objc_msgSend)(request,NSSelectorFromString(@"didCompleteWithSuccess:resultantMediaItem:error:"),NO,nil,error);
+ else if(GSMethod(request,@"blueprintDidComplete:mediaItem:errorCode:","v36@0:8B16@20q28"))
+  ((void(*)(id,SEL,BOOL,id,NSInteger))objc_msgSend)(request,NSSelectorFromString(@"blueprintDidComplete:mediaItem:errorCode:"),NO,nil,code);
+ else if(GSMethod(request,@"blueprintDidComplete:mediaItem:error:","v36@0:8B16@20@28"))
+  ((void(*)(id,SEL,BOOL,id,id))objc_msgSend)(request,NSSelectorFromString(@"blueprintDidComplete:mediaItem:error:"),NO,nil,error);
  else if(GSMethod(request,@"didCompleteWithError:resultantMediaItem:","v32@0:8@16@24"))
   ((void(*)(id,SEL,id,id))objc_msgSend)(request,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"),error,nil);
 }
@@ -83,6 +87,7 @@ static void GSStart(id request,SEL selector,IMP original){
  if(existing){if(existing.reconciling)((void(*)(id,SEL))original)(request,selector);return;}
  if(!GSNativeRoutingEnabled()){((void(*)(id,SEL))original)(request,selector);return;}
  PHAsset *asset=GSGet(request,@"asset");
+ if(![asset isKindOfClass:PHAsset.class])asset=GSGet(request,@"videoAsset");
  // Export the PHAsset original, not a compressed GMUUploadAsset.
  if(![asset isKindOfClass:PHAsset.class]){GSCount(@"unsupported");GSFail(request,1);return;}
  BOOL reconciling;@synchronized(GSLock){reconciling=[GSReconciling containsObject:asset.localIdentifier];}
@@ -151,6 +156,39 @@ static void GSBindCompletion(Class c,BOOL live){
  else if(GSPhotosCompletionForClass(c)==GSPhotosCompletionCode)GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,NSInteger code){GSFinish(request,success);((void(*)(id,SEL,BOOL,id,NSInteger))old)(request,s,success,result,code);}));
  else GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,id error){GSFinish(request,success&&error==nil);((void(*)(id,SEL,BOOL,id,id))old)(request,s,success,result,error);}));
 }
+static void GSBindBackgroundCompletion(Class c,int kind){
+ if(kind==2){
+  SEL s=NSSelectorFromString(@"blueprintDidComplete:mediaItem:errorCode:");
+  IMP old=method_getImplementation(class_getInstanceMethod(c,s));
+  GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,NSInteger code){GSFinish(request,success);((void(*)(id,SEL,BOOL,id,NSInteger))old)(request,s,success,result,code);}));
+  return;
+ }
+ SEL s=NSSelectorFromString(@"blueprintDidComplete:mediaItem:error:");
+ IMP old=method_getImplementation(class_getInstanceMethod(c,s));
+ GSReplace(c,s,imp_implementationWithBlock(^(id request,BOOL success,id result,id error){GSFinish(request,success&&error==nil);((void(*)(id,SEL,BOOL,id,id))old)(request,s,success,result,error);}));
+}
+static BOOL GSRequestClassMatches(Class c){
+ if(!c)return NO;
+ for(NSArray *entry in @[@[@"start",@"v16@0:8"],@[@"cancel",@"v16@0:8"],@[@"shouldTimeout",@"B16@0:8"],@[@"didStart",@"B16@0:8"],@[@"asset",@"@16@0:8"],@[@"credentials",@"@16@0:8"]]){
+  Method m=class_getInstanceMethod(c,NSSelectorFromString(entry[0]));if(!m||strcmp(method_getTypeEncoding(m),[entry[1]UTF8String]))return NO;
+ }
+ return YES;
+}
+static BOOL GSLiveCompletionMatches(Class c){
+ Method m=class_getInstanceMethod(c,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"));
+ return m&&!strcmp(method_getTypeEncoding(m),"v32@0:8@16@24");
+}
+static BOOL GSBackgroundCompletionMatches(Class c){
+ Method m=class_getInstanceMethod(c,NSSelectorFromString(@"blueprintDidComplete:mediaItem:error:"));
+ return m&&!strcmp(method_getTypeEncoding(m),"v36@0:8B16@20@28");
+}
+// 1: object completion, 2: legacy numeric completion, 0: no supported shape.
+static int GSBackgroundCompletionKind(Class c){
+ if(GSBackgroundCompletionMatches(c))return 1;
+ Method m=class_getInstanceMethod(c,NSSelectorFromString(@"blueprintDidComplete:mediaItem:errorCode:"));
+ if(m&&!strcmp(method_getTypeEncoding(m),"v36@0:8B16@20q28"))return 2;
+ return 0;
+}
 static void GSBindStart(Class c){
  SEL s=NSSelectorFromString(@"start");IMP original=method_getImplementation(class_getInstanceMethod(c,s));
  GSReplace(c,s,imp_implementationWithBlock(^(id request){GSStart(request,s,original);}));
@@ -206,9 +244,7 @@ static void GSBindScotty(void){
 void GSInstallBackupRequests(void){
  if(GSInstalled||!GSIsGooglePhotos()||!GSPhotosHostSupported())return;
  Class asset=NSClassFromString(@"GMUAssetUploadRequest"),live=NSClassFromString(@"GMULivePhotoSingleUploadRequest"),base=NSClassFromString(@"GMUUploadRequest");
- for(Class c in @[asset?:NSObject.class,live?:NSObject.class])for(NSArray *entry in @[@[@"start",@"v16@0:8"],@[@"cancel",@"v16@0:8"],@[@"shouldTimeout",@"B16@0:8"],@[@"didStart",@"B16@0:8"],@[@"asset",@"@16@0:8"],@[@"credentials",@"@16@0:8"]]){
-  Method m=class_getInstanceMethod(c,NSSelectorFromString(entry[0]));if(!m||strcmp(method_getTypeEncoding(m),[entry[1]UTF8String]))return;
- }
+ if(!GSRequestClassMatches(asset)||!GSRequestClassMatches(live))return;
  Method fetch=class_getInstanceMethod(base,NSSelectorFromString(@"startFetcher"));if(!fetch||strcmp(method_getTypeEncoding(fetch),"v16@0:8"))return;
  if(GSPhotosCompletionForClass(asset)==GSPhotosCompletionUnavailable)return;
  Method ac=class_getInstanceMethod(asset,NSSelectorFromString(GSPhotosAssetCompletion(asset))),lc=class_getInstanceMethod(live,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"));
@@ -216,6 +252,11 @@ void GSInstallBackupRequests(void){
  GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSReconciling=[NSMutableSet set];
  GSBindStart(asset);GSBindStart(live);GSBindCompletion(asset,NO);GSBindCompletion(live,YES);
  GSBindProgress(asset);GSBindProgress(live);
+ Class background=NSClassFromString(@"GMUBackgroundAssetUploadRequest");
+ int backgroundKind=GSRequestClassMatches(background)?GSBackgroundCompletionKind(background):0;
+ if(backgroundKind){GSBindStart(background);GSBindBackgroundCompletion(background,backgroundKind);GSBindProgress(background);}
+ Class liveUpload=NSClassFromString(@"GMULivePhotoUploadRequest");
+ if(GSRequestClassMatches(liveUpload)&&GSLiveCompletionMatches(liveUpload)){GSBindStart(liveUpload);GSBindCompletion(liveUpload,YES);GSBindProgress(liveUpload);}
  SEL s=NSSelectorFromString(@"startFetcher");IMP original=method_getImplementation(fetch);GSReplace(base,s,imp_implementationWithBlock(^(id request){GSGuard(request,s,original);}));
  Class media=NSClassFromString(@"GMUUploadMediaRequest");SEL cnde=NSSelectorFromString(@"startCNDEUpload");Method cm=class_getInstanceMethod(media,cnde);
  if(cm&&!strcmp(method_getTypeEncoding(cm),"v16@0:8")){IMP old=method_getImplementation(cm);GSReplace(media,cnde,imp_implementationWithBlock(^(id request){GSGuard(request,cnde,old);}));}

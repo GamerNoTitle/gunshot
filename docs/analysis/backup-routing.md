@@ -8,8 +8,13 @@ GMUUploadMediaRequest.uploadFetcherDidCompleteWithData:error: → native complet
 の backupLocalAssets: だけで、別の手動操作と自動バックアップを捕まえていません。
 
 jailed / rootless / rootful ともアプリ起動時に GMUAssetUploadRequest.start と
-GMULivePhotoSingleUploadRequest.start を捕まえます。両者の asset は、7.92.0 の
-ivar メタデータで PHAsset と確認済みです。credentials は
+GMULivePhotoSingleUploadRequest.start を捕まえます。動画などのバックグラウンド
+要求（GMUBackgroundAssetUploadRequest.start、blueprint 完了）と、もう一方の
+Live Photo 変種（GMULivePhotoUploadRequest.start）も同じ PHAsset 原本の転送と
+純正の fingerprint 再照合で扱います。該当 class が存在しない版では従来の 2 要求
+のみが有効になり、起動時の ABI 照合で可否を決めます。両者の asset は、7.92.0 の
+ivar メタデータで PHAsset と確認済みです。新版で video 側に置かれる場合に備え、
+asset が PHAsset でなければ videoAsset の PHAsset を使います。credentials は
 GMUUploadRequestCredentials → PHSBaseWithAccountID.accountID を通して、現在の
 PHSAccountManagerImpl.viewingAccount.accountID と比較します。
 
