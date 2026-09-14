@@ -3,7 +3,7 @@ ARCHS = arm64
 include $(THEOS)/makefiles/common.mk
 include ../UI/sources.mk
 LIBRARY_NAME = GunshotJailed
-GunshotJailed_FILES = Hooks.m EmbeddedService.m $(addprefix ../UI/,$(filter-out GSNativeRelay.m,$(GUNSHOT_UI_FILES)))
+GunshotJailed_FILES = Hooks.m EmbeddedService.m SideloadKeychain.m $(addprefix ../UI/,$(filter-out GSNativeRelay.m,$(GUNSHOT_UI_FILES)))
 GunshotJailed_CFLAGS = -fobjc-arc -DGS_JAILED=1 -I../Shared -I../.build
 GunshotJailed_FRAMEWORKS = UIKit Foundation Photos PhotosUI Network Security CoreFoundation
 GunshotJailed_LIBRARIES = resolv

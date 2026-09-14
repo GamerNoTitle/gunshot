@@ -25,7 +25,7 @@ Google・Apple とは無関係の非公式プロジェクトです。**現状の
 ## インストールと使い方
 
 > [!IMPORTANT]
-> **tweak の導入・有効化より先に Google Photos 本体へログインしてください。** Sideloadly で注入を有効にすると、Google にログインを拒否された報告があります。
+> **まず注入なしで Google Photos へのログインを試してください。** 成功する場合はログイン後に tweak を導入・有効化します。Sideloadly では注入なしでも拒否される場合があります。その場合は[導入ガイド](docs/jailed.md#sideloadly)を確認してください。
 >
 > 1. 注入なしの Google Photos をインストールし、Google アカウントへログインします。
 > 2. アプリを終了し、jailbreak では tweak を導入・有効化、サイドロードでは注入済み IPA を上書きします。**同じ署名アカウント・Bundle ID・アプリデータ**を維持してください。LiveContainer では**同じ guest／データコンテナ**で tweak を有効化するか IPA を更新します。
