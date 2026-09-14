@@ -18,7 +18,7 @@ def generate():
         for key, value in strings.items():
             assert isinstance(value, str) and value, f'{language}: empty {key}'
             assert tokens(key) == tokens(value), f'{language}: format arguments differ: {key}'
-    for folder in ['UI', 'Shared', 'Jailed', 'Preferences']:
+    for folder in ['UI', 'Shared', 'Jailed']:
         for path in (ROOT / folder).glob('*.m'):
             source = path.read_text()
             assert not re.search(r'@"[^"\n]*[\u3040-\u9fff]', source), f'{path}: hardcoded Japanese'

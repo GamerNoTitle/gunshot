@@ -13,4 +13,13 @@ No jailbroken iPhone or Google test credential was available during implementati
 9. Original / Saver / Quota: compare account storage before and after with a fresh test asset. A media key is not proof of zero quota usage. Do not mark unlimited behavior verified without server/account-side evidence.
 10. Monitor RAM, CPU, thermal and storage under large video + 4 concurrent jobs. Audit token SPI, arm64 daemon on arm64e hardware, jailbreak TLS trust and respring behavior all require real-device evidence.
 
-Current limits: no byte-offset remote resume; no Keychain; no automatic backup; no arbitrary device-profile editor; no private Google Photos selection hooks; no automatic assertion of quota savings. Staging copies remain for failed jobs until cancel; cancel removes staging, never remote photos. Uninstall keeps private account/queue data for deliberate recovery/removal.
+Current limits: no byte-offset remote resume; no GoToHP-managed Keychain store; no arbitrary device-profile editor; no automatic assertion of quota savings. Staging copies remain for failed jobs until cancel; cancel removes staging, never remote photos. Uninstall keeps private account/queue data for deliberate recovery/removal.
+
+## Native backup handoff
+
+Use the [backup-routing controls and diagnostics](native-routing.md). These checks apply separately to jailed, rootless and rootful:
+
+- OFF preserves standard manual/automatic backup. ON hands single, multiple and automatic requests to GoToHP once without opening its settings.
+- Both native handoff and direct GoToHP uploads refresh the native display after completion with settings closed. Check real data, quality and quota separately as above.
+- Account mismatch, expired authorization, PhotoKit refusal, disk full or failed reconciliation must not resend media through the native payload path.
+- Jailed requires foreground execution. After a jailbreak import reaches the daemon, closing the host must retain the queue; reopening must renew authorization and synchronize the display.

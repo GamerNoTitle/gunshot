@@ -39,7 +39,7 @@ Get `gotohp-tweak-jailed` from [GitHub Actions](https://github.com/tqmane/gunsho
 
 GoToHP automatically connects the signed-in account when Google Photos opens; opening GoToHP settings is not required. Choose **Uploads → Choose photos and videos** to upload. **Keep Google Photos in the foreground**; jailed uploads cannot continue after the app closes.
 
-On jailed Google Photos with compatible native APIs, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/full-upload-replacement.md).
+On jailed Google Photos with compatible native APIs, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/native-routing.md).
 
 ### Jailbreak
 

@@ -90,6 +90,7 @@ type Engine struct {
 	mu                     sync.Mutex
 	root                   string
 	state                  State
+	jobsByID               map[string]*Job // Derived index; guarded by mu, never persisted.
 	active                 map[string]context.CancelFunc
 	runner                 Runner
 	online, wifi, charging bool
@@ -150,8 +151,9 @@ func Open(root string, runner Runner) (*Engine, error) {
 	if err := validateState(s); err != nil {
 		return nil, err
 	}
-	en := &Engine{root: root, state: s, active: map[string]context.CancelFunc{}, importHashes: map[string][]hash.Hash{}, runner: runner}
+	en := &Engine{root: root, state: s, jobsByID: make(map[string]*Job, len(s.Jobs)), active: map[string]context.CancelFunc{}, importHashes: map[string][]hash.Hash{}, runner: runner}
 	for _, j := range s.Jobs {
+		en.jobsByID[j.ID] = j
 		switch j.State {
 		case "uploading", "preparing":
 			j.State = "pending"
@@ -182,14 +184,7 @@ func (e *Engine) save() error {
 	return err
 }
 func (e *Engine) jobDir(id string) string { return filepath.Join(e.root, "media", id) }
-func (e *Engine) find(id string) *Job {
-	for _, j := range e.state.Jobs {
-		if j.ID == id {
-			return j
-		}
-	}
-	return nil
-}
+func (e *Engine) find(id string) *Job     { return e.jobsByID[id] }
 func (e *Engine) Close() {
 	e.mu.Lock()
 	e.stopped = true

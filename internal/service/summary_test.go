@@ -111,9 +111,9 @@ func TestMediaFailureSummary(t *testing.T) {
 		e.state.Jobs = append(e.state.Jobs, job)
 	}
 	var response struct {
-		OK bool
+		OK   bool
 		Data struct {
-			MediaTypes map[string]struct { States, FailureCodes map[string]int }
+			MediaTypes map[string]struct{ States, FailureCodes map[string]int }
 		}
 	}
 	raw := e.HandleJSON([]byte(`{"op":"upload_summary"}`), "googlephotos")
@@ -131,5 +131,47 @@ func TestMediaFailureSummary(t *testing.T) {
 		if strings.Contains(string(raw), secret) {
 			t.Fatal("private data escaped into media diagnostics")
 		}
+	}
+}
+
+func TestSummaryIncludesEmptyProfilesAndMixedQualities(t *testing.T) {
+	e := newEngine(t, nil)
+	for _, job := range []*Job{
+		{Quality: "original", State: "completed", Resources: []Resource{{Name: "a.heic"}}},
+		{Quality: "saver", State: "pending", Resources: []Resource{{Name: "b.jpg"}}},
+		{Quality: "saver", State: "failed", Resources: []Resource{{Name: "c.png"}}},
+	} {
+		e.state.Jobs = append(e.state.Jobs, job)
+	}
+	var reply struct {
+		OK   bool
+		Data struct {
+			Profiles map[string]struct {
+				Model                        string
+				StoragePolicy, UploadQuality int
+				States                       map[string]int
+			}
+			MediaTypes map[string]struct{ States, FailureCodes map[string]int }
+		}
+	}
+	raw := e.HandleJSON([]byte(`{"op":"upload_summary"}`), "googlephotos")
+	if err := json.Unmarshal(raw, &reply); err != nil || !reply.OK {
+		t.Fatalf("invalid summary: %s", raw)
+	}
+	profiles := reply.Data.Profiles
+	if len(profiles) != 3 || profiles["original"].Model != "Pixel XL" || profiles["original"].StoragePolicy != 3 ||
+		profiles["saver"].Model != "Pixel 2" || profiles["saver"].StoragePolicy != 1 ||
+		profiles["quota"].Model != "Pixel 8" || profiles["quota"].StoragePolicy != 3 {
+		t.Fatal("quality profile metadata changed")
+	}
+	for _, profile := range profiles {
+		if profile.UploadQuality != 1 || profile.States == nil {
+			t.Fatal("profile counters must be JSON objects, including empty profiles")
+		}
+	}
+	if profiles["original"].States["completed"] != 1 || profiles["saver"].States["pending"] != 1 ||
+		profiles["saver"].States["failed"] != 1 || len(profiles["quota"].States) != 0 ||
+		reply.Data.MediaTypes["png"].FailureCodes["unspecified"] != 1 {
+		t.Fatal("media and quality counts diverged")
 	}
 }

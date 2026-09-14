@@ -16,8 +16,8 @@
 - transport 完了は native blueprint の後続処理につながります。Scotty の成功と Google Photos の media commit 完了を同一視できません。
 - edited/original bytes を別に扱う参照もあるため、PhotoKit の original を一律アップロードするだけでは native 編集 upload と同等とは言えません。
 
-これらから **GoToHP の成功結果を native model へ正しく変換し、後続 queue/DB 処理と整合させる必要がある**と判断しています。型・field mapping、各 branch の実行条件、全 upload 経路の網羅は未確定です。Native queue の成功を偽装するコードは追加していません。
+現在の実装では Go の完了結果から native model を捏造せず、元の fingerprint / サーバー照合を再開し、純正の delegate に結果を処理させます。上記の静的解析だけでは native result の全 schema、各 branch の実行条件、全 upload 経路の網羅は確定できません。
 
 ## 次に必要な証拠
 
-[診断手順](../full-upload-replacement.md)で native completion の resultClass、通過する binding、failure 有無を取得します。そのログだけで全互換性を証明できるわけではありませんが、型と経路を絞る根拠になります。認証情報やサーバー本文を添付する必要はありません。
+[診断手順](../native-routing.md)で native completion の resultClass、通過する binding、failure 有無を取得します。そのログだけで全互換性を証明できるわけではありませんが、型と経路を絞る根拠になります。認証情報やサーバー本文を添付する必要はありません。
