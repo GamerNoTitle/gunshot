@@ -162,9 +162,11 @@ static void Reconciliation(void){
  // Two requests for the same asset each own their reconciliation guard.
  finished=successes+failures;
  GMUAssetUploadRequest *first=Video(0,YES),*second=Video(0,YES);
+ first.asset.mediaType=second.asset.mediaType=PHAssetMediaTypeImage;
  second.asset.localIdentifier=first.asset.localIdentifier;
  holdJob=YES;before=queued;[first start];[second start];Await(^BOOL{return queued==before+2;});holdJob=NO;
  Await(^BOOL{return [GSReconciling countForObject:first.asset.localIdentifier]==2;});
+ assert(![first shouldTimeout]&&![second shouldTimeout]);
  GSSetNativeRouting(NO,nil);[first cancel];assert(GSBlockNative());
  [second didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
  assert(successes+failures==finished+1&&!GSBlockNative());

@@ -156,7 +156,9 @@ static void GSBindStart(Class c){
  SEL started=NSSelectorFromString(@"didStart");IMP oldStarted=method_getImplementation(class_getInstanceMethod(c,started));
  GSReplace(c,started,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled&&!t.finished?YES:((BOOL(*)(id,SEL))oldStarted)(request,started);}));
  SEL timeout=NSSelectorFromString(@"shouldTimeout");IMP oldTimeout=method_getImplementation(class_getInstanceMethod(c,timeout));
- GSReplace(c,timeout,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled&&!t.finished?NO:((BOOL(*)(id,SEL))oldTimeout)(request,timeout);}));
+ // Our bounded deadline also covers backoff; native's 60-second idle timeout
+ // must not cancel the final retry before it can run.
+ GSReplace(c,timeout,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.cancelled&&!t.finished?NO:((BOOL(*)(id,SEL))oldTimeout)(request,timeout);}));
  SEL cancel=NSSelectorFromString(@"cancel");IMP oldCancel=method_getImplementation(class_getInstanceMethod(c,cancel));
  GSReplace(c,cancel,imp_implementationWithBlock(^(id request){
   GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);
