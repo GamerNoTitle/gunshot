@@ -25,7 +25,7 @@ An unofficial project unaffiliated with Google or Apple, provided **as is, witho
 ## Install and use
 
 > [!IMPORTANT]
-> **Sign in to Google Photos before installing or enabling the tweak.** Injection has caused Google to reject login in a reported Sideloadly setup.
+> **Try Google sign-in without injection first.** If it succeeds, sign in before installing or enabling the tweak. Google can reject Sideloadly builds even without injection; see the [installation guide](docs/jailed.md#sideloadly) for that case.
 >
 > 1. Install Google Photos without injection and complete Google sign-in.
 > 2. Close the app, then install/enable the jailbreak tweak or update the same app with the injected IPA. Preserve the **signing account, bundle identifier and app data**. In LiveContainer, enable the tweak or update the IPA in the **same guest/data container**.

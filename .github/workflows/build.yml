@@ -89,6 +89,15 @@ jobs:
           .build/native-autoconnect-jailed-test
           clang -fobjc-arc -DGS_JAILED=1 -DGS_TEST_AUTOCONNECT=1 -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-autoconnect-jailed-legacy-test
           .build/native-autoconnect-jailed-legacy-test
+      - name: Sideload SSO Keychain compatibility
+        if: matrix.scheme == 'jailed'
+        run: |
+          mkdir -p .build
+          clang -fobjc-arc -framework Foundation -framework Security -framework LocalAuthentication tests/sideload_keychain.m -o .build/sideload-keychain-test
+          .build/sideload-keychain-test
+          for mode in native-private wrong-host livecontainer missing-configuration missing-helper configuration-abi helper-abi; do
+            .build/sideload-keychain-test "$mode"
+          done
       - name: Native routing contract
         if: matrix.scheme == 'jailed'
         run: |

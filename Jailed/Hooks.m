@@ -6,6 +6,7 @@
 #import "../UI/GSPhotosIntegration.h"
 #import "../UI/GSAccountConnection.h"
 #import "../UI/GSUploadMonitor.h"
+#import "SideloadKeychain.h"
 
 // Independent Objective-C hooks: no Substrate / ElleKit dependency for IPA injection.
 static id (*GSOriginalActivityInit)(id, SEL, NSArray *, NSArray *);
@@ -17,6 +18,7 @@ static id GSActivityInit(id object, SEL selector, NSArray *items, NSArray *activ
 }
 __attribute__((constructor)) static void GSLoadJailed(void) {
  @autoreleasepool {
+ GSInstallSideloadKeychain(); // SSO reads its Keychain mode during initialization.
  // LC's guest bundle is resolved lazily on the main queue, after guest setup.
  dispatch_async(dispatch_get_main_queue(),^{
  NSString *executable=[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleExecutable"];
