@@ -7,12 +7,16 @@ Both targets are validated before either is changed. Exported diagnostics includ
 `bottomBarGlass` with availability, attached-bar count and a skip reason.
 `attached` reports view installation, not a verified rendering result.
 
-The visible left navigation is a real UIKit `UITabBar`. Google Photos' original
+The visible left navigation is a self-owned capsule: one `UIVisualEffectView`
+(`UIGlassEffect`, capsule) sized from the tab top to the Search button's bottom
+edge, with three plain `UIButton`s (Photos/Collections/Create) on top. No
+`UITabBar` is used, so exactly one glass background exists by construction and
+there is no Apple-owned background to hide. Google Photos' original
 `PHSSegmentedControl` stays in its original `UIStackView` as the navigation
-backend, but is made visually/accessibility-inactive while the UIKit bar mirrors
-its selection. Selecting a `UITabBarItem` writes the same
-`selectedSegmentIndex`; the audited 7.92.0 setter emits
-`UIControlEventValueChanged` itself, so Gunshot must not emit a second event.
+backend, but is made visually/accessibility-inactive while the pill mirrors its
+selection. Tapping a pill button writes the same `selectedSegmentIndex`; the
+audited 7.92.0 setter emits `UIControlEventValueChanged` itself, so Gunshot
+must not emit a second event.
 
 The visible search control is a separate sibling `UIButton` built from
 `UIButtonConfiguration.glassButtonConfiguration`. It is not an arranged child
