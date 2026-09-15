@@ -299,6 +299,16 @@ static UIButton *GSFixtureNativeSearchProxy(PHSTabBarController *controller){
     [view.accessibilityLabel isEqual:controller.floatingSearchButton.accessibilityLabel])return (UIButton *)view;
  return nil;
 }
+static BOOL GSFixtureHasVisibleTabBarOuterBackground(UIView *view,BOOL directChild){
+ if([view isKindOfClass:UIControl.class])return NO;
+ NSString *name=NSStringFromClass(view.class);
+ BOOL background=[name rangeOfString:@"Background" options:NSCaseInsensitiveSearch].location!=NSNotFound||
+                 (directChild&&[view isKindOfClass:UIVisualEffectView.class]);
+ if(background&&!view.hidden&&view.alpha>0.01)return YES;
+ if([name rangeOfString:@"Button" options:NSCaseInsensitiveSearch].location!=NSNotFound)return NO;
+ for(UIView *child in view.subviews)if(GSFixtureHasVisibleTabBarOuterBackground(child,NO))return YES;
+ return NO;
+}
 static void GSFixtureAttach(PHSTabBarController *controller,UIWindow *window){
  UIViewController *root=window.rootViewController;[controller loadViewIfNeeded];
  controller.view.frame=CGRectMake(0,0,window.bounds.size.width,MIN(180,window.bounds.size.height));
@@ -361,6 +371,8 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
   UIVisualEffectView *tabBackdrop=GSFixtureTabBackdrop(controller);UITabBar *nativeTabBar=GSFixtureNativeTabBar(controller);UIButton *searchProxy=GSFixtureNativeSearchProxy(controller);UIView *host=bar;
   GS_GLASS_CHECK(tabBackdrop&&tabBackdrop.superview==host&&[NSStringFromClass(tabBackdrop.effect.class) containsString:@"Glass"]&&!tabBackdrop.userInteractionEnabled);
   GS_GLASS_CHECK(nativeTabBar&&nativeTabBar.items.count==3&&nativeTabBar.delegate&&nativeTabBar.translucent&&nativeTabBar.superview==host);
+  [nativeTabBar layoutIfNeeded];
+  for(UIView *child in nativeTabBar.subviews)GS_GLASS_CHECK(!GSFixtureHasVisibleTabBarOuterBackground(child,YES));
   GS_GLASS_CHECK([nativeTabBar.items[0].title isEqual:@"Photos"]&&[nativeTabBar.items[1].title isEqual:@"Collections"]&&[nativeTabBar.items[2].title isEqual:@"Create"]);
   GS_GLASS_CHECK(searchProxy&&searchProxy.superview==host&&searchProxy.configuration&&searchProxy.configuration.image&&searchProxy.configuration.cornerStyle==UIButtonConfigurationCornerStyleCapsule);
   GS_GLASS_CHECK([searchProxy.accessibilityLabel isEqual:@"Search"]&&![searchProxy isDescendantOfView:nativeTabBar]);

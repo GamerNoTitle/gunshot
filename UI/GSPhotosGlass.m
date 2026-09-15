@@ -11,6 +11,19 @@ static BOOL GSInstalled,GSBootGlassEnabled,GSRestartRequired,GSDesignOverrideApp
 static NSHashTable *GSControllers,*GSPairs;
 static NSString *GSLastSkip;
 
+static void GSHideNativeTabBarOuterBackground(UITabBar *tabBar);
+
+@interface GSPhotosNativeTabBar : UITabBar
+@end
+@implementation GSPhotosNativeTabBar
+- (void)layoutSubviews{
+ [super layoutSubviews];
+ // iOS 26 recreates/reconfigures the floating outer glass during layout, so
+ // suppress it every pass. Item/button-owned visuals are deliberately left alone.
+ GSHideNativeTabBarOuterBackground(self);
+}
+@end
+
 // Google Photos keeps owning the real segmented control and search button. The
 // two visible controls below are UIKit-native proxies layered next to that stack,
 // so Photos keeps all of its targets/state while UIKit owns the iOS 26 visuals.
@@ -145,8 +158,39 @@ static void GSSyncTabSelection(GSPhotosGlassPair *pair){
  if(selected>=0&&selected<(NSInteger)pair.nativeTabBar.items.count)pair.nativeTabBar.selectedItem=pair.nativeTabBar.items[selected];
 }
 
+static BOOL GSIsTabBarButtonTree(UIView *view){
+ if([view isKindOfClass:UIControl.class])return YES;
+ NSString *name=NSStringFromClass(view.class);
+ return [name rangeOfString:@"TabBarButton" options:NSCaseInsensitiveSearch].location!=NSNotFound||
+        [name rangeOfString:@"Button" options:NSCaseInsensitiveSearch].location!=NSNotFound;
+}
+
+static BOOL GSIsTabBarOuterBackground(UIView *view,BOOL directChild){
+ NSString *name=NSStringFromClass(view.class);
+ if([name rangeOfString:@"Background" options:NSCaseInsensitiveSearch].location!=NSNotFound)return YES;
+ // On iOS 26 the outer floating chrome can itself be a direct effect view. Do
+ // not apply this rule below item/button containers or the selected-item glass
+ // would disappear as well.
+ if(directChild&&[view isKindOfClass:UIVisualEffectView.class])return YES;
+ return NO;
+}
+
+static void GSHideTabBarBackgroundBranch(UIView *view,BOOL directChild){
+ if(GSIsTabBarButtonTree(view))return;
+ if(GSIsTabBarOuterBackground(view,directChild)){
+  view.hidden=YES;view.alpha=0;view.userInteractionEnabled=NO;
+  return;
+ }
+ for(UIView *child in view.subviews)GSHideTabBarBackgroundBranch(child,NO);
+}
+
+static void GSHideNativeTabBarOuterBackground(UITabBar *tabBar){
+ if(!tabBar)return;
+ for(UIView *view in tabBar.subviews)GSHideTabBarBackgroundBranch(view,YES);
+}
+
 static UITabBar *GSCreateNativeTabBar(GSPhotosGlassPair *pair){
- UITabBar *tabBar=[[UITabBar alloc]initWithFrame:CGRectZero];
+ UITabBar *tabBar=[[GSPhotosNativeTabBar alloc]initWithFrame:CGRectZero];
  tabBar.delegate=pair;tabBar.translucent=YES;tabBar.itemPositioning=UITabBarItemPositioningFill;tabBar.clipsToBounds=NO;
  // iOS 26's UITabBar keeps its own floating glass background at a fixed
  // intrinsic height even when the bar frame is taller. Keep the native tab
@@ -155,7 +199,7 @@ static UITabBar *GSCreateNativeTabBar(GSPhotosGlassPair *pair){
  UITabBarAppearance *appearance=[tabBar.standardAppearance copy]?:[UITabBarAppearance new];
  appearance.backgroundEffect=nil;appearance.backgroundColor=UIColor.clearColor;appearance.shadowColor=UIColor.clearColor;
  tabBar.standardAppearance=appearance;tabBar.scrollEdgeAppearance=appearance;
- tabBar.backgroundColor=UIColor.clearColor;tabBar.opaque=NO;
+ tabBar.backgroundColor=UIColor.clearColor;tabBar.opaque=NO;tabBar.backgroundImage=[UIImage new];tabBar.shadowImage=[UIImage new];
  NSArray<NSString *> *titles=GSTabTitles(pair.segments);
  NSArray<NSString *> *symbols=@[ @"photo.on.rectangle.angled",@"rectangle.stack",@"plus.circle"];
  NSMutableArray<UITabBarItem *> *items=[NSMutableArray arrayWithCapacity:3];
@@ -166,6 +210,7 @@ static UITabBar *GSCreateNativeTabBar(GSPhotosGlassPair *pair){
  tabBar.items=items;
  NSInteger selected=GSInteger(pair.segments,@"selectedSegmentIndex");
  if(selected>=0&&selected<(NSInteger)items.count)tabBar.selectedItem=items[selected];
+ [tabBar setNeedsLayout];[tabBar layoutIfNeeded];GSHideNativeTabBarOuterBackground(tabBar);
  return tabBar;
 }
 
@@ -228,6 +273,7 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  if(searchBottom>CGRectGetMinY(backdropFrame))backdropFrame.size.height=searchBottom-CGRectGetMinY(backdropFrame);
  pair.tabBackdrop.frame=backdropFrame;
  pair.nativeTabBar.frame=tabFrame;
+ [pair.nativeTabBar setNeedsLayout];[pair.nativeTabBar layoutIfNeeded];GSHideNativeTabBarOuterBackground(pair.nativeTabBar);
  pair.searchProxy.frame=searchFrame;
  pair.tabBackdrop.hidden=NO;pair.nativeTabBar.hidden=NO;pair.searchProxy.hidden=NO;pair.tabBackdrop.alpha=1;pair.nativeTabBar.alpha=1;pair.searchProxy.alpha=1;
  GSSyncTabSelection(pair);[pair.host bringSubviewToFront:pair.tabBackdrop];[pair.host bringSubviewToFront:pair.nativeTabBar];[pair.host bringSubviewToFront:pair.searchProxy];
