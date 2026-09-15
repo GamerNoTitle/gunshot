@@ -7,18 +7,21 @@ Both targets are validated before either is changed. Exported diagnostics includ
 `bottomBarGlass` with availability, attached-bar count and a skip reason.
 `attached` reports view installation, not a verified rendering result.
 
-The visible left navigation is a self-owned capsule: one `UIVisualEffectView`
-(`UIGlassEffect`, capsule) sized from the tab top to the Search button's bottom
-edge, with three plain `UIButton`s (Photos/Collections/Create) on top. No
-`UITabBar` is used, so exactly one glass background exists by construction and
-there is no Apple-owned background to hide. Google Photos' original
-`PHSSegmentedControl` stays in its original `UIStackView` as the navigation
-backend, but is made visually/accessibility-inactive while the pill mirrors its
-selection. Tapping a pill button writes the same `selectedSegmentIndex` and
-then sends `UIControlEventValueChanged` explicitly: on-device verification
-showed the 7.92.0 setter only stores the index and navigation never fires
-without the explicit event. Same-index taps send nothing. A capsule shadow
-under the pill gives the floating lift Apple tab bars have.
+The visible left navigation is a real UIKit `UITabBar`, with its standard iOS 26
+appearance left intact. Gunshot deliberately does not draw a replacement
+`UIGlassEffect` capsule, clear the tab bar background, or hide UIKit's internal
+background views. UIKit therefore owns the outer floating glass, the selected-tab
+lens and the pressed/held interaction/refraction instead of approximating those
+states with plain buttons.
+
+Google Photos' original `PHSSegmentedControl` stays in its original `UIStackView`
+as the navigation backend, but is made visually/accessibility-inactive while the
+UIKit bar mirrors its selection. Selecting a `UITabBarItem` writes the same
+`selectedSegmentIndex`. On-device 7.92.0 builds do not all agree with the static
+analysis about whether that setter emits `UIControlEventValueChanged`, so
+`GSPhotosTabBarEventBridge.m` observes the setter call and emits the event only
+when the host did not. A changed tab therefore produces exactly one navigation
+event on either behavior; tapping the already-selected tab produces none.
 
 The visible search control is a separate sibling `UIButton` built from
 `UIButtonConfiguration.glassButtonConfiguration`. It is not an arranged child
@@ -43,19 +46,20 @@ unchanged. Changing the option therefore requires one Google Photos restart.
 - `PHSSegmentedControl.numberOfSegments` is `q16@0:8`,
   `selectedSegmentIndex` is `q16@0:8`, and `setSelectedSegmentIndex:` is
   `v24@0:8q16` in the supplied 7.92.0 image.
-- The 7.92.0 `setSelectedSegmentIndex:` implementation sends control event
-  - The 7.92.0 `setSelectedSegmentIndex:` ABI is `v24@0:8q16`. Static analysis
-  suggested it sends control event `0x1000` (`UIControlEventValueChanged`)
-  after a changed selection, but on-device taps changed only the stored
-  index while content stayed put, so Gunshot sends the event explicitly.
+- Static analysis suggested that `setSelectedSegmentIndex:` emits control event
+  `0x1000` (`UIControlEventValueChanged`) after a changed selection. Device
+  validation found builds where only the index changed, which is why the runtime
+  bridge measures the actual behavior instead of relying on either assumption.
 
 The existing UIKit smoke keeps `UIDesignRequiresCompatibility=true`, pre-seeds the
 same launch-time rollout override before `UIApplicationMain`, and then uses real
-glass APIs with fake Photos classes. It is not an injected Google Photos device test. Device
-validation must cover opt-in/out, tab selection, search, light/dark appearance,
-rotation and returning from a backgrounded app. No additional build target or
-workflow is required.
+iOS 26 `UITabBar`/glass button APIs with fake Photos classes. It is not an
+injected Google Photos device test. Device validation must cover opt-in/out, tab
+selection, Search, light/dark appearance, rotation, press-and-hold interaction
+and returning from a backgrounded app. No additional build target or workflow is
+required.
 
 Apple API references:
 - https://developer.apple.com/videos/play/wwdc2025/284/
+- https://developer.apple.com/documentation/uikit/uitabbar
 - https://developer.apple.com/documentation/uikit/uibuttonconfiguration/glassbuttonconfiguration
