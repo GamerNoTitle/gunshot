@@ -41,8 +41,12 @@ if os.environ.get('COMPATIBILITY') == '1':
 run('codesign', '--force', '--sign', '-', str(app))
 runtimes = json.loads(run('xcrun', 'simctl', 'list', 'runtimes', '-j'))['runtimes']
 version = os.environ['SIMULATOR_VERSION']
-runtime = next(r for r in runtimes if r.get('isAvailable') and
-               '.iOS-' in r['identifier'] and r['version'] == version)
+candidates = [r for r in runtimes if r.get('isAvailable') and '.iOS-' in r['identifier']
+              and (r['version'] == version or r['version'].startswith(version + '.'))]
+if not candidates:
+    raise SystemExit(f'No available iOS {version} runtime: {runtimes}')
+runtime = max(candidates, key=lambda r: tuple(map(int, r['version'].split('.'))))
+print('Fixture runtime:', runtime['version'], runtime['identifier'], flush=True)
 types = json.loads(run('xcrun', 'simctl', 'list', 'devicetypes', '-j'))['devicetypes']
 device_name = os.environ.get('DEVICE_NAME', 'iPhone 16 Pro')
 device = next(t for t in types if t['name'] == device_name)
