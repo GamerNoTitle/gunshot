@@ -7,33 +7,38 @@ Both targets are validated before either is changed. Exported diagnostics includ
 `bottomBarGlass` with availability, attached-bar count and a skip reason.
 `attached` reports view installation, not a verified rendering result.
 
-The segmented pill receives a public `UIGlassEffect` in a `UIVisualEffectView`,
-with `UICornerConfiguration.capsuleConfiguration`. The control, shadow and
-content backgrounds are cleared; the native segment children, selection and
-gestures stay in place. Opt-out restores native backgrounds and elevation.
+The visible left navigation is a real UIKit `UITabBar`. Google Photos' original
+`PHSSegmentedControl` stays in its original `UIStackView` as the navigation
+backend, but is made visually/accessibility-inactive while the UIKit bar mirrors
+its selection. Selecting a `UITabBarItem` writes the same
+`selectedSegmentIndex`; the audited 7.92.0 setter emits
+`UIControlEventValueChanged` itself, so Gunshot must not emit a second event.
 
-The search button uses its existing `phs_brandIconTonalGlassRound` styling.
-Changing only `glassType` missed the native glass colors, shadows and opacity
-configuration. Only the marked button's `isGlassEnabled` and material view's
-`isGlass` gates are overridden. Google Photos ships with
+The visible search control is a separate sibling `UIButton` built from
+`UIButtonConfiguration.glassButtonConfiguration`. It is not an arranged child
+of the left `UITabBar` and forwards `TouchUpInside` to the untouched Google
+`M3CButton`. The original segmented and search controls remain in Google's
+stack, so disabling the feature only removes the two proxy controls and restores
+their saved alpha/interactivity/accessibility state; native targets, gestures,
+colors, shadows and Material state are never rewritten by the renderer.
+
+Google Photos ships with
 `UIDesignRequiresCompatibility=true`, which suppresses real Liquid Glass for the
 whole process. When this option is enabled, Gunshot writes
 `com.apple.SwiftUI.IgnoreSolariumOptOut=true` before `UIApplicationMain` on the
 next launch so UIKit uses the iOS 26 design while keeping the host Info.plist
 unchanged. Changing the option therefore requires one Google Photos restart.
-Opt-out reapplies the original
-`phs_brandIconTonalRound` styling plus Photos' saved normal/highlight backgrounds,
-normal tint and elevation shadow; inactive glass-specific style tokens can remain
-in the native button's tables until destruction or the next glass application.
 
 7.92.0 static evidence (hashes and method ABIs: `objc/manifest.json` and indexes):
 
 - `PHSTabBarController.createFloatingSearchButton` at `0x10005c46c` calls
-  `phs_brandIconTonalRound`; its glass counterpart is at framework `0x101af34`.
-- `gm3V11_brandM3CButtonGlassCommon` at `0x1afa7a4` sets type 1 and glass styling.
-- `M3CMaterialGlassEffectView.updateGlassEffect` at `0x1bace58` maps type 1 to
-  `UIGlassEffectStyleClear`; type 2 would use Regular. The old type-only patch
-  bypassed the native styling sequence.
+  `phs_brandIconTonalRound`, assigns the search image/accessibility label, and
+  registers a `TouchUpInside` target.
+- `PHSSegmentedControl.numberOfSegments` is `q16@0:8`,
+  `selectedSegmentIndex` is `q16@0:8`, and `setSelectedSegmentIndex:` is
+  `v24@0:8q16` in the supplied 7.92.0 image.
+- The 7.92.0 `setSelectedSegmentIndex:` implementation sends control event
+  `0x1000` (`UIControlEventValueChanged`) after a changed selection.
 
 The existing UIKit smoke keeps `UIDesignRequiresCompatibility=true`, pre-seeds the
 same launch-time rollout override before `UIApplicationMain`, and then uses real
@@ -44,4 +49,4 @@ workflow is required.
 
 Apple API references:
 - https://developer.apple.com/videos/play/wwdc2025/284/
-- https://developer.apple.com/documentation/uikit/uicornerconfiguration-c.class?language=objc
+- https://developer.apple.com/documentation/uikit/uibuttonconfiguration/glassbuttonconfiguration
