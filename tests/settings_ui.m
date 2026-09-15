@@ -162,6 +162,13 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
   if(![album.textLabel.text isEqual:@"Choose album"]||![stop.textLabel.text isEqual:@"Stop preparing"]||![album.detailTextLabel.text containsString:@"entire album"]){Finish(NO,@"album import labels missing");return;}
   UITableViewCell *quality=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:2]];
   if(![quality.textLabel.text isEqual:@"Quality"]||![panel.navigationItem.rightBarButtonItem.title isEqual:@"Reconnect"]){Finish(NO,@"English settings did not update");return;}
+  // Exercise the actual settings integration, including a runtime language change.
+  if(@available(iOS 26.0,*)){
+   for(UIBarButtonItem *item in @[panel.navigationItem.leftBarButtonItem,panel.navigationItem.rightBarButtonItems[0],panel.navigationItem.rightBarButtonItems[1]]){
+    UIButton *button=(UIButton *)item.customView;
+    if(![button isKindOfClass:UIButton.class]||!button.configuration||![[button titleForState:UIControlStateNormal]isEqual:item.title]){Finish(NO,@"Liquid Glass settings button/title missing");return;}
+   }
+  }else if(panel.navigationItem.rightBarButtonItem.customView){Finish(NO,@"legacy settings appearance changed");return;}
   UITableViewCell *status=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
   if(![status.detailTextLabel.text isEqual:@"Authenticated · Ready to upload"]){Finish(NO,@"cached status language did not update");return;}
   NSIndexPath *storagePath=[NSIndexPath indexPathForRow:1 inSection:6];

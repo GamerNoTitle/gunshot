@@ -1,3 +1,4 @@
+#import "GSAppearance.h"
 #import "../Shared/GSLocalization.h"
 #import "GSPanel.h"
 #import "GSExporter.h"
@@ -47,17 +48,17 @@
 @implementation GSPanel
 - (void)viewDidLoad{
  [super viewDidLoad];GSInstallNativeRouting();GSInstallUploadDiagnostics();GSInstallUnlimitedStorage();self.title=@"GoToHP";self.jobs=@[];self.statusText=GSL(@"Checking the connection…");self.statusLanguage=GSLanguage();
- self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:GSL(@"Done") style:UIBarButtonItemStylePlain target:self action:@selector(close)];
- self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:self.settingsMode?GSL(@"Reconnect"):GSL(@"Add") style:UIBarButtonItemStylePlain target:self action:@selector(primary)];
+ self.navigationItem.leftBarButtonItem=GSNavigationButton(GSL(@"Done"),self,@selector(close));
+ self.navigationItem.rightBarButtonItem=GSNavigationButton(self.settingsMode?GSL(@"Reconnect"):GSL(@"Add"),self,@selector(primary));
 #if GS_JAILED
  self.navigationItem.prompt=nil;
 #endif
  if(self.settingsMode&&GSIsGooglePhotos()){
- UIBarButtonItem *upload=[[UIBarButtonItem alloc]initWithTitle:GSL(@"Uploads") style:UIBarButtonItemStylePlain target:self action:@selector(openUploadPanel)];
+ UIBarButtonItem *upload=GSNavigationButton(GSL(@"Uploads"),self,@selector(openUploadPanel));
  self.navigationItem.rightBarButtonItems=@[self.navigationItem.rightBarButtonItem,upload];
  }
  if(!self.settingsMode&&GSIsGooglePhotos()){
- UIBarButtonItem *settings=[[UIBarButtonItem alloc]initWithTitle:GSL(@"Settings") style:UIBarButtonItemStylePlain target:self action:@selector(openEmbeddedSettings)];
+ UIBarButtonItem *settings=GSNavigationButton(GSL(@"Settings"),self,@selector(openEmbeddedSettings));
  self.navigationItem.rightBarButtonItems=@[self.navigationItem.rightBarButtonItem,settings];
  }
  self.tableView.rowHeight=UITableViewAutomaticDimension;self.tableView.estimatedRowHeight=72;
@@ -476,9 +477,9 @@ static char GSLauncherKey;
 void GSInstallButton(UIWindow *window){
  if(GSIsGooglePhotos())return;
  if(window.windowLevel!=UIWindowLevelNormal||!window.rootViewController||objc_getAssociatedObject(window,&GSLauncherKey))return;
- UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem];[button setTitle:@"GoToHP" forState:UIControlStateNormal];button.backgroundColor=UIColor.secondarySystemBackgroundColor;button.layer.cornerRadius=18;button.accessibilityLabel=GSL(@"Open the GoToHP upload queue");
+ UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem];[button setTitle:@"GoToHP" forState:UIControlStateNormal];BOOL glass=GSApplyGlassButton(button);if(!glass){button.backgroundColor=UIColor.secondarySystemBackgroundColor;button.layer.cornerRadius=18;}button.accessibilityLabel=GSL(@"Open the GoToHP upload queue");
  [button addTarget:GSLauncher.class action:@selector(open:) forControlEvents:UIControlEventTouchUpInside];button.translatesAutoresizingMaskIntoConstraints=NO;[window addSubview:button];
- [NSLayoutConstraint activateConstraints:@[[button.trailingAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.trailingAnchor constant:-12],[button.bottomAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.bottomAnchor constant:-65],[button.widthAnchor constraintEqualToConstant:84],[button.heightAnchor constraintEqualToConstant:40]]];
+ [NSLayoutConstraint activateConstraints:@[[button.trailingAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.trailingAnchor constant:-12],[button.bottomAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.bottomAnchor constant:-65],(glass?[button.widthAnchor constraintGreaterThanOrEqualToConstant:84]:[button.widthAnchor constraintEqualToConstant:84]),(glass?[button.heightAnchor constraintGreaterThanOrEqualToConstant:44]:[button.heightAnchor constraintEqualToConstant:40])]];
  objc_setAssociatedObject(window,&GSLauncherKey,button,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 @interface GSUploadActivity ()

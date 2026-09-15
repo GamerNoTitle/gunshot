@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Run the real UIKit adapter with independently selected build SDK and runtime."""
+import json
+import os
+import pathlib
+import platform
+import plistlib
+import shutil
+import subprocess
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+os.chdir(ROOT)
+app = ROOT / '.build/liquid-glass/GlassFixture.app'
+results = ROOT / '.build/liquid-glass-results'
+app.mkdir(parents=True, exist_ok=True)
+results.mkdir(parents=True, exist_ok=True)
+build_env = dict(os.environ, DEVELOPER_DIR=os.environ['BUILD_DEVELOPER_DIR'])
+
+
+def run(*args, env=None, timeout=120):
+    print('+', ' '.join(map(str, args)), flush=True)
+    return subprocess.check_output(args, env=env, text=True, timeout=timeout).strip()
+
+
+sdk = run('xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path', env=build_env)
+run('xcrun', '--sdk', 'iphonesimulator', 'clang', '-fobjc-arc', '-Wall', '-Wextra',
+    '-Werror', '-Wno-unused-parameter', '-isysroot', sdk,
+    '-target', f'{platform.machine()}-apple-ios15.0-simulator',
+    '-framework', 'UIKit', '-framework', 'Foundation',
+    'UI/GSAppearance.m', 'tests/liquid_glass_ui.m', '-o', str(app / 'GlassFixture'),
+    env=build_env)
+bundle = 'dev.tqmane.gunshot.glassfixture'
+info = dict(CFBundleIdentifier=bundle, CFBundleExecutable='GlassFixture',
+            CFBundleName='Glass Fixture', CFBundlePackageType='APPL',
+            CFBundleVersion='1', CFBundleShortVersionString='1.0',
+            MinimumOSVersion='15.0', UIDeviceFamily=[1, 2], UILaunchScreen={},
+            UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes': False})
+if os.environ.get('COMPATIBILITY') == '1':
+    info['UIDesignRequiresCompatibility'] = True
+(app / 'Info.plist').write_bytes(plistlib.dumps(info))
+run('codesign', '--force', '--sign', '-', str(app))
+runtimes = json.loads(run('xcrun', 'simctl', 'list', 'runtimes', '-j'))['runtimes']
+version = os.environ['SIMULATOR_VERSION']
+runtime = next(r for r in runtimes if r.get('isAvailable') and
+               '.iOS-' in r['identifier'] and r['version'] == version)
+types = json.loads(run('xcrun', 'simctl', 'list', 'devicetypes', '-j'))['devicetypes']
+device_name = os.environ.get('DEVICE_NAME', 'iPhone 16 Pro')
+device = next(t for t in types if t['name'] == device_name)
+udid = run('xcrun', 'simctl', 'create', 'Gunshot Glass CI', device['identifier'], runtime['identifier'])
+try:
+    run('xcrun', 'simctl', 'boot', udid)
+    run('xcrun', 'simctl', 'bootstatus', udid, '-b', timeout=180)
+    run('xcrun', 'simctl', 'install', udid, str(app))
+    # simctl --console stays attached until the fixture exits.
+    launch = subprocess.run(['xcrun', 'simctl', 'launch', '--console', udid, bundle],
+                            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            timeout=90)
+    print(launch.stdout, flush=True)
+    (results / 'console.txt').write_text(launch.stdout)
+    data = pathlib.Path(run('xcrun', 'simctl', 'get_app_container', udid, bundle, 'data')) / 'Documents'
+    for path in data.iterdir():
+        if path.suffix in ('.txt', '.png'):
+            shutil.copy2(path, results / path.name)
+    result = (results / 'result.txt').read_text()
+    print(result, flush=True)
+    if launch.returncode or not result.startswith('PASS '):
+        raise SystemExit(1)
+finally:
+    subprocess.run(['xcrun', 'simctl', 'shutdown', udid], timeout=30, check=False)
+    subprocess.run(['xcrun', 'simctl', 'delete', udid], timeout=30, check=False)
