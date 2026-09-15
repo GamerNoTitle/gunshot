@@ -21,11 +21,11 @@ xcrun --sdk iphonesimulator clang -fobjc-arc -isysroot "$sdk" \
  -target "${architecture}-apple-ios15.0-simulator" \
  -DGS_JAILED=1 -I.build/runtime-fixture \
  -framework UIKit -framework Foundation -framework CoreGraphics -framework Photos -framework PhotosUI -framework Network -framework Security -framework CoreFoundation -lresolv \
- UI/GSPanel.m UI/GSAppearance.m UI/GSPhotosGlass.m UI/GSBatchImport.m UI/GSAlbumPicker.m UI/GSAccountConnection.m UI/GSUploadMonitor.m UI/GSBackupLifecycle.m Jailed/SideloadIdentity.m tests/settings_ui.m .build/runtime-fixture/EmbeddedService.o \
+ UI/GSPanel.m UI/GSPhotosGlass.m UI/GSBatchImport.m UI/GSAlbumPicker.m UI/GSAccountConnection.m UI/GSUploadMonitor.m UI/GSBackupLifecycle.m Jailed/SideloadIdentity.m tests/settings_ui.m .build/runtime-fixture/EmbeddedService.o \
  .build/runtime-fixture/libgotohp.a -o "$app/GoToHPSettingsFixture"
 python3 - <<'PY'
 import pathlib,plistlib
-info={"CFBundleIdentifier":"dev.tqmane.gunshot.settingsfixture","CFBundleExecutable":"GoToHPSettingsFixture","CFBundleName":"GoToHP Settings Fixture","CFBundlePackageType":"APPL","CFBundleVersion":"1","CFBundleShortVersionString":"1.0","MinimumOSVersion":"15.0","UIDeviceFamily":[1],"UILaunchScreen":{},"UIApplicationSceneManifest":{"UIApplicationSupportsMultipleScenes":False}}
+info={"CFBundleIdentifier":"dev.tqmane.gunshot.settingsfixture","CFBundleExecutable":"GoToHPSettingsFixture","CFBundleName":"GoToHP Settings Fixture","CFBundlePackageType":"APPL","CFBundleVersion":"1","CFBundleShortVersionString":"1.0","MinimumOSVersion":"15.0","UIDeviceFamily":[1],"UIDesignRequiresCompatibility":True,"UILaunchScreen":{},"UIApplicationSceneManifest":{"UIApplicationSupportsMultipleScenes":False}}
 pathlib.Path('.build/settings-smoke/GoToHPSettingsFixture.app/Info.plist').write_bytes(plistlib.dumps(info))
 PY
 codesign --force --sign - "$app"

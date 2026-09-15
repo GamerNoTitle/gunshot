@@ -148,7 +148,7 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
   if(![runtime[@"conditionsAccepted"]boolValue]||!SnapshotDuringAuthorization||![runtime[@"coreReady"]boolValue]||![runtime[@"foreground"]boolValue]||![runtime[@"path"]isEqual:@"satisfied"]){Finish(NO,@"embedded runtime state or nonblocking authorization snapshot failed");return;}
   NSSet *allowed=[NSSet setWithArray:@[@"uploadSummary",@"coreReady",@"conditionsAccepted",@"foreground",@"path",@"networkOnline",@"wifi",@"charging",@"authorization"]];
   if(![[NSSet setWithArray:runtime.allKeys]isSubsetOfSet:allowed]){Finish(NO,@"unexpected diagnostic fields");return;}
-  GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=8){Finish(NO,@"settings sections missing");return;}
+  GSPanel *panel=Panel(root);if([panel.tableView numberOfSections]!=8||[panel.tableView numberOfRowsInSection:6]!=3){Finish(NO,@"settings sections or appearance rows incorrect");return;}
   GSFixtureRetryPanel *retryPanel=[GSFixtureRetryPanel new];retryPanel.settingsMode=YES;
   [retryPanel setValue:[@{@"retries":@7}mutableCopy] forKey:@"options"];
   UITableViewCell *retry=[retryPanel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:2]];
@@ -163,16 +163,14 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
   if(![album.textLabel.text isEqual:@"Choose album"]||![stop.textLabel.text isEqual:@"Stop preparing"]||![album.detailTextLabel.text containsString:@"entire album"]){Finish(NO,@"album import labels missing");return;}
   UITableViewCell *quality=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:2]];
   if(![quality.textLabel.text isEqual:@"Quality"]||![panel.navigationItem.rightBarButtonItem.title isEqual:@"Reconnect"]){Finish(NO,@"English settings did not update");return;}
-  // Exercise the actual settings integration, including a runtime language change.
-  if(@available(iOS 26.0,*)){
-   for(UIBarButtonItem *item in @[panel.navigationItem.leftBarButtonItem,panel.navigationItem.rightBarButtonItems[0],panel.navigationItem.rightBarButtonItems[1]]){
-    UIButton *button=(UIButton *)item.customView;
-    if(![button isKindOfClass:UIButton.class]||!button.configuration||![[button titleForState:UIControlStateNormal]isEqual:item.title]){Finish(NO,@"Liquid Glass settings button/title missing");return;}
-   }
-  }else if(panel.navigationItem.rightBarButtonItem.customView){Finish(NO,@"legacy settings appearance changed");return;}
+  // Standard navigation items must retain localized titles and actions.
+  if(![panel.navigationItem.leftBarButtonItem.title isEqual:@"Done"]||![panel.navigationItem.rightBarButtonItems[1].title isEqual:@"Uploads"]){Finish(NO,@"navigation labels did not update");return;}
+  for(UIBarButtonItem *item in @[panel.navigationItem.leftBarButtonItem,panel.navigationItem.rightBarButtonItems[0],panel.navigationItem.rightBarButtonItems[1]]){
+   if(item.customView||item.target!=panel||!item.action){Finish(NO,@"standard navigation item configuration incorrect");return;}
+  }
   UITableViewCell *status=[panel tableView:panel.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
   if(![status.detailTextLabel.text isEqual:@"Authenticated · Ready to upload"]){Finish(NO,@"cached status language did not update");return;}
-  if(!GSCheckPhotosGlass(panel)){Finish(NO,@"Google Photos bottom bar glass regression");return;}
+  if(!GSCheckPhotosGlass(panel,self.window)){Finish(NO,@"Google Photos bottom bar glass regression");return;}
   NSIndexPath *storagePath=[NSIndexPath indexPathForRow:1 inSection:6];
   [panel setValue:@YES forKey:@"busy"];
   UITableViewCell *storage=[panel tableView:panel.tableView cellForRowAtIndexPath:storagePath];

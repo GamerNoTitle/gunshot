@@ -1,26 +1,40 @@
-# Google Photos bottom bar (7.92.0)
+# Google Photos bottom bar glass
 
-`Appearance > Google Photos · Liquid Glass` is opt-in (default off), iOS 26+ and
-Photos 7.92.0+. It styles the existing floating tab pill and search button, not
-all application UI. No new package, build target or separate CI workflow.
+Enable `GoToHP > Appearance > Google Photos · Liquid Glass` on iOS 26+.
+The option defaults to off. Google Photos 7.92.0 is the audited host; later
+versions must pass the same method contracts and live view-hierarchy checks.
+Both targets are validated before either is changed. Exported diagnostics include
+`bottomBarGlass` with availability, attached-bar count and a skip reason.
+`attached` reports view installation, not a verified rendering result.
 
-Static evidence from the supplied decrypted IPA (not redistributed):
+The segmented pill receives a public `UIGlassEffect` in a `UIVisualEffectView`,
+with `UICornerConfiguration.capsuleConfiguration`. The control, shadow and
+content backgrounds are cleared; the native segment children, selection and
+gestures stay in place. Opt-out restores native backgrounds and elevation.
 
-- Main SHA-256: `0395330b2170256ec4ca240afad8672d0e0ab19e03acc10e74e04bce8b73858d`.
-- Framework SHA-256: `be2629c366b134ae63a80023a77165b30866e890a398a17eb423af80526983d6`.
-- `PHSTabBarController` creates `PHSSegmentedControl` at `0x10005a868` and
-  `M3CButton` at `0x10005c46c`, inside `floatingBottomTabBar` (a UIStackView).
-- The pill's native hierarchy is control > PHSShadowView > content UIView
-  (UIAccessibilityTraitTabBar) > selection balloon/segments. Swift ivar offsets
-  are not used. Only background/opaque/elevation state is changed and restored.
-- `M3CButton.setGlassType:` at `0x1ba86bc` updates its existing material view;
-  `M3CMaterialGlassEffectView.updateGlassEffect` at `0x1bace58` maps type 2 to
-  public `UIGlassEffectStyleRegular` (0), type 1 to clear (1).
-- The IPA sets `UIDesignRequiresCompatibility = true`. Scoped `isGlassEnabled`
-  and `isGlass` overrides apply only to the marked search button/material view.
-  Global M3CLiquidGlass availability and the host Info.plist remain unchanged.
+The search button uses its existing `phs_brandIconTonalGlassRound` styling.
+Changing only `glassType` missed the native glass colors, shadows and opacity
+configuration. Only the marked button's `isGlassEnabled` and material view's
+`isGlass` gates are overridden. The host's `UIDesignRequiresCompatibility=true`
+and global `M3CLiquidGlass` gate remain intact. Opt-out reapplies the original
+`phs_brandIconTonalRound` styling; inactive glass-specific style tokens can remain
+in the native button's tables until destruction or the next glass application.
 
-Existing settings UIKit smoke covers opt-in/out, legacy OS/version rejection,
-unchanged actions/selection, resize/theme restoration, multiple controllers,
-and unknown-layout no-op. Static metadata and fixtures are not a real-device
-Google Photos rendering test; future versions still require device validation.
+7.92.0 static evidence (hashes and method ABIs: `objc/manifest.json` and indexes):
+
+- `PHSTabBarController.createFloatingSearchButton` at `0x10005c46c` calls
+  `phs_brandIconTonalRound`; its glass counterpart is at framework `0x101af34`.
+- `gm3V11_brandM3CButtonGlassCommon` at `0x1afa7a4` sets type 1 and glass styling.
+- `M3CMaterialGlassEffectView.updateGlassEffect` at `0x1bace58` maps type 1 to
+  `UIGlassEffectStyleClear`; type 2 would use Regular. The old type-only patch
+  bypassed the native styling sequence.
+
+The existing UIKit smoke uses real glass APIs inside a compatibility-mode fixture
+and fake Photos classes. It is not an injected Google Photos device test. Device
+validation must cover opt-in/out, tab selection, search, light/dark appearance,
+rotation and returning from a backgrounded app. No additional build target or
+workflow is required.
+
+Apple API references:
+- https://developer.apple.com/videos/play/wwdc2025/284/
+- https://developer.apple.com/documentation/uikit/uicornerconfiguration-c.class?language=objc

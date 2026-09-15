@@ -2,6 +2,7 @@
   "Check the GoToHP queue for details. Native upload has not been used.": "Kiểm tra hàng đợi GoToHP để biết chi tiết. Tính năng tải lên gốc chưa được sử dụng.",
   "Original quality (original data available)": "Chất lượng gốc (có sẵn dữ liệu gốc)",
   "GoToHP settings": "Cài đặt GoToHP",
+  "Liquid Glass for the bottom bar and search button. Requires iOS 26 or later.": "Áp dụng Liquid Glass cho thanh dưới cùng và nút tìm kiếm. Yêu cầu iOS 26 trở lên.",
   "The selected photos could not be retrieved.": "Không thể truy xuất các ảnh đã chọn.",
   "The signed-in account does not match the upload destination.": "Tài khoản đã đăng nhập không khớp với đích tải lên.",
   "The destination has changed. Check the backup integration settings.": "Đích đến đã thay đổi. Kiểm tra cài đặt tích hợp sao lưu.",

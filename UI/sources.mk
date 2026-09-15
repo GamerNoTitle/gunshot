@@ -1,7 +1,6 @@
 # Shared source list for jailbreak and jailed builds.
 GUNSHOT_UI_FILES = \
 	GSPanel.m \
-	GSAppearance.m \
 	GSPhotosGlass.m \
 	GSBatchImport.m \
 	GSAlbumPicker.m \
