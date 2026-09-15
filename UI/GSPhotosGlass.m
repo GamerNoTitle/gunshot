@@ -12,14 +12,15 @@ static NSHashTable *GSControllers,*GSPairs;
 static NSString *GSLastSkip;
 
 // Google Photos keeps owning the real segmented control and search button. The
-// two visible controls below are UIKit-native proxies layered next to that stack,
-// so Photos keeps all of its targets/state while UIKit owns the iOS 26 visuals.
-@interface GSPhotosGlassPair : NSObject <UITabBarDelegate>
+// visible controls are UIKit-native proxies, while the real Google controls stay
+// in place as the navigation/action backend.
+@interface GSPhotosGlassPair : NSObject <UITabBarControllerDelegate>
 @property(nonatomic,weak) UIViewController *controller;
 @property(nonatomic,weak) UIStackView *bar;
 @property(nonatomic,weak) UIView *host;
 @property(nonatomic,weak) UIControl *segments;
 @property(nonatomic,weak) UIButton *search;
+@property(nonatomic,strong) UITabBarController *nativeTabController;
 @property(nonatomic,strong) UITabBar *nativeTabBar;
 @property(nonatomic,strong) UIButton *searchProxy;
 @property(nonatomic) CGFloat segmentsAlpha,searchAlpha;
@@ -139,25 +140,30 @@ static NSArray<NSString *> *GSTabTitles(UIControl *segments){
 }
 
 static void GSSyncTabSelection(GSPhotosGlassPair *pair){
- if(!pair.nativeTabBar||!pair.segments)return;
+ if(!pair.nativeTabController||!pair.segments)return;
  NSInteger selected=GSInteger(pair.segments,@"selectedSegmentIndex");
- if(selected>=0&&selected<(NSInteger)pair.nativeTabBar.items.count)pair.nativeTabBar.selectedItem=pair.nativeTabBar.items[selected];
+ if(selected<0||selected>=(NSInteger)pair.nativeTabController.viewControllers.count||pair.nativeTabController.selectedIndex==(NSUInteger)selected)return;
+ BOOL changing=pair.changing;pair.changing=YES;pair.nativeTabController.selectedIndex=(NSUInteger)selected;pair.changing=changing;
 }
 
-static UITabBar *GSCreateNativeTabBar(GSPhotosGlassPair *pair){
- UITabBar *tabBar=[[UITabBar alloc]initWithFrame:CGRectZero];
- tabBar.delegate=pair;tabBar.translucent=YES;tabBar.itemPositioning=UITabBarItemPositioningFill;tabBar.clipsToBounds=NO;
+static UITabBarController *GSCreateNativeTabController(GSPhotosGlassPair *pair){
+ UITabBarController *tabs=[UITabBarController new];
+ if(@available(iOS 18.0,*))tabs.mode=UITabBarControllerModeTabBar;
+ tabs.delegate=pair;tabs.view.backgroundColor=UIColor.clearColor;tabs.view.opaque=NO;tabs.view.clipsToBounds=NO;
  NSArray<NSString *> *titles=GSTabTitles(pair.segments);
  NSArray<NSString *> *symbols=@[ @"photo.on.rectangle.angled",@"rectangle.stack",@"plus.circle"];
- NSMutableArray<UITabBarItem *> *items=[NSMutableArray arrayWithCapacity:3];
+ NSMutableArray<UIViewController *> *controllers=[NSMutableArray arrayWithCapacity:3];
  for(NSInteger i=0;i<3;i++){
-  UIImage *image=[UIImage systemImageNamed:symbols[i]];
-  [items addObject:[[UITabBarItem alloc]initWithTitle:titles[i] image:image tag:i]];
+  UIViewController *itemController=[UIViewController new];
+  itemController.view.backgroundColor=UIColor.clearColor;itemController.view.opaque=NO;itemController.view.userInteractionEnabled=NO;
+  itemController.tabBarItem=[[UITabBarItem alloc]initWithTitle:titles[i] image:[UIImage systemImageNamed:symbols[i]] tag:i];
+  [controllers addObject:itemController];
  }
- tabBar.items=items;
+ [tabs setViewControllers:controllers animated:NO];
  NSInteger selected=GSInteger(pair.segments,@"selectedSegmentIndex");
- if(selected>=0&&selected<(NSInteger)items.count)tabBar.selectedItem=items[selected];
- return tabBar;
+ if(selected>=0&&selected<(NSInteger)controllers.count)tabs.selectedIndex=(NSUInteger)selected;
+ tabs.tabBar.translucent=YES;tabs.tabBar.clipsToBounds=NO;
+ return tabs;
 }
 
 static UIButton *GSCreateNativeSearchButton(GSPhotosGlassPair *pair){
@@ -179,7 +185,13 @@ static void GSRestore(GSPhotosGlassPair *pair){
  pair.changing=YES;
  for(id object in @[pair.controller?:NSNull.null,pair.segments?:NSNull.null,pair.search?:NSNull.null])
   if(object!=NSNull.null&&objc_getAssociatedObject(object,&GSGlassPairKey)==pair)objc_setAssociatedObject(object,&GSGlassPairKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
- [pair.nativeTabBar removeFromSuperview];[pair.searchProxy removeFromSuperview];
+ pair.nativeTabController.delegate=nil;
+ if(pair.nativeTabController.parentViewController){
+  [pair.nativeTabController willMoveToParentViewController:nil];
+  [pair.nativeTabController.view removeFromSuperview];
+  [pair.nativeTabController removeFromParentViewController];
+ }else [pair.nativeTabController.view removeFromSuperview];
+ [pair.searchProxy removeFromSuperview];
  pair.segments.alpha=pair.segmentsAlpha;pair.segments.userInteractionEnabled=pair.segmentsInteraction;pair.segments.accessibilityElementsHidden=pair.segmentsAccessibilityHidden;
  pair.search.alpha=pair.searchAlpha;pair.search.userInteractionEnabled=pair.searchInteraction;pair.search.accessibilityElementsHidden=pair.searchAccessibilityHidden;
  [GSPairs removeObject:pair];pair.changing=NO;
@@ -189,25 +201,38 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  if(!pair||pair.changing)return NO;
  if(!pair.host||pair.host!=pair.bar||!pair.bar.superview||pair.segments.superview!=pair.bar||pair.search.superview!=pair.bar||
     ![pair.bar.arrangedSubviews containsObject:pair.segments]||![pair.bar.arrangedSubviews containsObject:pair.search]||
-    pair.nativeTabBar.superview!=pair.host||pair.searchProxy.superview!=pair.host){GSRestore(pair);GSLastSkip=@"bottom_bar_hierarchy_changed";return NO;}
+    pair.nativeTabController.parentViewController!=pair.controller||pair.nativeTabController.view.superview!=pair.host||
+    pair.nativeTabBar!=pair.nativeTabController.tabBar||pair.searchProxy.superview!=pair.host){GSRestore(pair);GSLastSkip=@"bottom_bar_hierarchy_changed";return NO;}
  pair.changing=YES;
+ [pair.bar layoutIfNeeded];
  pair.segments.alpha=0;pair.segments.userInteractionEnabled=NO;pair.segments.accessibilityElementsHidden=YES;
  pair.search.alpha=0;pair.search.userInteractionEnabled=NO;pair.search.accessibilityElementsHidden=YES;
- pair.nativeTabBar.frame=[pair.segments convertRect:pair.segments.bounds toView:pair.host];
- pair.searchProxy.frame=[pair.search convertRect:pair.search.bounds toView:pair.host];
- pair.nativeTabBar.hidden=NO;pair.searchProxy.hidden=NO;pair.nativeTabBar.alpha=1;pair.searchProxy.alpha=1;
- GSSyncTabSelection(pair);[pair.host bringSubviewToFront:pair.nativeTabBar];[pair.host bringSubviewToFront:pair.searchProxy];
+ CGRect tabFrame=[pair.segments convertRect:pair.segments.bounds toView:pair.host];
+ CGRect searchFrame=[pair.search convertRect:pair.search.bounds toView:pair.host];
+ // Standalone UITabBar uses the compact bar geometry seen in the broken build.
+ // Keep the real UITabBar owned by UITabBarController, then size the controller's
+ // viewport to Photos' floating pill and let the controller configure the iOS 26
+ // platter/lens stack. The actual UITabBar is stretched to that viewport only
+ // after the controller has performed its own system layout.
+ CGFloat searchBottom=CGRectGetMaxY(searchFrame);
+ if(searchBottom>CGRectGetMinY(tabFrame))tabFrame.size.height=searchBottom-CGRectGetMinY(tabFrame);
+ pair.nativeTabController.view.frame=tabFrame;
+ pair.nativeTabController.view.hidden=NO;pair.nativeTabController.view.alpha=1;
+ [pair.nativeTabController.view setNeedsLayout];[pair.nativeTabController.view layoutIfNeeded];
+ pair.nativeTabBar.frame=pair.nativeTabController.view.bounds;
+ [pair.nativeTabBar setNeedsLayout];[pair.nativeTabBar layoutIfNeeded];
+ pair.searchProxy.frame=searchFrame;pair.searchProxy.hidden=NO;pair.searchProxy.alpha=1;
+ GSSyncTabSelection(pair);[pair.host bringSubviewToFront:pair.nativeTabController.view];[pair.host bringSubviewToFront:pair.searchProxy];
  pair.changing=NO;return YES;
 }
 
 @implementation GSPhotosGlassPair
-- (void)tabBar:(UITabBar *)tabBar didSelectItem:(UITabBarItem *)item{
- if(self.changing||tabBar!=self.nativeTabBar||!self.segments)return;
- NSInteger index=item.tag;if(index<0||index>=GSInteger(self.segments,@"numberOfSegments"))return;
- // PHSSegmentedControl.setSelectedSegmentIndex: in 7.92.0 already emits
- // UIControlEventValueChanged when the index changes. Sending it again here
- // would invoke Google Photos navigation twice.
- self.changing=YES;GSSetInteger(self.segments,@"setSelectedSegmentIndex:",index);self.changing=NO;
+- (void)tabBarController:(UITabBarController *)tabBarController didSelectViewController:(UIViewController *)viewController{
+ if(self.changing||tabBarController!=self.nativeTabController||!self.segments)return;
+ NSUInteger index=[tabBarController.viewControllers indexOfObjectIdenticalTo:viewController];
+ if(index==NSNotFound||index>=(NSUInteger)GSInteger(self.segments,@"numberOfSegments")||
+    (NSInteger)index==GSInteger(self.segments,@"selectedSegmentIndex"))return;
+ self.changing=YES;GSSetInteger(self.segments,@"setSelectedSegmentIndex:",(NSInteger)index);self.changing=NO;
 }
 - (void)searchPressed:(UIButton *)sender{
  if(self.changing||sender!=self.searchProxy||!self.search)return;
@@ -233,10 +258,12 @@ static void GSUpdateController(UIViewController *controller){
  GSPhotosGlassPair *pair=[GSPhotosGlassPair new];pair.controller=controller;pair.bar=bar;pair.host=bar;pair.segments=segments;pair.search=search;
  pair.segmentsAlpha=segments.alpha;pair.searchAlpha=search.alpha;pair.segmentsInteraction=segments.userInteractionEnabled;pair.searchInteraction=search.userInteractionEnabled;
  pair.segmentsAccessibilityHidden=segments.accessibilityElementsHidden;pair.searchAccessibilityHidden=search.accessibilityElementsHidden;
- pair.nativeTabBar=GSCreateNativeTabBar(pair);pair.searchProxy=GSCreateNativeSearchButton(pair);
- if(!pair.nativeTabBar||!pair.searchProxy){GSLastSkip=@"native_control_creation_failed";return;}
+ pair.nativeTabController=GSCreateNativeTabController(pair);pair.nativeTabBar=pair.nativeTabController.tabBar;pair.searchProxy=GSCreateNativeSearchButton(pair);
+ if(!pair.nativeTabController||!pair.nativeTabBar||!pair.searchProxy){GSLastSkip=@"native_control_creation_failed";return;}
  for(id object in @[controller,segments,search])objc_setAssociatedObject(object,&GSGlassPairKey,pair,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
- [GSPairs addObject:pair];[pair.host addSubview:pair.nativeTabBar];[pair.host addSubview:pair.searchProxy];
+ [GSPairs addObject:pair];
+ [controller addChildViewController:pair.nativeTabController];[pair.host addSubview:pair.nativeTabController.view];[pair.nativeTabController didMoveToParentViewController:controller];
+ [pair.host addSubview:pair.searchProxy];
  if(GSLayoutNativeControls(pair))GSLastSkip=nil;
 }
 
@@ -272,7 +299,7 @@ void GSSetPhotosGlass(BOOL enabled){
 }
 NSDictionary *GSPhotosGlassSnapshot(void){
  if(!NSThread.isMainThread){__block NSDictionary *snapshot;dispatch_sync(dispatch_get_main_queue(),^{snapshot=GSPhotosGlassSnapshot();});return snapshot;}
- NSUInteger attached=0;for(GSPhotosGlassPair *pair in GSPairs.allObjects)if(pair.nativeTabBar.superview==pair.host&&pair.searchProxy.superview==pair.host&&pair.segments.superview==pair.bar&&pair.search.superview==pair.bar)attached++;
+ NSUInteger attached=0;for(GSPhotosGlassPair *pair in GSPairs.allObjects)if(pair.nativeTabController.parentViewController==pair.controller&&pair.nativeTabController.view.superview==pair.host&&pair.searchProxy.superview==pair.host&&pair.segments.superview==pair.bar&&pair.search.superview==pair.bar)attached++;
  NSString *unavailable=GSUnavailableReason();
  return @{@"enabled":@(GSPhotosGlassEnabled()),@"activeThisLaunch":@(GSPhotosGlassActiveThisLaunch()),@"available":@(unavailable==nil),@"hooksInstalled":@(GSInstalled),
   @"designCompatibilityOverride":@(GSDesignOverrideApplied),@"restartRequired":@(GSRestartRequired),@"controllersSeen":@(GSControllers.count),@"attachedBars":@(attached),

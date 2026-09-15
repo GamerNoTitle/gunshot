@@ -2,12 +2,10 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-// GSPhotosGlass intentionally uses a real iOS 26 UITabBar for the visible
-// navigation chrome. Google Photos 7.92 builds differ in whether
-// setSelectedSegmentIndex: also emits UIControlEventValueChanged, so bridge the
-// delegate without assuming either behavior. This keeps the system-owned
-// UITabBar interaction/lensing intact while guaranteeing exactly one navigation
-// event for a changed tab.
+// GSPhotosGlass uses a real UITabBarController so UIKit owns the iOS 26
+// floating platter, selected lens and press interaction. Google Photos 7.92
+// builds differ in whether setSelectedSegmentIndex: also emits ValueChanged, so
+// bridge the controller delegate without assuming either behavior.
 @interface GSPhotosGlassValueChangeProbe : NSObject
 @property(nonatomic) BOOL fired;
 - (void)valueChanged:(id)sender;
@@ -17,9 +15,9 @@
 - (void)valueChanged:(id)sender{self.fired=YES;}
 @end
 
-static IMP GSPhotosGlassOriginalTabDidSelect;
+static IMP GSPhotosGlassOriginalTabControllerDidSelect;
 
-static void GSPhotosGlassTabDidSelect(id pair,SEL selector,UITabBar *tabBar,UITabBarItem *item){
+static void GSPhotosGlassTabControllerDidSelect(id pair,SEL selector,UITabBarController *tabController,UIViewController *viewController){
  SEL segmentsSelector=NSSelectorFromString(@"segments");
  id segments=[pair respondsToSelector:segmentsSelector]?((id(*)(id,SEL))objc_msgSend)(pair,segmentsSelector):nil;
  BOOL canObserve=[segments isKindOfClass:UIControl.class]&&[segments respondsToSelector:NSSelectorFromString(@"selectedSegmentIndex")];
@@ -31,20 +29,20 @@ static void GSPhotosGlassTabDidSelect(id pair,SEL selector,UITabBar *tabBar,UITa
   [(UIControl *)segments addTarget:probe action:@selector(valueChanged:) forControlEvents:UIControlEventValueChanged];
  }
 
- ((void(*)(id,SEL,UITabBar *,UITabBarItem *))GSPhotosGlassOriginalTabDidSelect)(pair,selector,tabBar,item);
+ ((void(*)(id,SEL,UITabBarController *,UIViewController *))GSPhotosGlassOriginalTabControllerDidSelect)(pair,selector,tabController,viewController);
 
  if(!probe)return;
  [(UIControl *)segments removeTarget:probe action:@selector(valueChanged:) forControlEvents:UIControlEventValueChanged];
  NSInteger after=((NSInteger(*)(id,SEL))objc_msgSend)(segments,NSSelectorFromString(@"selectedSegmentIndex"));
- if(before!=after&&after==item.tag&&!probe.fired)
+ if(before!=after&&after==(NSInteger)tabController.selectedIndex&&!probe.fired)
   [(UIControl *)segments sendActionsForControlEvents:UIControlEventValueChanged];
 }
 
 __attribute__((constructor)) static void GSInstallPhotosGlassTabEventBridge(void){
  Class pairClass=NSClassFromString(@"GSPhotosGlassPair");
- SEL selector=@selector(tabBar:didSelectItem:);
+ SEL selector=@selector(tabBarController:didSelectViewController:);
  Method method=pairClass?class_getInstanceMethod(pairClass,selector):NULL;
  if(!method)return;
- GSPhotosGlassOriginalTabDidSelect=method_getImplementation(method);
- method_setImplementation(method,(IMP)GSPhotosGlassTabDidSelect);
+ GSPhotosGlassOriginalTabControllerDidSelect=method_getImplementation(method);
+ method_setImplementation(method,(IMP)GSPhotosGlassTabControllerDidSelect);
 }
