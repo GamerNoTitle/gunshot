@@ -18,7 +18,7 @@
 #import <objc/message.h>
 #include <assert.h>
 #include <stdatomic.h>
-static BOOL remoteMatch=YES;
+static BOOL remoteMatch=YES,holdNativeCompletion;
 static atomic_ulong queued,conditionReads,cancelRequests;
 static atomic_long uploadedBytes,totalBytes;
 static NSUInteger nativeStarts,nativePayload,successes,failures;
@@ -77,7 +77,7 @@ NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDat
 - (void)cancel;
 @end
 @implementation GMUAssetUploadRequest
-- (void)start{nativeStarts++;if(remoteMatch)[self didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];else[self startFetcher];}
+- (void)start{nativeStarts++;if(holdNativeCompletion)return;if(remoteMatch)[self didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];else[self startFetcher];}
 - (_Bool)shouldTimeout{return YES;}
 - (void)cancel{}
 @end
@@ -254,6 +254,33 @@ static void CheckBackground(void){
  remoteMatch=YES;backgroundFingerprintError=NO;failJob=NO;
  NSLog(@"PASS background existence-match cleanup, fingerprint error cleanup, Go failure queue release, native payload blocking and routing disabled passthrough");
 }
+static void CheckOverlappingReconciliation(void){
+ for(NSNumber *cancelFirst in @[@NO,@YES]){
+  NSUInteger before=queued,starts=nativeStarts,payload=nativePayload;
+  GMUAssetUploadRequest *first=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
+  GMUAssetUploadRequest *second=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
+  GMUAssetUploadRequest *aborted=Request(GMUAssetUploadRequest.class,primaryAccount.accountID);
+  second.asset=first.asset;aborted.asset=first.asset;
+  holdJob=YES;holdNativeCompletion=YES;
+  // All requests start before either Go job enters native reconciliation.
+  [first start];[second start];[aborted start];[aborted cancel];
+  Await(^BOOL{return queued==before+2;});holdJob=NO;
+  Await(^BOOL{return nativeStarts==starts+2;});
+  GSSetNativeRouting(NO,nil);
+  // A request that never registered must not remove another request's guard.
+  [aborted cancel];[[GMUUploadRequest new]startFetcher];assert(nativePayload==payload);
+  if(cancelFirst.boolValue)[first cancel];
+  else[first didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
+  [[GMUUploadRequest new]startFetcher];assert(nativePayload==payload);
+  // Repeated cancellation and a late callback must not decrement twice.
+  [first cancel];[first didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
+  [[GMUUploadRequest new]startFetcher];assert(nativePayload==payload);
+  [second didCompleteWithSuccess:YES resultantMediaItem:nil GS_ERROR_LABEL:GS_NO_ERROR];
+  [[GMUUploadRequest new]startFetcher];assert(nativePayload==payload+1);
+  holdNativeCompletion=NO;GSSetNativeRouting(YES,@"test@example.com");
+ }
+ NSLog(@"PASS overlapping same-asset reconciliation, completion/cancellation ownership, late callbacks and final guard cleanup");
+}
 int main(void){@autoreleasepool{
  method_setImplementation(class_getClassMethod(NSBundle.class,@selector(mainBundle)),(IMP)Bundle);
  primaryAccount=GSFixtureMakeAccount(@"fixture-user-A",@"test@example.com");
@@ -326,6 +353,7 @@ int main(void){@autoreleasepool{
  assert(GSNativeIdentityMatches(@"fixture-user-A"));
  CheckProgress();
  CheckBackground();
+ CheckOverlappingReconciliation();
  NSLog(@"PASS native manual UI through Go and native completion, automatic request handoff, background video and live-upload proxying, original resources, account binding, duplicate start, cancellation and native fallback blocking");
  return 0;
 }}
