@@ -6,7 +6,6 @@
 
 static NSString *const GSPhotosGlassPreference=@"GSPhotosBottomBarLiquidGlass";
 static NSString *const GSDesignCompatibilityOverride=@"com.apple.SwiftUI.IgnoreSolariumOptOut";
-static const CGFloat GSNativeTabBarVerticalOutset=8.0;
 static char GSGlassPairKey;
 static BOOL GSInstalled,GSBootGlassEnabled,GSRestartRequired,GSDesignOverrideApplied;
 static NSHashTable *GSControllers,*GSPairs;
@@ -192,12 +191,18 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
     ![pair.bar.arrangedSubviews containsObject:pair.segments]||![pair.bar.arrangedSubviews containsObject:pair.search]||
     pair.nativeTabBar.superview!=pair.host||pair.searchProxy.superview!=pair.host){GSRestore(pair);GSLastSkip=@"bottom_bar_hierarchy_changed";return NO;}
  pair.changing=YES;
+ [pair.bar layoutIfNeeded];
  pair.segments.alpha=0;pair.segments.userInteractionEnabled=NO;pair.segments.accessibilityElementsHidden=YES;
  pair.search.alpha=0;pair.search.userInteractionEnabled=NO;pair.search.accessibilityElementsHidden=YES;
  CGRect tabFrame=[pair.segments convertRect:pair.segments.bounds toView:pair.host];
- tabFrame=CGRectInset(tabFrame,0,-GSNativeTabBarVerticalOutset);
+ CGRect searchFrame=[pair.search convertRect:pair.search.bounds toView:pair.host];
+ // Match the visible Apple tab bar's thickness and vertical center to the
+ // independent Liquid Glass search control instead of using a fixed inset.
+ // This follows Photos layout changes across devices/orientations automatically.
+ tabFrame.size.height=CGRectGetHeight(searchFrame);
+ tabFrame.origin.y=CGRectGetMidY(searchFrame)-CGRectGetHeight(tabFrame)/2.0;
  pair.nativeTabBar.frame=tabFrame;
- pair.searchProxy.frame=[pair.search convertRect:pair.search.bounds toView:pair.host];
+ pair.searchProxy.frame=searchFrame;
  pair.nativeTabBar.hidden=NO;pair.searchProxy.hidden=NO;pair.nativeTabBar.alpha=1;pair.searchProxy.alpha=1;
  GSSyncTabSelection(pair);[pair.host bringSubviewToFront:pair.nativeTabBar];[pair.host bringSubviewToFront:pair.searchProxy];
  pair.changing=NO;return YES;

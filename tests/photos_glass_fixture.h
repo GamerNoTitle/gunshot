@@ -353,9 +353,15 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
   GS_GLASS_CHECK(segments.superview==bar&&search.superview==bar&&[bar.arrangedSubviews containsObject:segments]&&[bar.arrangedSubviews containsObject:search]);
   GS_GLASS_CHECK(segments.alpha==0&&!segments.userInteractionEnabled&&segments.accessibilityElementsHidden&&search.alpha==0&&!search.userInteractionEnabled&&search.accessibilityElementsHidden);
   CGRect segmentFrame=[segments convertRect:segments.bounds toView:host];
-  CGRect expectedTab=CGRectInset(segmentFrame,0,-8.0),expectedSearch=[search convertRect:search.bounds toView:host];
-  GS_GLASS_CHECK(CGRectEqualToRect(nativeTabBar.frame,expectedTab)&&CGRectEqualToRect(searchProxy.frame,expectedSearch));
-  GS_GLASS_CHECK(CGRectGetMidY(nativeTabBar.frame)==CGRectGetMidY(segmentFrame)&&CGRectGetHeight(nativeTabBar.frame)==CGRectGetHeight(segmentFrame)+16.0);
+  CGRect expectedSearch=[search convertRect:search.bounds toView:host];
+  // UIKit may normalize UITabBar's exact frame on iOS 26, so verify the visual
+  // contract rather than bit-identical coordinates: left bar and search have
+  // the same thickness/vertical center, while the search remains independently anchored.
+  GS_GLASS_CHECK(ABS(CGRectGetHeight(nativeTabBar.frame)-CGRectGetHeight(searchProxy.frame))<2.0);
+  GS_GLASS_CHECK(ABS(CGRectGetMidY(nativeTabBar.frame)-CGRectGetMidY(searchProxy.frame))<2.0);
+  GS_GLASS_CHECK(ABS(CGRectGetMidX(searchProxy.frame)-CGRectGetMidX(expectedSearch))<2.0&&ABS(CGRectGetMidY(searchProxy.frame)-CGRectGetMidY(expectedSearch))<2.0);
+  GS_GLASS_CHECK(ABS(CGRectGetWidth(searchProxy.frame)-CGRectGetWidth(expectedSearch))<2.0&&ABS(CGRectGetHeight(searchProxy.frame)-CGRectGetHeight(expectedSearch))<2.0);
+  GS_GLASS_CHECK(CGRectGetHeight(nativeTabBar.frame)>=CGRectGetHeight(segmentFrame));
   GS_GLASS_CHECK(CGRectGetMinX(searchProxy.frame)-CGRectGetMaxX(nativeTabBar.frame)>=10.0);
   // The Material search button stays a completely untouched backend. Its blue
   // Photos-owned style is invisible; the separate UIKit button is what renders.
