@@ -196,11 +196,10 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  pair.search.alpha=0;pair.search.userInteractionEnabled=NO;pair.search.accessibilityElementsHidden=YES;
  CGRect tabFrame=[pair.segments convertRect:pair.segments.bounds toView:pair.host];
  CGRect searchFrame=[pair.search convertRect:pair.search.bounds toView:pair.host];
- // Match the visible Apple tab bar's thickness and vertical center to the
- // independent Liquid Glass search control instead of using a fixed inset.
- // This follows Photos layout changes across devices/orientations automatically.
- tabFrame.size.height=CGRectGetHeight(searchFrame);
- tabFrame.origin.y=CGRectGetMidY(searchFrame)-CGRectGetHeight(tabFrame)/2.0;
+ // The top edge already lines up correctly on-device. Keep it fixed and extend
+ // only the bottom edge until it matches the independent Liquid Glass Search.
+ CGFloat searchBottom=CGRectGetMaxY(searchFrame);
+ if(searchBottom>CGRectGetMinY(tabFrame))tabFrame.size.height=searchBottom-CGRectGetMinY(tabFrame);
  pair.nativeTabBar.frame=tabFrame;
  pair.searchProxy.frame=searchFrame;
  pair.nativeTabBar.hidden=NO;pair.searchProxy.hidden=NO;pair.nativeTabBar.alpha=1;pair.searchProxy.alpha=1;

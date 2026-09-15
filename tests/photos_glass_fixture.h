@@ -355,10 +355,10 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
   CGRect segmentFrame=[segments convertRect:segments.bounds toView:host];
   CGRect expectedSearch=[search convertRect:search.bounds toView:host];
   // UIKit may normalize UITabBar's exact frame on iOS 26, so verify the visual
-  // contract rather than bit-identical coordinates: left bar and search have
-  // the same thickness/vertical center, while the search remains independently anchored.
-  GS_GLASS_CHECK(ABS(CGRectGetHeight(nativeTabBar.frame)-CGRectGetHeight(searchProxy.frame))<2.0);
-  GS_GLASS_CHECK(ABS(CGRectGetMidY(nativeTabBar.frame)-CGRectGetMidY(searchProxy.frame))<2.0);
+  // contract rather than bit-identical coordinates: retain the original top
+  // edge and extend the bottom until it matches the independent Search button.
+  GS_GLASS_CHECK(ABS(CGRectGetMinY(nativeTabBar.frame)-CGRectGetMinY(segmentFrame))<2.0);
+  GS_GLASS_CHECK(ABS(CGRectGetMaxY(nativeTabBar.frame)-CGRectGetMaxY(searchProxy.frame))<2.0);
   GS_GLASS_CHECK(ABS(CGRectGetMidX(searchProxy.frame)-CGRectGetMidX(expectedSearch))<2.0&&ABS(CGRectGetMidY(searchProxy.frame)-CGRectGetMidY(expectedSearch))<2.0);
   GS_GLASS_CHECK(ABS(CGRectGetWidth(searchProxy.frame)-CGRectGetWidth(expectedSearch))<2.0&&ABS(CGRectGetHeight(searchProxy.frame)-CGRectGetHeight(expectedSearch))<2.0);
   GS_GLASS_CHECK(CGRectGetHeight(nativeTabBar.frame)>=CGRectGetHeight(segmentFrame));
