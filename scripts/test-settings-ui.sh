@@ -21,16 +21,16 @@ xcrun --sdk iphonesimulator clang -fobjc-arc -isysroot "$sdk" \
  -target "${architecture}-apple-ios15.0-simulator" \
  -DGS_JAILED=1 -I.build/runtime-fixture \
  -framework UIKit -framework Foundation -framework CoreGraphics -framework Photos -framework PhotosUI -framework Network -framework Security -framework CoreFoundation -lresolv \
- UI/GSPanel.m UI/GSAppearance.m UI/GSPhotosGlass.m UI/GSBatchImport.m UI/GSAlbumPicker.m UI/GSAccountConnection.m UI/GSUploadMonitor.m UI/GSBackupLifecycle.m Jailed/SideloadIdentity.m tests/settings_ui.m .build/runtime-fixture/EmbeddedService.o \
+ UI/GSPanel.m UI/GSPhotosGlass.m UI/GSBatchImport.m UI/GSAlbumPicker.m UI/GSAccountConnection.m UI/GSUploadMonitor.m UI/GSBackupLifecycle.m Jailed/SideloadIdentity.m tests/settings_ui.m .build/runtime-fixture/EmbeddedService.o \
  .build/runtime-fixture/libgotohp.a -o "$app/GoToHPSettingsFixture"
 python3 - <<'PY'
 import pathlib,plistlib
-info={"CFBundleIdentifier":"dev.tqmane.gunshot.settingsfixture","CFBundleExecutable":"GoToHPSettingsFixture","CFBundleName":"GoToHP Settings Fixture","CFBundlePackageType":"APPL","CFBundleVersion":"1","CFBundleShortVersionString":"1.0","MinimumOSVersion":"15.0","UIDeviceFamily":[1],"UILaunchScreen":{},"UIApplicationSceneManifest":{"UIApplicationSupportsMultipleScenes":False}}
+info={"CFBundleIdentifier":"dev.tqmane.gunshot.settingsfixture","CFBundleExecutable":"GoToHPSettingsFixture","CFBundleName":"GoToHP Settings Fixture","CFBundlePackageType":"APPL","CFBundleVersion":"1","CFBundleShortVersionString":"1.0","MinimumOSVersion":"15.0","UIDeviceFamily":[1],"UIDesignRequiresCompatibility":True,"UILaunchScreen":{},"UIApplicationSceneManifest":{"UIApplicationSupportsMultipleScenes":False}}
 pathlib.Path('.build/settings-smoke/GoToHPSettingsFixture.app/Info.plist').write_bytes(plistlib.dumps(info))
 PY
 codesign --force --sign - "$app"
 python3 - <<'PY'
-import json,subprocess,pathlib,shutil
+import json,plistlib,subprocess,pathlib,shutil
 run=lambda *args:subprocess.check_output(args,text=True).strip()
 # Use a fixture-owned device rather than the runner image's pre-created device.
 # Install/launch on that shared seed can stall before the fixture reaches main.
@@ -47,6 +47,18 @@ subprocess.run(['xcrun','simctl','bootstatus',udid,'-b'],check=True,timeout=180)
 app='.build/settings-smoke/GoToHPSettingsFixture.app';bundle='dev.tqmane.gunshot.settingsfixture'
 print('Installing settings fixture',flush=True)
 subprocess.run(['xcrun','simctl','install',udid,app],check=True,timeout=120)
+# Keep UIDesignRequiresCompatibility=YES in the fixture, but opt this launch
+# back into the iOS 26 design before UIApplicationMain. This models the same
+# early user-default override used by the injected Google Photos dylib.
+data_container=pathlib.Path(run('xcrun','simctl','get_app_container',udid,bundle,'data'))
+prefs=data_container/'Library'/'Preferences'/f'{bundle}.plist'
+prefs.parent.mkdir(parents=True,exist_ok=True)
+prelaunch={}
+if prefs.exists():
+ try: prelaunch=plistlib.loads(prefs.read_bytes())
+ except Exception: prelaunch={}
+prelaunch['com.apple.SwiftUI.IgnoreSolariumOptOut']=True
+prefs.write_bytes(plistlib.dumps(prelaunch,fmt=plistlib.FMT_BINARY))
 print('Launching settings fixture',flush=True)
 launch_error=None
 try:
@@ -57,7 +69,7 @@ except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
  subprocess.run(['xcrun','simctl','io',udid,'screenshot','.build/settings-ui-results/failure.png'],timeout=20)
  subprocess.run(['xcrun','simctl','spawn',udid,'log','show','--last','3m','--style','compact','--predicate','process == "GoToHPSettingsFixture"'],timeout=30)
 
-container=pathlib.Path(run('xcrun','simctl','get_app_container',udid,bundle,'data'))/'Documents'
+container=data_container/'Documents'
 result=(container/'result.txt').read_text() if (container/'result.txt').exists() else 'FAIL fixture did not write a result'
 for p in container.iterdir():
  if p.suffix in ['.txt','.png']:shutil.copy2(p,pathlib.Path('.build/settings-ui-results')/p.name)

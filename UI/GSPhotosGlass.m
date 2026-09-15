@@ -4,42 +4,73 @@
 #import <objc/message.h>
 
 static NSString *const GSPhotosGlassPreference=@"GSPhotosBottomBarLiquidGlass";
-static char GSGlassStateKey,GSNativeGlassKey;
-static BOOL GSInstalled;
-static NSHashTable *GSControllers,*GSControls;
+static NSString *const GSDesignCompatibilityOverride=@"com.apple.SwiftUI.IgnoreSolariumOptOut";
+static char GSGlassPairKey;
+static BOOL GSInstalled,GSBootGlassEnabled,GSRestartRequired,GSDesignOverrideApplied;
+static NSHashTable *GSControllers,*GSPairs;
+static NSString *GSLastSkip;
 
-// Only the two controls returned by PHSTabBarController are marked. Never change
-// M3CLiquidGlass's global gate: the supplied host opts into compatibility mode.
-@interface GSPhotosGlassState : NSObject
-@property(nonatomic) BOOL search,contentOpaque,shadowOpaque,controlOpaque,adaptive;
-@property(nonatomic) double elevation;
-@property(nonatomic) NSInteger glassType;
-@property(nonatomic,weak) UIView *content,*shadow,*owner;
+// The native controls keep their targets, gestures, children and accessibility.
+// All associations and UIKit mutations are confined to the main thread.
+@interface GSPhotosGlassPair : NSObject
+@property(nonatomic,weak) UIViewController *controller;
+@property(nonatomic,weak) UIStackView *bar;
+@property(nonatomic,weak) UIControl *segments;
+@property(nonatomic,weak) UIButton *search;
+@property(nonatomic,weak) UIView *shadow,*content;
 @property(nonatomic,weak) UIVisualEffectView *nativeEffect;
 @property(nonatomic,strong) UIVisualEffectView *effect;
-@property(nonatomic,strong) UIColor *contentColor,*shadowColor;
+@property(nonatomic,strong) UIColor *controlColor,*shadowColor,*contentColor;
+@property(nonatomic,strong) UIColor *searchColor,*searchHighlightedColor,*searchTint;
+@property(nonatomic,strong) id searchShadow;
+@property(nonatomic) BOOL controlOpaque,shadowOpaque,contentOpaque,controlClips,adaptive,changing;
+@property(nonatomic) double elevation;
 @end
-@implementation GSPhotosGlassState @end
+@implementation GSPhotosGlassPair @end
 
 static id GSGet(id object,NSString *name){
  if(!GSPhotosHasMethod(object_getClass(object),name,"@16@0:8"))return nil;
  return ((id(*)(id,SEL))objc_msgSend)(object,NSSelectorFromString(name));
 }
 static NSInteger GSInteger(id object,NSString *name){return ((NSInteger(*)(id,SEL))objc_msgSend)(object,NSSelectorFromString(name));}
-static void GSSetType(id button,NSInteger type){((void(*)(id,SEL,NSInteger))objc_msgSend)(button,NSSelectorFromString(@"setGlassType:"),type);}
+static void GSCall(id object,NSString *name){((void(*)(id,SEL))objc_msgSend)(object,NSSelectorFromString(name));}
+static id GSStateValue(id object,NSString *name,UIControlState state){return ((id(*)(id,SEL,NSUInteger))objc_msgSend)(object,NSSelectorFromString(name),state);}
+static void GSSetStateValue(id object,NSString *name,id value,UIControlState state){((void(*)(id,SEL,id,NSUInteger))objc_msgSend)(object,NSSelectorFromString(name),value,state);}
 static double GSElevation(id shadow){return ((double(*)(id,SEL))objc_msgSend)(shadow,NSSelectorFromString(@"mdc_currentElevation"));}
 static void GSSetElevation(id shadow,double value){((void(*)(id,SEL,double))objc_msgSend)(shadow,NSSelectorFromString(@"setElevation:"),value);}
+static BOOL GSAdaptive(id shadow){return ((BOOL(*)(id,SEL))objc_msgSend)(shadow,NSSelectorFromString(@"adaptiveBackgroundColorEnabled"));}
 static void GSSetAdaptive(id shadow,BOOL value){((void(*)(id,SEL,BOOL))objc_msgSend)(shadow,NSSelectorFromString(@"setAdaptiveBackgroundColorEnabled:"),value);}
 BOOL GSPhotosGlassEnabled(void){return [NSUserDefaults.standardUserDefaults boolForKey:GSPhotosGlassPreference];}
-BOOL GSPhotosGlassAvailable(void){
+
+static BOOL GSPhotosGlassHostVersionSupported(void){
+ if(!GSPhotosHostSupported())return NO;
+ id version=[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+ if(![version isKindOfClass:NSString.class]||
+    [version rangeOfString:@"^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$" options:NSRegularExpressionSearch].location==NSNotFound)return NO;
+ return [version compare:@"7.92" options:NSNumericSearch]!=NSOrderedAscending;
+}
+
+static void GSWriteDesignCompatibilityOverride(BOOL enabled){
+ if(!GSPhotosHostSupported())return;
  if(@available(iOS 26.0,*)){
+  NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+  if(enabled&&GSPhotosGlassHostVersionSupported())[defaults setBool:YES forKey:GSDesignCompatibilityOverride];
+  else [defaults removeObjectForKey:GSDesignCompatibilityOverride];
+  [defaults synchronize];
+ }
+}
+
+static BOOL GSPhotosGlassActiveThisLaunch(void){return GSPhotosGlassEnabled()&&!GSRestartRequired&&GSDesignOverrideApplied;}
+
+static NSString *GSUnavailableReason(void){
+ if(@available(iOS 26.0,*)){
+  if(!GSPhotosHostSupported())return @"unsupported_host";
   id version=[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-  if(!GSPhotosHostSupported()||![version isKindOfClass:NSString.class]||
-     [version rangeOfString:@"^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$" options:NSRegularExpressionSearch].location==NSNotFound)return NO;
-  if([[version componentsSeparatedByString:@"."]count]==2)version=[version stringByAppendingString:@".0"];
-  if([version compare:@"7.92.0" options:NSNumericSearch]==NSOrderedAscending)return NO;
-  // Public glass API plus the native contracts recovered from 7.92.0. Later
-  // versions with missing/incompatible APIs keep their original bottom bar.
+  if(![version isKindOfClass:NSString.class]||
+     [version rangeOfString:@"^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$" options:NSRegularExpressionSearch].location==NSNotFound)return @"unknown_version";
+  if(!GSPhotosGlassHostVersionSupported())return @"requires_photos_7_92";
+  // 7.92.0 was audited. Newer versions must expose the same native contracts
+  // and pass the per-controller hierarchy checks before any view is changed.
   for(NSArray *entry in @[
    @[@"PHSTabBarController",@"viewDidLayoutSubviews",@"v16@0:8"],
    @[@"PHSTabBarController",@"floatingBottomTabBar",@"@16@0:8"],
@@ -51,83 +82,146 @@ BOOL GSPhotosGlassAvailable(void){
    @[@"PHSShadowView",@"setElevation:",@"v24@0:8d16"],
    @[@"PHSShadowView",@"adaptiveBackgroundColorEnabled",@"B16@0:8"],
    @[@"PHSShadowView",@"setAdaptiveBackgroundColorEnabled:",@"v20@0:8B16"],
+   @[@"M3CButton",@"layoutSubviews",@"v16@0:8"],
+   @[@"M3CButton",@"phs_brandIconTonalRound",@"v16@0:8"],
+   @[@"M3CButton",@"phs_brandIconTonalGlassRound",@"v16@0:8"],
    @[@"M3CButton",@"glassType",@"q16@0:8"],
-   @[@"M3CButton",@"setGlassType:",@"v24@0:8q16"],
    @[@"M3CButton",@"isGlassEnabled",@"B16@0:8"],
    @[@"M3CButton",@"glassEffectView",@"@16@0:8"],
+   @[@"M3CButton",@"backgroundColorForState:",@"@24@0:8Q16"],
+   @[@"M3CButton",@"shadowForState:",@"@24@0:8Q16"],
+   @[@"M3CButton",@"tintColorForState:",@"@24@0:8Q16"],
+   @[@"M3CButton",@"setBackgroundColor:forState:",@"v32@0:8@16Q24"],
+   @[@"M3CButton",@"setShadow:forState:",@"v32@0:8@16Q24"],
+   @[@"M3CButton",@"setTintColor:forState:",@"v32@0:8@16Q24"],
    @[@"M3CMaterialGlassEffectView",@"isGlass",@"B16@0:8"],
    @[@"M3CMaterialGlassEffectView",@"glass",@"@16@0:8"],
+   @[@"M3CMaterialGlassEffectView",@"updateGlassEffect",@"v16@0:8"],
    @[@"M3CMaterialGlassEffect",@"type",@"q16@0:8"]])
-   if(!GSPhotosHasMethod(NSClassFromString(entry[0]),entry[1],[entry[2]UTF8String]))return NO;
-  return [NSClassFromString(@"UIGlassEffect") respondsToSelector:NSSelectorFromString(@"effectWithStyle:")];
+   if(!GSPhotosHasMethod(NSClassFromString(entry[0]),entry[1],[entry[2]UTF8String]))return [NSString stringWithFormat:@"missing_contract:%@.%@",entry[0],entry[1]];
+  if(![NSClassFromString(@"UIGlassEffect") respondsToSelector:NSSelectorFromString(@"effectWithStyle:")])return @"missing_glass_api";
+  if(![NSClassFromString(@"UICornerConfiguration") respondsToSelector:NSSelectorFromString(@"capsuleConfiguration")]||
+     ![UIVisualEffectView instancesRespondToSelector:NSSelectorFromString(@"setCornerConfiguration:")])return @"missing_corner_api";
+  return nil;
  }
- return NO;
+ return @"requires_ios_26";
 }
-static void GSRestore(UIView *control){
- GSPhotosGlassState *state=objc_getAssociatedObject(control,&GSGlassStateKey);if(!state)return;
- objc_setAssociatedObject(control,&GSGlassStateKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
- if(state.search){
-  objc_setAssociatedObject(state.nativeEffect,&GSNativeGlassKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  NSInteger type=GSInteger(control,@"glassType");
-  GSSetType(control,type==2?state.glassType:type); // Recompute the native non-glass colors too.
- }else{
-  [state.effect removeFromSuperview];control.opaque=state.controlOpaque;
-  state.content.backgroundColor=state.contentColor;state.content.opaque=state.contentOpaque;
-  state.shadow.backgroundColor=state.shadowColor;state.shadow.opaque=state.shadowOpaque;
-  GSSetAdaptive(state.shadow,state.adaptive);GSSetElevation(state.shadow,state.elevation);
+BOOL GSPhotosGlassAvailable(void){return GSUnavailableReason()==nil;}
+
+static void GSRestore(GSPhotosGlassPair *pair){
+ if(!pair||pair.changing)return;
+ pair.changing=YES;
+ BOOL ownsSearch=objc_getAssociatedObject(pair.search,&GSGlassPairKey)==pair;
+ // Keep the controller's changing marker until native restyling completes, so
+ // a synchronous controller layout cannot attach another pair during restore.
+ for(id object in @[pair.segments?:NSNull.null,pair.search?:NSNull.null,pair.nativeEffect?:NSNull.null])
+  if(object!=NSNull.null&&objc_getAssociatedObject(object,&GSGlassPairKey)==pair)objc_setAssociatedObject(object,&GSGlassPairKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+ [pair.effect removeFromSuperview];
+ pair.segments.backgroundColor=pair.controlColor;pair.segments.opaque=pair.controlOpaque;pair.segments.clipsToBounds=pair.controlClips;
+ pair.content.backgroundColor=pair.contentColor;pair.content.opaque=pair.contentOpaque;
+ pair.shadow.backgroundColor=pair.shadowColor;pair.shadow.opaque=pair.shadowOpaque;
+ GSSetAdaptive(pair.shadow,pair.adaptive);GSSetElevation(pair.shadow,pair.elevation);
+ // Reapply the same native style used by createFloatingSearchButton. This also
+ // recomputes normal state colors and shadows; changing glassType alone does not.
+ if(ownsSearch){
+  GSCall(pair.search,@"phs_brandIconTonalRound");
+  // Photos overrides the tonal defaults after creating this button. Preserve
+  // those dynamic colors and elevation shadow as well as the native style.
+  GSSetStateValue(pair.search,@"setBackgroundColor:forState:",pair.searchColor,UIControlStateNormal);
+  GSSetStateValue(pair.search,@"setBackgroundColor:forState:",pair.searchHighlightedColor,UIControlStateHighlighted);
+  GSSetStateValue(pair.search,@"setTintColor:forState:",pair.searchTint,UIControlStateNormal);
+  GSSetStateValue(pair.search,@"setShadow:forState:",pair.searchShadow,UIControlStateNormal);
  }
- [GSControls removeObject:control];
+ if(pair.nativeEffect&&GSGet(pair.search,@"glassEffectView")!=pair.nativeEffect)GSCall(pair.nativeEffect,@"updateGlassEffect");
+ if(objc_getAssociatedObject(pair.controller,&GSGlassPairKey)==pair)objc_setAssociatedObject(pair.controller,&GSGlassPairKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+ [GSPairs removeObject:pair];
 }
-static void GSLayoutGlass(UIView *control){
- GSPhotosGlassState *state=objc_getAssociatedObject(control,&GSGlassStateKey);if(!state||state.search)return;
- if(state.shadow.superview!=control||state.content.superview!=state.shadow){GSRestore(control);return;}
- // Native trait updates resolve a new background. Remember it for opt-out.
- if(![state.content.backgroundColor isEqual:UIColor.clearColor])state.contentColor=state.content.backgroundColor;
- if(![state.shadow.backgroundColor isEqual:UIColor.clearColor])state.shadowColor=state.shadow.backgroundColor;
- control.opaque=NO;state.content.backgroundColor=UIColor.clearColor;state.content.opaque=NO;
- state.shadow.backgroundColor=UIColor.clearColor;state.shadow.opaque=NO;
- state.effect.frame=control.bounds;state.effect.layer.cornerRadius=CGRectGetHeight(control.bounds)/2;
+
+static BOOL GSLayoutPill(GSPhotosGlassPair *pair){
+ if(!pair||pair.changing)return NO;
+ if(pair.segments.superview!=pair.bar||pair.search.superview!=pair.bar||pair.shadow.superview!=pair.segments||pair.content.superview!=pair.shadow){
+  GSRestore(pair);GSLastSkip=@"bottom_bar_hierarchy_changed";return NO;
+ }
+ pair.changing=YES;
+ // Remember native theme updates for opt-out, then remove every opaque surface
+ // covering the effect (including the control itself, not just its children).
+ if(![pair.segments.backgroundColor isEqual:UIColor.clearColor])pair.controlColor=pair.segments.backgroundColor;
+ if(![pair.content.backgroundColor isEqual:UIColor.clearColor])pair.contentColor=pair.content.backgroundColor;
+ if(![pair.shadow.backgroundColor isEqual:UIColor.clearColor])pair.shadowColor=pair.shadow.backgroundColor;
+ if(GSAdaptive(pair.shadow))GSSetAdaptive(pair.shadow,NO);
+ if(GSElevation(pair.shadow)!=0)GSSetElevation(pair.shadow,0);
+ if(![pair.segments.backgroundColor isEqual:UIColor.clearColor])pair.segments.backgroundColor=UIColor.clearColor;
+ if(![pair.content.backgroundColor isEqual:UIColor.clearColor])pair.content.backgroundColor=UIColor.clearColor;
+ if(![pair.shadow.backgroundColor isEqual:UIColor.clearColor])pair.shadow.backgroundColor=UIColor.clearColor;
+ pair.segments.opaque=NO;pair.content.opaque=NO;pair.shadow.opaque=NO;pair.segments.clipsToBounds=NO;
+ if(pair.effect.superview!=pair.segments)[pair.segments insertSubview:pair.effect atIndex:0];
+ if(!CGRectEqualToRect(pair.effect.frame,pair.segments.bounds))pair.effect.frame=pair.segments.bounds;
+ pair.changing=NO;return YES;
 }
+
 static void GSUpdateController(UIViewController *controller){
  [GSControllers addObject:controller];
- if(!GSPhotosGlassEnabled())return;
- UIView *bar=GSGet(controller,@"floatingBottomTabBar"),*segments=GSGet(controller,@"floatingSegmentedControl");
- id search=GSGet(controller,@"floatingSearchButton");
- if(![bar isKindOfClass:UIStackView.class]||![segments isKindOfClass:UIControl.class]||![search isKindOfClass:UIButton.class]||![segments isKindOfClass:NSClassFromString(@"PHSSegmentedControl")]||
-    ![search isKindOfClass:NSClassFromString(@"M3CButton")]||segments.superview!=bar||[search superview]!=bar)return;
- if(!objc_getAssociatedObject(segments,&GSGlassStateKey)){
-  UIView *shadow=nil,*content=nil;
-  // The audited hierarchy is control > shadow > content (tab-bar accessibility
-  // container). Do not use Swift ivar offsets or move native segment children.
-  for(UIView *candidate in segments.subviews)if([candidate isKindOfClass:NSClassFromString(@"PHSShadowView")]){
-   for(UIView *child in candidate.subviews)if(child.accessibilityTraits&UIAccessibilityTraitTabBar){
-    if(content)return;shadow=candidate;content=child;
-   }
+ GSPhotosGlassPair *previous=objc_getAssociatedObject(controller,&GSGlassPairKey);
+ if(!GSPhotosGlassActiveThisLaunch()){GSRestore(previous);return;}
+ if(previous.changing)return;
+ UIStackView *bar=GSGet(controller,@"floatingBottomTabBar");
+ UIControl *segments=GSGet(controller,@"floatingSegmentedControl");
+ UIButton *search=GSGet(controller,@"floatingSearchButton");
+ UIVisualEffectView *native=GSGet(search,@"glassEffectView");
+ if(previous&&previous.bar==bar&&previous.segments==segments&&previous.search==search&&previous.nativeEffect==native){
+  if(GSLayoutPill(previous)&&GSInteger(search,@"glassType")==0){
+   previous.changing=YES;GSCall(search,@"phs_brandIconTonalGlassRound");previous.changing=NO;
   }
-  if(!content)return;
-  id effect=((id(*)(id,SEL,NSInteger))objc_msgSend)(NSClassFromString(@"UIGlassEffect"),NSSelectorFromString(@"effectWithStyle:"),0);
-  if(![effect isKindOfClass:UIVisualEffect.class])return;
-  GSPhotosGlassState *state=[GSPhotosGlassState new];state.content=content;state.shadow=shadow;
-  state.contentColor=content.backgroundColor;state.shadowColor=shadow.backgroundColor;
-  state.controlOpaque=segments.opaque;state.contentOpaque=content.opaque;state.shadowOpaque=shadow.opaque;state.elevation=GSElevation(shadow);
-  state.adaptive=((BOOL(*)(id,SEL))objc_msgSend)(shadow,NSSelectorFromString(@"adaptiveBackgroundColorEnabled"));
-  state.effect=[[UIVisualEffectView alloc]initWithEffect:effect];state.effect.userInteractionEnabled=NO;
-  state.effect.accessibilityElementsHidden=YES;state.effect.clipsToBounds=YES;
-  objc_setAssociatedObject(segments,&GSGlassStateKey,state,OBJC_ASSOCIATION_RETAIN_NONATOMIC);[GSControls addObject:segments];
-  GSSetAdaptive(shadow,NO);GSSetElevation(shadow,0);
-  [segments insertSubview:state.effect atIndex:0];
+  return;
  }
- GSLayoutGlass(segments);
- if(!objc_getAssociatedObject(search,&GSGlassStateKey)&&GSInteger(search,@"glassType")==0){
-  id effect=GSGet(search,@"glassEffectView");
-  if(![effect isKindOfClass:NSClassFromString(@"M3CMaterialGlassEffectView")])return;
-  GSPhotosGlassState *state=[GSPhotosGlassState new];state.search=YES;state.owner=search;state.nativeEffect=effect;state.glassType=GSInteger(search,@"glassType");
-  objc_setAssociatedObject(search,&GSGlassStateKey,state,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  objc_setAssociatedObject(effect,&GSNativeGlassKey,state,OBJC_ASSOCIATION_RETAIN_NONATOMIC);[GSControls addObject:search];
-  // Native type 2 maps to UIGlassEffectStyleRegular (0). Retain the real search
-  // control's icon, state colors, targets, gestures, sizing and accessibility.
-  GSSetType(search,2);
+ GSRestore(previous);
+ if(![bar isKindOfClass:UIStackView.class]||![segments isKindOfClass:UIControl.class]||![segments isKindOfClass:NSClassFromString(@"PHSSegmentedControl")]||
+    ![search isKindOfClass:UIButton.class]||![search isKindOfClass:NSClassFromString(@"M3CButton")]||segments.superview!=bar||search.superview!=bar){GSLastSkip=@"floating_bottom_bar_not_found";return;}
+ // Validate BOTH targets before applying either. Never leave a half-converted bar.
+ if(![native isKindOfClass:UIVisualEffectView.class]||![native isKindOfClass:NSClassFromString(@"M3CMaterialGlassEffectView")]||native.superview!=search){GSLastSkip=@"search_material_view_not_found";return;}
+ if(objc_getAssociatedObject(segments,&GSGlassPairKey)||objc_getAssociatedObject(search,&GSGlassPairKey)||GSInteger(search,@"glassType")!=0){GSLastSkip=@"search_style_already_customized";return;}
+ UIView *shadow=nil,*content=nil;
+ for(UIView *candidate in segments.subviews)if([candidate isKindOfClass:NSClassFromString(@"PHSShadowView")]){
+  for(UIView *child in candidate.subviews)if(child.accessibilityTraits&UIAccessibilityTraitTabBar){
+   if(content){GSLastSkip=@"ambiguous_segment_content";return;}shadow=candidate;content=child;
+  }
  }
+ if(!content){GSLastSkip=@"segment_content_not_found";return;}
+ id glass=((id(*)(id,SEL,NSInteger))objc_msgSend)(NSClassFromString(@"UIGlassEffect"),NSSelectorFromString(@"effectWithStyle:"),0);
+ if(![glass isKindOfClass:UIVisualEffect.class]){GSLastSkip=@"glass_creation_failed";return;}
+ GSPhotosGlassPair *pair=[GSPhotosGlassPair new];pair.controller=controller;pair.bar=bar;pair.segments=segments;pair.search=search;
+ pair.shadow=shadow;pair.content=content;pair.nativeEffect=native;
+ pair.controlColor=segments.backgroundColor;pair.shadowColor=shadow.backgroundColor;pair.contentColor=content.backgroundColor;
+ pair.searchColor=GSStateValue(search,@"backgroundColorForState:",UIControlStateNormal);
+ pair.searchHighlightedColor=GSStateValue(search,@"backgroundColorForState:",UIControlStateHighlighted);
+ pair.searchTint=GSStateValue(search,@"tintColorForState:",UIControlStateNormal);
+ pair.searchShadow=GSStateValue(search,@"shadowForState:",UIControlStateNormal);
+ pair.controlOpaque=segments.opaque;pair.shadowOpaque=shadow.opaque;pair.contentOpaque=content.opaque;pair.controlClips=segments.clipsToBounds;
+ pair.adaptive=GSAdaptive(shadow);pair.elevation=GSElevation(shadow);
+ // Configure the material's shape through UIKit, without clipping its edge/shadow.
+ pair.effect=[[UIVisualEffectView alloc]initWithEffect:glass];pair.effect.userInteractionEnabled=NO;
+ pair.effect.accessibilityElementsHidden=YES;pair.effect.clipsToBounds=NO;
+ id corners=((id(*)(id,SEL))objc_msgSend)(NSClassFromString(@"UICornerConfiguration"),NSSelectorFromString(@"capsuleConfiguration"));
+ ((void(*)(id,SEL,id))objc_msgSend)(pair.effect,NSSelectorFromString(@"setCornerConfiguration:"),corners);
+ for(id object in @[controller,segments,search,native])objc_setAssociatedObject(object,&GSGlassPairKey,pair,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+ [GSPairs addObject:pair];
+ pair.changing=YES;GSCall(search,@"phs_brandIconTonalGlassRound");pair.changing=NO;
+ if(![native.effect isKindOfClass:NSClassFromString(@"UIGlassEffect")]){GSRestore(pair);GSLastSkip=@"native_glass_effect_not_created";return;}
+ if(GSLayoutPill(pair))GSLastSkip=nil;
+}
+
+static void GSVisitController(UIViewController *controller,NSMutableSet *seen){
+ if(!controller||[seen containsObject:controller])return;
+ [seen addObject:controller];
+ if(controller.isViewLoaded&&[controller isKindOfClass:NSClassFromString(@"PHSTabBarController")])GSUpdateController(controller);
+ for(UIViewController *child in controller.childViewControllers)GSVisitController(child,seen);
+ GSVisitController(controller.presentedViewController,seen);
+}
+static void GSDiscoverControllers(void){
+ if(!GSInstalled)return;
+ NSMutableSet *seen=[NSMutableSet set];
+ for(UIScene *scene in UIApplication.sharedApplication.connectedScenes)if([scene isKindOfClass:UIWindowScene.class])
+  for(UIWindow *window in ((UIWindowScene *)scene).windows)GSVisitController(window.rootViewController,seen);
 }
 static void GSHook(Class cls,NSString *name,IMP replacement){
  SEL selector=NSSelectorFromString(name);Method method=class_getInstanceMethod(cls,selector);
@@ -136,28 +230,74 @@ static void GSHook(Class cls,NSString *name,IMP replacement){
 void GSInstallPhotosGlass(void){
  if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{GSInstallPhotosGlass();});return;}
  if(GSInstalled||!GSPhotosGlassAvailable())return;
- GSControllers=NSHashTable.weakObjectsHashTable;GSControls=NSHashTable.weakObjectsHashTable;
- Class cls=NSClassFromString(@"PHSTabBarController");SEL selector=@selector(viewDidLayoutSubviews);
- IMP layout=method_getImplementation(class_getInstanceMethod(cls,selector));
- GSHook(cls,@"viewDidLayoutSubviews",imp_implementationWithBlock(^(UIViewController *controller){((void(*)(id,SEL))layout)(controller,selector);GSUpdateController(controller);}));
+ GSControllers=NSHashTable.weakObjectsHashTable;GSPairs=NSHashTable.weakObjectsHashTable;
+ Class cls=NSClassFromString(@"PHSTabBarController");SEL layout=@selector(viewDidLayoutSubviews);
+ IMP controllerLayout=method_getImplementation(class_getInstanceMethod(cls,layout));
+ GSHook(cls,@"viewDidLayoutSubviews",imp_implementationWithBlock(^(UIViewController *controller){((void(*)(id,SEL))controllerLayout)(controller,layout);GSUpdateController(controller);}));
  cls=NSClassFromString(@"PHSSegmentedControl");
  IMP segmentLayout=method_getImplementation(class_getInstanceMethod(cls,@selector(layoutSubviews)));
- GSHook(cls,@"layoutSubviews",imp_implementationWithBlock(^(UIView *view){((void(*)(id,SEL))segmentLayout)(view,@selector(layoutSubviews));GSLayoutGlass(view);}));
+ GSHook(cls,@"layoutSubviews",imp_implementationWithBlock(^(UIView *view){((void(*)(id,SEL))segmentLayout)(view,@selector(layoutSubviews));GSLayoutPill(objc_getAssociatedObject(view,&GSGlassPairKey));}));
  SEL trait=NSSelectorFromString(@"traitCollectionDidChange:");IMP oldTrait=method_getImplementation(class_getInstanceMethod(cls,trait));
- GSHook(cls,@"traitCollectionDidChange:",imp_implementationWithBlock(^(UIView *view,id previous){((void(*)(id,SEL,id))oldTrait)(view,trait,previous);GSLayoutGlass(view);}));
+ GSHook(cls,@"traitCollectionDidChange:",imp_implementationWithBlock(^(UIView *view,id previous){((void(*)(id,SEL,id))oldTrait)(view,trait,previous);GSLayoutPill(objc_getAssociatedObject(view,&GSGlassPairKey));}));
  cls=NSClassFromString(@"M3CButton");SEL enabled=NSSelectorFromString(@"isGlassEnabled");IMP oldEnabled=method_getImplementation(class_getInstanceMethod(cls,enabled));
- GSHook(cls,@"isGlassEnabled",imp_implementationWithBlock(^BOOL(id button){return objc_getAssociatedObject(button,&GSGlassStateKey)?GSInteger(button,@"glassType")!=0:((BOOL(*)(id,SEL))oldEnabled)(button,enabled);}));
+ GSHook(cls,@"isGlassEnabled",imp_implementationWithBlock(^BOOL(id button){
+  GSPhotosGlassPair *pair=objc_getAssociatedObject(button,&GSGlassPairKey);
+  return pair.search==button?GSInteger(button,@"glassType")!=0:((BOOL(*)(id,SEL))oldEnabled)(button,enabled);
+ }));
+ SEL brand=NSSelectorFromString(@"phs_brandIconTonalRound");IMP oldBrand=method_getImplementation(class_getInstanceMethod(cls,brand));
+ GSHook(cls,@"phs_brandIconTonalRound",imp_implementationWithBlock(^(id button){
+  GSPhotosGlassPair *pair=objc_getAssociatedObject(button,&GSGlassPairKey);
+  if(pair.search==button)GSCall(button,@"phs_brandIconTonalGlassRound");else ((void(*)(id,SEL))oldBrand)(button,brand);
+ }));
+ IMP buttonLayout=method_getImplementation(class_getInstanceMethod(cls,@selector(layoutSubviews)));
+ GSHook(cls,@"layoutSubviews",imp_implementationWithBlock(^(id button){
+  ((void(*)(id,SEL))buttonLayout)(button,@selector(layoutSubviews));
+  GSPhotosGlassPair *pair=objc_getAssociatedObject(button,&GSGlassPairKey);
+  if(pair&&!pair.changing&&pair.controller&&(GSGet(button,@"glassEffectView")!=pair.nativeEffect||GSInteger(button,@"glassType")==0))GSUpdateController(pair.controller);
+ }));
  cls=NSClassFromString(@"M3CMaterialGlassEffectView");SEL isGlass=NSSelectorFromString(@"isGlass");IMP oldGlass=method_getImplementation(class_getInstanceMethod(cls,isGlass));
- GSHook(cls,@"isGlass",imp_implementationWithBlock(^BOOL(id effect){GSPhotosGlassState *state=objc_getAssociatedObject(effect,&GSNativeGlassKey);return state.owner&&objc_getAssociatedObject(state.owner,&GSGlassStateKey)==state?GSInteger(GSGet(effect,@"glass"),@"type")!=0:((BOOL(*)(id,SEL))oldGlass)(effect,isGlass);}));
- GSInstalled=YES;
+ GSHook(cls,@"isGlass",imp_implementationWithBlock(^BOOL(id effect){
+  GSPhotosGlassPair *pair=objc_getAssociatedObject(effect,&GSGlassPairKey);
+  return pair.search&&pair.nativeEffect==effect&&objc_getAssociatedObject(pair.search,&GSGlassPairKey)==pair?
+   GSInteger(GSGet(effect,@"glass"),@"type")!=0:((BOOL(*)(id,SEL))oldGlass)(effect,isGlass);
+ }));
+ GSInstalled=YES;GSDiscoverControllers();
 }
 void GSSetPhotosGlass(BOOL enabled){
  if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{GSSetPhotosGlass(enabled);});return;}
- GSInstallPhotosGlass();if(enabled&&!GSPhotosGlassAvailable())return;
+ GSInstallPhotosGlass();if(enabled&&!GSInstalled)return;
  [NSUserDefaults.standardUserDefaults setBool:enabled forKey:GSPhotosGlassPreference];
- if(!enabled)for(UIView *control in GSControls.allObjects)GSRestore(control);
- else for(UIViewController *controller in GSControllers.allObjects)GSUpdateController(controller);
+ GSWriteDesignCompatibilityOverride(enabled);
+ GSRestartRequired=enabled!=GSBootGlassEnabled;GSLastSkip=GSRestartRequired?@"restart_required":nil;
+ if(!enabled||GSRestartRequired)for(GSPhotosGlassPair *pair in GSPairs.allObjects)GSRestore(pair);
+ if(enabled&&!GSRestartRequired){GSDiscoverControllers();for(UIViewController *controller in GSControllers.allObjects)GSUpdateController(controller);}
+}
+NSDictionary *GSPhotosGlassSnapshot(void){
+ if(!NSThread.isMainThread){__block NSDictionary *snapshot;dispatch_sync(dispatch_get_main_queue(),^{snapshot=GSPhotosGlassSnapshot();});return snapshot;}
+ NSUInteger attached=0;
+ for(GSPhotosGlassPair *pair in GSPairs.allObjects)if(pair.segments&&pair.search&&pair.effect.superview==pair.segments&&pair.nativeEffect.superview==pair.search)attached++;
+ NSString *unavailable=GSUnavailableReason();
+ return @{@"enabled":@(GSPhotosGlassEnabled()),@"activeThisLaunch":@(GSPhotosGlassActiveThisLaunch()),@"available":@(unavailable==nil),@"hooksInstalled":@(GSInstalled),
+  @"designCompatibilityOverride":@(GSDesignOverrideApplied),@"restartRequired":@(GSRestartRequired),
+  @"controllersSeen":@(GSControllers.count),@"attachedBars":@(attached),
+  @"reason":unavailable?:(GSRestartRequired?@"restart_required":attached?@"attached":GSLastSkip?:(GSPhotosGlassEnabled()?@"waiting_for_bottom_bar":@"disabled")),
+  @"lastSkipReason":GSLastSkip?:NSNull.null};
 }
 __attribute__((constructor)) static void GSLoadPhotosGlass(void){
- @autoreleasepool{dispatch_async(dispatch_get_main_queue(),^{GSInstallPhotosGlass();});}
+ @autoreleasepool{
+  // Record the launch-time rollout state even for the UIKit fixture, whose
+  // executable name is intentionally different from GooglePhotos.
+  GSBootGlassEnabled=[NSUserDefaults.standardUserDefaults boolForKey:GSDesignCompatibilityOverride];
+  GSDesignOverrideApplied=GSBootGlassEnabled;
+  if(!GSPhotosHostSupported())return;
+  // UIDesignRequiresCompatibility is read and cached by UIKit very early. When
+  // this opt-in is enabled, write the system rollout override before
+  // UIApplicationMain so real UIGlassEffect rendering is available this launch.
+  // Changing the preference later therefore requires one app restart.
+  GSBootGlassEnabled=GSPhotosGlassEnabled()&&GSPhotosGlassHostVersionSupported();
+  GSWriteDesignCompatibilityOverride(GSBootGlassEnabled);
+  GSDesignOverrideApplied=GSBootGlassEnabled;
+  [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note){GSInstallPhotosGlass();GSDiscoverControllers();}];
+  dispatch_async(dispatch_get_main_queue(),^{GSInstallPhotosGlass();});
+ }
 }

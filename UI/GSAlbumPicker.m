@@ -1,4 +1,3 @@
-#import "GSAppearance.h"
 #import "GSAlbumPicker.h"
 #import "../Shared/GSLocalization.h"
 @interface GSAlbumPicker ()
@@ -8,7 +7,7 @@
 @implementation GSAlbumPicker
 - (void)viewDidLoad{
  [super viewDidLoad];self.title=self.folder.localizedTitle?:GSL(@"Choose album");self.collections=@[];self.loading=YES;
- if(!self.folder)self.navigationItem.leftBarButtonItem=GSNavigationButton(GSL(@"Close"),self,@selector(close));
+ if(!self.folder)self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:GSL(@"Close") style:UIBarButtonItemStylePlain target:self action:@selector(close)];
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{@autoreleasepool{
   NSMutableArray *collections=[NSMutableArray array];
   if(self.folder){
