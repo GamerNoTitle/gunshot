@@ -69,10 +69,9 @@ static id GSFixturePhotosShadow(void){return @"photos-search-shadow";}
 - (NSInteger)numberOfSegments{return 3;}
 - (NSInteger)selectedSegmentIndex{return _selectedSegmentIndex;}
 - (void)setSelectedSegmentIndex:(NSInteger)value{
- if(_selectedSegmentIndex==value)return;
+ // Device truth: the 7.92.0 setter only stores the index. Navigation fires
+ // only when UIControlEventValueChanged is sent explicitly.
  _selectedSegmentIndex=value;
- // Audited Google Photos 7.92.0 behavior: the setter itself emits ValueChanged.
- [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 - (void)layoutSubviews{
  [super layoutSubviews];self.shadow.frame=self.bounds;self.content.frame=self.shadow.bounds;
@@ -375,6 +374,7 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
  UIVisualEffectView *pillEffect=nil;
  for(UIView *view in tabPill.subviews)if([view isKindOfClass:UIVisualEffectView.class])pillEffect=(UIVisualEffectView *)view;
  GS_GLASS_CHECK(pillEffect&&[NSStringFromClass(pillEffect.effect.class) containsString:@"Glass"]&&!pillEffect.userInteractionEnabled);
+ GS_GLASS_CHECK(tabPill.layer.shadowOpacity>0&&tabPill.layer.shadowPath!=NULL);
  GS_GLASS_CHECK([[tabButtons[0] titleForState:UIControlStateNormal] isEqual:@"Photos"]&&[[tabButtons[1] titleForState:UIControlStateNormal] isEqual:@"Collections"]&&[[tabButtons[2] titleForState:UIControlStateNormal] isEqual:@"Create"]);
   GS_GLASS_CHECK(searchProxy&&searchProxy.superview==host&&searchProxy.configuration&&searchProxy.configuration.image&&searchProxy.configuration.cornerStyle==UIButtonConfigurationCornerStyleCapsule);
  GS_GLASS_CHECK([searchProxy.accessibilityLabel isEqual:@"Search"]&&![searchProxy isDescendantOfView:tabPill]);

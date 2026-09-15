@@ -246,7 +246,14 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  CGFloat slice=CGRectGetWidth(pair.tabContainer.bounds)/3;
  for(NSInteger i=0;i<3&&i<(NSInteger)pair.tabButtons.count;i++)
   pair.tabButtons[i].frame=CGRectMake(i*slice,0,slice,CGRectGetHeight(pair.tabContainer.bounds));
-  pair.searchProxy.frame=searchFrame;
+ pair.searchProxy.frame=searchFrame;
+ // The floating lift Apple tab bars have: a capsule shadow under the glass so
+ // the pill reads as floating instead of painted on the feed.
+ pair.tabContainer.layer.shadowColor=UIColor.blackColor.CGColor;
+ pair.tabContainer.layer.shadowOpacity=0.25f;
+ pair.tabContainer.layer.shadowRadius=16;
+ pair.tabContainer.layer.shadowOffset=CGSizeMake(0,8);
+ pair.tabContainer.layer.shadowPath=[UIBezierPath bezierPathWithRoundedRect:pair.tabContainer.bounds cornerRadius:CGRectGetHeight(pair.tabContainer.bounds)/2].CGPath;
  pair.tabContainer.hidden=NO;pair.searchProxy.hidden=NO;pair.tabContainer.alpha=1;pair.searchProxy.alpha=1;
  GSSyncTabSelection(pair);[pair.host bringSubviewToFront:pair.tabContainer];[pair.host bringSubviewToFront:pair.searchProxy];
   pair.changing=NO;return YES;
@@ -255,10 +262,14 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
 @implementation GSPhotosGlassPair
 - (void)tabButtonPressed:(UIButton *)sender{
  if(self.changing||!self.segments||sender.tag<0||sender.tag>=GSInteger(self.segments,@"numberOfSegments"))return;
- // PHSSegmentedControl.setSelectedSegmentIndex: in 7.92.0 already emits
- // UIControlEventValueChanged when the index changes. Sending it again here
- // would invoke Google Photos navigation twice.
- self.changing=YES;GSSetInteger(self.segments,@"setSelectedSegmentIndex:",sender.tag);self.changing=NO;
+ // Device truth: the 7.92.0 setter only stores the index. The ValueChanged
+ // event that drives Google Photos navigation must be sent explicitly, and
+ // same-index taps must not emit anything.
+ if(sender.tag==GSInteger(self.segments,@"selectedSegmentIndex")){GSSyncTabSelection(self);return;}
+ self.changing=YES;
+ GSSetInteger(self.segments,@"setSelectedSegmentIndex:",sender.tag);
+ [self.segments sendActionsForControlEvents:UIControlEventValueChanged];
+ self.changing=NO;GSSyncTabSelection(self);
 }
 - (void)searchPressed:(UIButton *)sender{
  if(self.changing||sender!=self.searchProxy||!self.search)return;

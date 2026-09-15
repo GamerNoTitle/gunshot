@@ -14,9 +14,11 @@ edge, with three plain `UIButton`s (Photos/Collections/Create) on top. No
 there is no Apple-owned background to hide. Google Photos' original
 `PHSSegmentedControl` stays in its original `UIStackView` as the navigation
 backend, but is made visually/accessibility-inactive while the pill mirrors its
-selection. Tapping a pill button writes the same `selectedSegmentIndex`; the
-audited 7.92.0 setter emits `UIControlEventValueChanged` itself, so Gunshot
-must not emit a second event.
+selection. Tapping a pill button writes the same `selectedSegmentIndex` and
+then sends `UIControlEventValueChanged` explicitly: on-device verification
+showed the 7.92.0 setter only stores the index and navigation never fires
+without the explicit event. Same-index taps send nothing. A capsule shadow
+under the pill gives the floating lift Apple tab bars have.
 
 The visible search control is a separate sibling `UIButton` built from
 `UIButtonConfiguration.glassButtonConfiguration`. It is not an arranged child
@@ -42,7 +44,10 @@ unchanged. Changing the option therefore requires one Google Photos restart.
   `selectedSegmentIndex` is `q16@0:8`, and `setSelectedSegmentIndex:` is
   `v24@0:8q16` in the supplied 7.92.0 image.
 - The 7.92.0 `setSelectedSegmentIndex:` implementation sends control event
-  `0x1000` (`UIControlEventValueChanged`) after a changed selection.
+  - The 7.92.0 `setSelectedSegmentIndex:` ABI is `v24@0:8q16`. Static analysis
+  suggested it sends control event `0x1000` (`UIControlEventValueChanged`)
+  after a changed selection, but on-device taps changed only the stored
+  index while content stayed put, so Gunshot sends the event explicitly.
 
 The existing UIKit smoke keeps `UIDesignRequiresCompatibility=true`, pre-seeds the
 same launch-time rollout override before `UIApplicationMain`, and then uses real
