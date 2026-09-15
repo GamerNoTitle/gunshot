@@ -30,6 +30,12 @@ void GSSetNativeRouting(BOOL enabled, NSString *account){
  [NSUserDefaults.standardUserDefaults setObject:account?:@"" forKey:GSAccountKey];
  [NSUserDefaults.standardUserDefaults setBool:enabled&&GSNativeRoutingAvailable() forKey:GSEnabledKey];
 }
+// Called on the import worker, including after potentially slow iCloud export.
+static BOOL GSImportAuthorized(NSString *account,NSString *identity){
+ __block BOOL authorized=NO;
+ dispatch_sync(dispatch_get_main_queue(),^{authorized=GSNativeRoutingEnabled()&&[GSNativeRoutingAccount()isEqual:account]&&GSNativeIdentityMatches(identity);});
+ return authorized&&[GSRequest(@{@"op":@"accounts"},nil)[@"selected"]isEqual:account];
+}
 static void GSRoute(id localAssets){
  NSMutableArray *assets=[NSMutableArray array];BOOL valid=[localAssets isKindOfClass:NSArray.class]||[localAssets isKindOfClass:NSSet.class];
  if(valid)for(id local in localAssets){
@@ -47,18 +53,19 @@ static void GSRoute(id localAssets){
  if(!valid||!assets.count){GSImportResult(@"The selected photos could not be retrieved.",0);return;}
  NSString *account=[GSNativeRoutingAccount()copy];NSArray *selection=[assets copy];
  dispatch_async(dispatch_get_main_queue(),^{
-  if(![account isEqual:GSNativeAccountSummary()[@"email"]]){GSImportResult(@"The signed-in account does not match the upload destination.",0);return;}
+  NSDictionary *native=GSNativeAccountSummary();NSString *identity=native[@"identifier"];
+  if(![account isEqual:native[@"email"]]||!GSNativeIdentityMatches(identity)){GSImportResult(@"The signed-in account does not match the upload destination.",0);return;}
   dispatch_async(GSImportQueue,^{@autoreleasepool{
    NSError *error=nil;NSDictionary *accounts=GSRequest(@{@"op":@"accounts"},&error);
    if(!account.length||![accounts[@"selected"]isEqual:account]){GSImportResult(@"The destination has changed. Check the backup integration settings.",0);return;}
    NSDictionary *options=GSRequest(@{@"op":@"options"},&error);NSUInteger queued=0;
    for(PHAsset *asset in selection){@autoreleasepool{
     if(error||!options)break;
-    if(!GSNativeRoutingEnabled()||![GSNativeRoutingAccount()isEqual:account]){error=[NSError errorWithDomain:@"GoToHP.Import" code:1 userInfo:nil];break;}
+    if(!GSImportAuthorized(account,identity)){error=[NSError errorWithDomain:@"GoToHP.Import" code:1 userInfo:nil];break;}
     NSURL *dir=[NSURL fileURLWithPath:[NSTemporaryDirectory()stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
     BOOL created=[NSFileManager.defaultManager createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:&error];
     NSArray *files=created?GSExportAsset(asset,dir,&error):nil;
-    NSString *job=files?GSImportFiles(files,account,options[@"quality"],asset.creationDate,&error):nil;
+    NSString *job=files&&GSImportAuthorized(account,identity)?GSImportFiles(files,account,options[@"quality"],asset.creationDate,&error):nil;
     [NSFileManager.defaultManager removeItemAtURL:dir error:nil];
     if(!job){if(!error)error=[NSError errorWithDomain:@"GoToHP.Import" code:2 userInfo:nil];break;}queued++;
    }}
