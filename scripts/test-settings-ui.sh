@@ -47,6 +47,10 @@ subprocess.run(['xcrun','simctl','bootstatus',udid,'-b'],check=True,timeout=180)
 app='.build/settings-smoke/GoToHPSettingsFixture.app';bundle='dev.tqmane.gunshot.settingsfixture'
 print('Installing settings fixture',flush=True)
 subprocess.run(['xcrun','simctl','install',udid,app],check=True,timeout=120)
+# Keep UIDesignRequiresCompatibility=YES in the fixture, but opt this launch
+# back into the iOS 26 design before UIApplicationMain. This models the same
+# early user-default override used by the injected Google Photos dylib.
+subprocess.run(['xcrun','simctl','spawn',udid,'defaults','write',bundle,'com.apple.SwiftUI.IgnoreSolariumOptOut','-bool','YES'],check=True,timeout=20)
 print('Launching settings fixture',flush=True)
 launch_error=None
 try:

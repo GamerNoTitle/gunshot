@@ -4,8 +4,9 @@
 #import <objc/message.h>
 
 static NSString *const GSPhotosGlassPreference=@"GSPhotosBottomBarLiquidGlass";
+static NSString *const GSDesignCompatibilityOverride=@"com.apple.SwiftUI.IgnoreSolariumOptOut";
 static char GSGlassPairKey;
-static BOOL GSInstalled;
+static BOOL GSInstalled,GSBootGlassEnabled,GSRestartRequired,GSDesignOverrideApplied;
 static NSHashTable *GSControllers,*GSPairs;
 static NSString *GSLastSkip;
 
@@ -41,13 +42,33 @@ static BOOL GSAdaptive(id shadow){return ((BOOL(*)(id,SEL))objc_msgSend)(shadow,
 static void GSSetAdaptive(id shadow,BOOL value){((void(*)(id,SEL,BOOL))objc_msgSend)(shadow,NSSelectorFromString(@"setAdaptiveBackgroundColorEnabled:"),value);}
 BOOL GSPhotosGlassEnabled(void){return [NSUserDefaults.standardUserDefaults boolForKey:GSPhotosGlassPreference];}
 
+static BOOL GSPhotosGlassHostVersionSupported(void){
+ if(!GSPhotosHostSupported())return NO;
+ id version=[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+ if(![version isKindOfClass:NSString.class]||
+    [version rangeOfString:@"^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$" options:NSRegularExpressionSearch].location==NSNotFound)return NO;
+ return [version compare:@"7.92" options:NSNumericSearch]!=NSOrderedAscending;
+}
+
+static void GSWriteDesignCompatibilityOverride(BOOL enabled){
+ if(!GSPhotosGlassHostVersionSupported())return;
+ if(@available(iOS 26.0,*)){
+  NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+  if(enabled)[defaults setBool:YES forKey:GSDesignCompatibilityOverride];
+  else [defaults removeObjectForKey:GSDesignCompatibilityOverride];
+  [defaults synchronize];
+ }
+}
+
+static BOOL GSPhotosGlassActiveThisLaunch(void){return GSPhotosGlassEnabled()&&!GSRestartRequired&&GSDesignOverrideApplied;}
+
 static NSString *GSUnavailableReason(void){
  if(@available(iOS 26.0,*)){
   if(!GSPhotosHostSupported())return @"unsupported_host";
   id version=[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
   if(![version isKindOfClass:NSString.class]||
      [version rangeOfString:@"^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$" options:NSRegularExpressionSearch].location==NSNotFound)return @"unknown_version";
-  if([version compare:@"7.92" options:NSNumericSearch]==NSOrderedAscending)return @"requires_photos_7_92";
+  if(!GSPhotosGlassHostVersionSupported())return @"requires_photos_7_92";
   // 7.92.0 was audited. Newer versions must expose the same native contracts
   // and pass the per-controller hierarchy checks before any view is changed.
   for(NSArray *entry in @[
@@ -141,7 +162,7 @@ static BOOL GSLayoutPill(GSPhotosGlassPair *pair){
 static void GSUpdateController(UIViewController *controller){
  [GSControllers addObject:controller];
  GSPhotosGlassPair *previous=objc_getAssociatedObject(controller,&GSGlassPairKey);
- if(!GSPhotosGlassEnabled()){GSRestore(previous);return;}
+ if(!GSPhotosGlassActiveThisLaunch()){GSRestore(previous);return;}
  if(previous.changing)return;
  UIStackView *bar=GSGet(controller,@"floatingBottomTabBar");
  UIControl *segments=GSGet(controller,@"floatingSegmentedControl");
@@ -245,23 +266,37 @@ void GSInstallPhotosGlass(void){
 void GSSetPhotosGlass(BOOL enabled){
  if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{GSSetPhotosGlass(enabled);});return;}
  GSInstallPhotosGlass();if(enabled&&!GSInstalled)return;
- [NSUserDefaults.standardUserDefaults setBool:enabled forKey:GSPhotosGlassPreference];GSLastSkip=nil;
- if(!enabled)for(GSPhotosGlassPair *pair in GSPairs.allObjects)GSRestore(pair);
- else{GSDiscoverControllers();for(UIViewController *controller in GSControllers.allObjects)GSUpdateController(controller);}
+ [NSUserDefaults.standardUserDefaults setBool:enabled forKey:GSPhotosGlassPreference];
+ GSWriteDesignCompatibilityOverride(enabled);
+ GSRestartRequired=enabled!=GSBootGlassEnabled;GSLastSkip=GSRestartRequired?@"restart_required":nil;
+ if(!enabled||GSRestartRequired)for(GSPhotosGlassPair *pair in GSPairs.allObjects)GSRestore(pair);
+ if(enabled&&!GSRestartRequired){GSDiscoverControllers();for(UIViewController *controller in GSControllers.allObjects)GSUpdateController(controller);}
 }
 NSDictionary *GSPhotosGlassSnapshot(void){
  if(!NSThread.isMainThread){__block NSDictionary *snapshot;dispatch_sync(dispatch_get_main_queue(),^{snapshot=GSPhotosGlassSnapshot();});return snapshot;}
  NSUInteger attached=0;
  for(GSPhotosGlassPair *pair in GSPairs.allObjects)if(pair.segments&&pair.search&&pair.effect.superview==pair.segments&&pair.nativeEffect.superview==pair.search)attached++;
  NSString *unavailable=GSUnavailableReason();
- return @{@"enabled":@(GSPhotosGlassEnabled()),@"available":@(unavailable==nil),@"hooksInstalled":@(GSInstalled),
+ return @{@"enabled":@(GSPhotosGlassEnabled()),@"activeThisLaunch":@(GSPhotosGlassActiveThisLaunch()),@"available":@(unavailable==nil),@"hooksInstalled":@(GSInstalled),
+  @"designCompatibilityOverride":@(GSDesignOverrideApplied),@"restartRequired":@(GSRestartRequired),
   @"controllersSeen":@(GSControllers.count),@"attachedBars":@(attached),
-  @"reason":unavailable?:(attached?@"attached":GSLastSkip?:(GSPhotosGlassEnabled()?@"waiting_for_bottom_bar":@"disabled")),
+  @"reason":unavailable?:(GSRestartRequired?@"restart_required":attached?@"attached":GSLastSkip?:(GSPhotosGlassEnabled()?@"waiting_for_bottom_bar":@"disabled")),
   @"lastSkipReason":GSLastSkip?:NSNull.null};
 }
 __attribute__((constructor)) static void GSLoadPhotosGlass(void){
  @autoreleasepool{
+  // Record the launch-time rollout state even for the UIKit fixture, whose
+  // executable name is intentionally different from GooglePhotos.
+  GSBootGlassEnabled=[NSUserDefaults.standardUserDefaults boolForKey:GSDesignCompatibilityOverride];
+  GSDesignOverrideApplied=GSBootGlassEnabled;
   if(!GSPhotosHostSupported())return;
+  // UIDesignRequiresCompatibility is read and cached by UIKit very early. When
+  // this opt-in is enabled, write the system rollout override before
+  // UIApplicationMain so real UIGlassEffect rendering is available this launch.
+  // Changing the preference later therefore requires one app restart.
+  GSBootGlassEnabled=GSPhotosGlassEnabled()&&GSPhotosGlassHostVersionSupported();
+  GSWriteDesignCompatibilityOverride(GSBootGlassEnabled);
+  GSDesignOverrideApplied=GSBootGlassEnabled;
   [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note){GSInstallPhotosGlass();GSDiscoverControllers();}];
   dispatch_async(dispatch_get_main_queue(),^{GSInstallPhotosGlass();});
  }

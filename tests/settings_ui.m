@@ -133,6 +133,12 @@ static void CheckStationaryPolling(GSPanel *panel,UIWindow *window,void(^next)(v
 }
 - (void)sceneDidBecomeActive:(UIScene *)scene{
  if(self.started)return;self.started=YES;NSLog(@"Fixture: scene active");
+ if(@available(iOS 26.0,*)){
+  if(![[NSBundle.mainBundle objectForInfoDictionaryKey:@"UIDesignRequiresCompatibility"]boolValue]||
+     ![NSUserDefaults.standardUserDefaults boolForKey:@"com.apple.SwiftUI.IgnoreSolariumOptOut"]){
+   Finish(NO,@"Liquid Glass compatibility override was not present before UIApplicationMain");return;
+  }
+ }
  GSSetLanguage(@"ja");NSLog(@"Fixture: language initialized");
  UIViewController *root=self.window.rootViewController;
  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:30];

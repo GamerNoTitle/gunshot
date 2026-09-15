@@ -3,6 +3,7 @@
   "Original quality (original data available)": "オリジナル画質（原本データあり）",
   "GoToHP settings": "GoToHP の設定",
   "Liquid Glass for the bottom bar and search button. Requires iOS 26 or later.": "下部バーと検索ボタンを Liquid Glass にします。iOS 26 以降で利用できます。",
+  "Restart Google Photos to apply the Liquid Glass change.": "Liquid Glass の変更を反映するには Google Photos を再起動してください。",
   "The selected photos could not be retrieved.": "選択した写真を取得できませんでした。",
   "The signed-in account does not match the upload destination.": "ログイン中のアカウントと送信先が一致しません。",
   "The destination has changed. Check the backup integration settings.": "送信先が変更されています。連携設定を確認してください。",

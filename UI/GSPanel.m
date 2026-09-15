@@ -252,7 +252,12 @@
    [toggle addTarget:self action:@selector(controlSwitchChanged:) forControlEvents:UIControlEventValueChanged];
    cell.accessoryView=toggle;cell.selectionStyle=UITableViewCellSelectionStyleNone;
   }
-  if(control==19)cell.detailTextLabel.text=GSPhotosGlassAvailable()?GSL(@"Liquid Glass for the bottom bar and search button. Requires iOS 26 or later."):GSL(@"Unavailable in this version");
+  if(control==19){
+   NSDictionary *glass=GSPhotosGlassSnapshot();
+   cell.detailTextLabel.text=!GSPhotosGlassAvailable()?GSL(@"Unavailable in this version"):
+    [glass[@"restartRequired"]boolValue]?GSL(@"Restart Google Photos to apply the Liquid Glass change."):
+    GSL(@"Liquid Glass for the bottom bar and search button. Requires iOS 26 or later.");
+  }
   if(control==16&&!GSUnlimitedStorageAvailable())cell.detailTextLabel.text=GSL(@"Unavailable in this version");
   if(control==10&&!GSNativeRoutingAvailable())cell.detailTextLabel.text=GSL(@"Unavailable in this version");
   return cell;

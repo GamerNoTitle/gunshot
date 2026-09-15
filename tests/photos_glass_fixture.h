@@ -330,6 +330,7 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
   GS_GLASS_CHECK(GSPhotosGlassEnabled());GSInstallPhotosGlass();GSInstallPhotosGlass();
   NSDictionary *snapshot=GSPhotosGlassSnapshot();
   GS_GLASS_CHECK([snapshot[@"available"]boolValue]&&[snapshot[@"hooksInstalled"]boolValue]&&[snapshot[@"attachedBars"]unsignedIntegerValue]>=1);
+  GS_GLASS_CHECK([snapshot[@"designCompatibilityOverride"]boolValue]&&![snapshot[@"restartRequired"]boolValue]&&[snapshot[@"activeThisLaunch"]boolValue]);
 
   UIVisualEffectView *pill=GSFixturePillEffect(segments);
   id capsule=((id(*)(id,SEL))objc_msgSend)(NSClassFromString(@"UICornerConfiguration"),NSSelectorFromString(@"capsuleConfiguration"));
@@ -405,6 +406,7 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
   GS_GLASS_CHECK(second.floatingSearchButton.glassType==0&&second.floatingSearchButton.opaque&&!second.floatingSearchButton.glassEffectView.effect);
   GS_GLASS_CHECK(segments.selection==selection&&[search imageForState:UIControlStateNormal]==glyph&&[search.gestureRecognizers containsObject:gesture]);
   snapshot=GSPhotosGlassSnapshot();GS_GLASS_CHECK(![snapshot[@"enabled"]boolValue]&&[snapshot[@"attachedBars"]unsignedIntegerValue]==0);
+  GS_GLASS_CHECK([snapshot[@"restartRequired"]boolValue]&&![snapshot[@"activeThisLaunch"]boolValue]&&[snapshot[@"reason"]isEqual:@"restart_required"]);
 
   // Validate both bottom-bar targets before changing either. A valid segment pill
   // paired with a detached search material must leave both controls untouched.
