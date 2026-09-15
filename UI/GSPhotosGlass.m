@@ -20,6 +20,7 @@ static NSString *GSLastSkip;
 @property(nonatomic,weak) UIView *host;
 @property(nonatomic,weak) UIControl *segments;
 @property(nonatomic,weak) UIButton *search;
+@property(nonatomic,strong) UIVisualEffectView *tabBackdrop;
 @property(nonatomic,strong) UITabBar *nativeTabBar;
 @property(nonatomic,strong) UIButton *searchProxy;
 @property(nonatomic) CGFloat segmentsAlpha,searchAlpha;
@@ -147,6 +148,14 @@ static void GSSyncTabSelection(GSPhotosGlassPair *pair){
 static UITabBar *GSCreateNativeTabBar(GSPhotosGlassPair *pair){
  UITabBar *tabBar=[[UITabBar alloc]initWithFrame:CGRectZero];
  tabBar.delegate=pair;tabBar.translucent=YES;tabBar.itemPositioning=UITabBarItemPositioningFill;tabBar.clipsToBounds=NO;
+ // iOS 26's UITabBar keeps its own floating glass background at a fixed
+ // intrinsic height even when the bar frame is taller. Keep the native tab
+ // items/selection behavior, but make only that outer background transparent;
+ // GSCreateTabBackdrop renders the correctly-sized Apple UIGlassEffect below it.
+ UITabBarAppearance *appearance=[tabBar.standardAppearance copy]?:[UITabBarAppearance new];
+ appearance.backgroundEffect=nil;appearance.backgroundColor=UIColor.clearColor;appearance.shadowColor=UIColor.clearColor;
+ tabBar.standardAppearance=appearance;tabBar.scrollEdgeAppearance=appearance;
+ tabBar.backgroundColor=UIColor.clearColor;tabBar.opaque=NO;
  NSArray<NSString *> *titles=GSTabTitles(pair.segments);
  NSArray<NSString *> *symbols=@[ @"photo.on.rectangle.angled",@"rectangle.stack",@"plus.circle"];
  NSMutableArray<UITabBarItem *> *items=[NSMutableArray arrayWithCapacity:3];
@@ -158,6 +167,21 @@ static UITabBar *GSCreateNativeTabBar(GSPhotosGlassPair *pair){
  NSInteger selected=GSInteger(pair.segments,@"selectedSegmentIndex");
  if(selected>=0&&selected<(NSInteger)items.count)tabBar.selectedItem=items[selected];
  return tabBar;
+}
+
+static UIVisualEffectView *GSCreateTabBackdrop(void){
+ Class glassClass=NSClassFromString(@"UIGlassEffect");SEL glassSelector=NSSelectorFromString(@"effectWithStyle:");
+ id glass=[glassClass respondsToSelector:glassSelector]?((id(*)(id,SEL,NSInteger))objc_msgSend)(glassClass,glassSelector,0):nil;
+ if(![glass isKindOfClass:UIVisualEffect.class])return nil;
+ UIVisualEffectView *view=[[UIVisualEffectView alloc]initWithEffect:glass];
+ Class cornerClass=NSClassFromString(@"UICornerConfiguration");SEL capsuleSelector=NSSelectorFromString(@"capsuleConfiguration");
+ id capsule=[cornerClass respondsToSelector:capsuleSelector]?((id(*)(id,SEL))objc_msgSend)(cornerClass,capsuleSelector):nil;
+ SEL setCornerSelector=NSSelectorFromString(@"setCornerConfiguration:");
+ if(!capsule||![view respondsToSelector:setCornerSelector])return nil;
+ ((void(*)(id,SEL,id))objc_msgSend)(view,setCornerSelector,capsule);
+ view.userInteractionEnabled=NO;view.accessibilityElementsHidden=YES;view.clipsToBounds=NO;
+ view.accessibilityIdentifier=@"dev.tqmane.gunshot.photosglass.tabBackdrop";
+ return view;
 }
 
 static UIButton *GSCreateNativeSearchButton(GSPhotosGlassPair *pair){
@@ -179,7 +203,7 @@ static void GSRestore(GSPhotosGlassPair *pair){
  pair.changing=YES;
  for(id object in @[pair.controller?:NSNull.null,pair.segments?:NSNull.null,pair.search?:NSNull.null])
   if(object!=NSNull.null&&objc_getAssociatedObject(object,&GSGlassPairKey)==pair)objc_setAssociatedObject(object,&GSGlassPairKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
- [pair.nativeTabBar removeFromSuperview];[pair.searchProxy removeFromSuperview];
+ [pair.tabBackdrop removeFromSuperview];[pair.nativeTabBar removeFromSuperview];[pair.searchProxy removeFromSuperview];
  pair.segments.alpha=pair.segmentsAlpha;pair.segments.userInteractionEnabled=pair.segmentsInteraction;pair.segments.accessibilityElementsHidden=pair.segmentsAccessibilityHidden;
  pair.search.alpha=pair.searchAlpha;pair.search.userInteractionEnabled=pair.searchInteraction;pair.search.accessibilityElementsHidden=pair.searchAccessibilityHidden;
  [GSPairs removeObject:pair];pair.changing=NO;
@@ -189,21 +213,24 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  if(!pair||pair.changing)return NO;
  if(!pair.host||pair.host!=pair.bar||!pair.bar.superview||pair.segments.superview!=pair.bar||pair.search.superview!=pair.bar||
     ![pair.bar.arrangedSubviews containsObject:pair.segments]||![pair.bar.arrangedSubviews containsObject:pair.search]||
-    pair.nativeTabBar.superview!=pair.host||pair.searchProxy.superview!=pair.host){GSRestore(pair);GSLastSkip=@"bottom_bar_hierarchy_changed";return NO;}
+    pair.tabBackdrop.superview!=pair.host||pair.nativeTabBar.superview!=pair.host||pair.searchProxy.superview!=pair.host){GSRestore(pair);GSLastSkip=@"bottom_bar_hierarchy_changed";return NO;}
  pair.changing=YES;
  [pair.bar layoutIfNeeded];
  pair.segments.alpha=0;pair.segments.userInteractionEnabled=NO;pair.segments.accessibilityElementsHidden=YES;
  pair.search.alpha=0;pair.search.userInteractionEnabled=NO;pair.search.accessibilityElementsHidden=YES;
  CGRect tabFrame=[pair.segments convertRect:pair.segments.bounds toView:pair.host];
  CGRect searchFrame=[pair.search convertRect:pair.search.bounds toView:pair.host];
- // The top edge already lines up correctly on-device. Keep it fixed and extend
- // only the bottom edge until it matches the independent Liquid Glass Search.
+ // Keep the actual UITabBar at Photos' native item geometry. Its transparent
+ // outer background is replaced by a separate Apple UIGlassEffect whose top is
+ // unchanged and whose bottom reaches the Search button's bottom edge.
+ CGRect backdropFrame=tabFrame;
  CGFloat searchBottom=CGRectGetMaxY(searchFrame);
- if(searchBottom>CGRectGetMinY(tabFrame))tabFrame.size.height=searchBottom-CGRectGetMinY(tabFrame);
+ if(searchBottom>CGRectGetMinY(backdropFrame))backdropFrame.size.height=searchBottom-CGRectGetMinY(backdropFrame);
+ pair.tabBackdrop.frame=backdropFrame;
  pair.nativeTabBar.frame=tabFrame;
  pair.searchProxy.frame=searchFrame;
- pair.nativeTabBar.hidden=NO;pair.searchProxy.hidden=NO;pair.nativeTabBar.alpha=1;pair.searchProxy.alpha=1;
- GSSyncTabSelection(pair);[pair.host bringSubviewToFront:pair.nativeTabBar];[pair.host bringSubviewToFront:pair.searchProxy];
+ pair.tabBackdrop.hidden=NO;pair.nativeTabBar.hidden=NO;pair.searchProxy.hidden=NO;pair.tabBackdrop.alpha=1;pair.nativeTabBar.alpha=1;pair.searchProxy.alpha=1;
+ GSSyncTabSelection(pair);[pair.host bringSubviewToFront:pair.tabBackdrop];[pair.host bringSubviewToFront:pair.nativeTabBar];[pair.host bringSubviewToFront:pair.searchProxy];
  pair.changing=NO;return YES;
 }
 
@@ -240,10 +267,10 @@ static void GSUpdateController(UIViewController *controller){
  GSPhotosGlassPair *pair=[GSPhotosGlassPair new];pair.controller=controller;pair.bar=bar;pair.host=bar;pair.segments=segments;pair.search=search;
  pair.segmentsAlpha=segments.alpha;pair.searchAlpha=search.alpha;pair.segmentsInteraction=segments.userInteractionEnabled;pair.searchInteraction=search.userInteractionEnabled;
  pair.segmentsAccessibilityHidden=segments.accessibilityElementsHidden;pair.searchAccessibilityHidden=search.accessibilityElementsHidden;
- pair.nativeTabBar=GSCreateNativeTabBar(pair);pair.searchProxy=GSCreateNativeSearchButton(pair);
- if(!pair.nativeTabBar||!pair.searchProxy){GSLastSkip=@"native_control_creation_failed";return;}
+ pair.tabBackdrop=GSCreateTabBackdrop();pair.nativeTabBar=GSCreateNativeTabBar(pair);pair.searchProxy=GSCreateNativeSearchButton(pair);
+ if(!pair.tabBackdrop||!pair.nativeTabBar||!pair.searchProxy){GSLastSkip=@"native_control_creation_failed";return;}
  for(id object in @[controller,segments,search])objc_setAssociatedObject(object,&GSGlassPairKey,pair,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
- [GSPairs addObject:pair];[pair.host addSubview:pair.nativeTabBar];[pair.host addSubview:pair.searchProxy];
+ [GSPairs addObject:pair];[pair.host addSubview:pair.tabBackdrop];[pair.host addSubview:pair.nativeTabBar];[pair.host addSubview:pair.searchProxy];
  if(GSLayoutNativeControls(pair))GSLastSkip=nil;
 }
 
@@ -279,7 +306,7 @@ void GSSetPhotosGlass(BOOL enabled){
 }
 NSDictionary *GSPhotosGlassSnapshot(void){
  if(!NSThread.isMainThread){__block NSDictionary *snapshot;dispatch_sync(dispatch_get_main_queue(),^{snapshot=GSPhotosGlassSnapshot();});return snapshot;}
- NSUInteger attached=0;for(GSPhotosGlassPair *pair in GSPairs.allObjects)if(pair.nativeTabBar.superview==pair.host&&pair.searchProxy.superview==pair.host&&pair.segments.superview==pair.bar&&pair.search.superview==pair.bar)attached++;
+ NSUInteger attached=0;for(GSPhotosGlassPair *pair in GSPairs.allObjects)if(pair.tabBackdrop.superview==pair.host&&pair.nativeTabBar.superview==pair.host&&pair.searchProxy.superview==pair.host&&pair.segments.superview==pair.bar&&pair.search.superview==pair.bar)attached++;
  NSString *unavailable=GSUnavailableReason();
  return @{@"enabled":@(GSPhotosGlassEnabled()),@"activeThisLaunch":@(GSPhotosGlassActiveThisLaunch()),@"available":@(unavailable==nil),@"hooksInstalled":@(GSInstalled),
   @"designCompatibilityOverride":@(GSDesignOverrideApplied),@"restartRequired":@(GSRestartRequired),@"controllersSeen":@(GSControllers.count),@"attachedBars":@(attached),
