@@ -300,6 +300,11 @@ static NSInteger GSFixtureSelectedTabButton(NSArray<UIButton *> *buttons){
  for(UIButton *button in buttons)if(button.accessibilityTraits&UIAccessibilityTraitSelected)return button.tag;
  return -1;
 }
+static CAGradientLayer *GSFixtureEdgeRing(UIView *view){
+ for(CALayer *layer in view.layer.sublayers)
+  if([layer isKindOfClass:CAGradientLayer.class]&&[[layer name] isEqual:@"dev.tqmane.gunshot.photosglass.edgeRing"])return (CAGradientLayer *)layer;
+ return nil;
+}
 static UIButton *GSFixtureNativeSearchProxy(PHSTabBarController *controller){
  UIView *host=controller.floatingBottomTabBar;
  for(UIView *view in host.subviews)if([view isKindOfClass:UIButton.class]&&view!=controller.floatingSearchButton&&
@@ -374,6 +379,7 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
  UIVisualEffectView *pillEffect=nil;
  for(UIView *view in tabPill.subviews)if([view isKindOfClass:UIVisualEffectView.class])pillEffect=(UIVisualEffectView *)view;
  GS_GLASS_CHECK(pillEffect&&[NSStringFromClass(pillEffect.effect.class) containsString:@"Glass"]&&!pillEffect.userInteractionEnabled);
+ GS_GLASS_CHECK(GSFixtureEdgeRing(tabPill)!=nil&&GSFixtureEdgeRing(searchProxy)!=nil);
  GS_GLASS_CHECK(tabPill.layer.shadowOpacity>0&&tabPill.layer.shadowPath!=NULL);
  GS_GLASS_CHECK([[tabButtons[0] titleForState:UIControlStateNormal] isEqual:@"Photos"]&&[[tabButtons[1] titleForState:UIControlStateNormal] isEqual:@"Collections"]&&[[tabButtons[2] titleForState:UIControlStateNormal] isEqual:@"Create"]);
   GS_GLASS_CHECK(searchProxy&&searchProxy.superview==host&&searchProxy.configuration&&searchProxy.configuration.image&&searchProxy.configuration.cornerStyle==UIButtonConfigurationCornerStyleCapsule);

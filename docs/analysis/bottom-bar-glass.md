@@ -18,7 +18,10 @@ selection. Tapping a pill button writes the same `selectedSegmentIndex` and
 then sends `UIControlEventValueChanged` explicitly: on-device verification
 showed the 7.92.0 setter only stores the index and navigation never fires
 without the explicit event. Same-index taps send nothing. A capsule shadow
-under the pill gives the floating lift Apple tab bars have.
+under the pill gives the floating lift Apple tab bars have, and a thin
+static gradient ring on the pill and Search button imitates the iridescent
+glass edge (the true refraction is the renderer's output and has no
+public knob).
 
 The visible search control is a separate sibling `UIButton` built from
 `UIButtonConfiguration.glassButtonConfiguration`. It is not an arranged child
