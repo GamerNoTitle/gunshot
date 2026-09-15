@@ -224,34 +224,6 @@ static void GSRestore(GSPhotosGlassPair *pair){
  [GSPairs removeObject:pair];pair.changing=NO;
 }
 
-static CAGradientLayer *GSEdgeRing(UIView *view){
- // The iridescent edge Apple glass shows is the renderer's own refraction and
- // has no public knob. A thin static gradient ring gives the same read at a
- // glance on any renderer state. It is decoration only: touch, accessibility
- // and navigation never depend on it.
- for(CALayer *layer in view.layer.sublayers)
-  if([layer isKindOfClass:CAGradientLayer.class]&&[[layer name] isEqual:@"dev.tqmane.gunshot.photosglass.edgeRing"])return (CAGradientLayer *)layer;
- CAGradientLayer *ring=[CAGradientLayer layer];ring.name=@"dev.tqmane.gunshot.photosglass.edgeRing";
- ring.colors=@[
-  (id)[UIColor colorWithRed:1.0 green:0.55 blue:0.55 alpha:1.0].CGColor,
-  (id)[UIColor colorWithRed:1.0 green:0.75 blue:0.45 alpha:1.0].CGColor,
-  (id)[UIColor colorWithRed:0.65 green:0.95 blue:0.55 alpha:1.0].CGColor,
-  (id)[UIColor colorWithRed:0.45 green:0.85 blue:1.0 alpha:1.0].CGColor,
-  (id)[UIColor colorWithRed:0.70 green:0.62 blue:1.0 alpha:1.0].CGColor];
- ring.startPoint=CGPointMake(0,0);ring.endPoint=CGPointMake(1,1);ring.opacity=0.6f;
- CAShapeLayer *mask=[CAShapeLayer layer];
- mask.fillColor=UIColor.clearColor.CGColor;mask.strokeColor=UIColor.whiteColor.CGColor;mask.lineWidth=1.5;
- ring.mask=mask;[view.layer addSublayer:ring];
- return ring;
-}
-static void GSLayoutEdgeRing(UIView *view){
- if(!view)return;
- CAGradientLayer *ring=GSEdgeRing(view);
- ring.frame=view.bounds;
- CAShapeLayer *mask=(CAShapeLayer *)ring.mask;
- mask.frame=view.bounds;
- mask.path=[UIBezierPath bezierPathWithRoundedRect:view.bounds cornerRadius:CGRectGetHeight(view.bounds)/2].CGPath;
-}
 static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  if(!pair||pair.changing)return NO;
  if(!pair.host||pair.host!=pair.bar||!pair.bar.superview||pair.segments.superview!=pair.bar||pair.search.superview!=pair.bar||
@@ -274,8 +246,7 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  CGFloat slice=CGRectGetWidth(pair.tabContainer.bounds)/3;
  for(NSInteger i=0;i<3&&i<(NSInteger)pair.tabButtons.count;i++)
   pair.tabButtons[i].frame=CGRectMake(i*slice,0,slice,CGRectGetHeight(pair.tabContainer.bounds));
-pair.searchProxy.frame=searchFrame;
- GSLayoutEdgeRing(pair.tabContainer);GSLayoutEdgeRing(pair.searchProxy);
+ pair.searchProxy.frame=searchFrame;
  // The floating lift Apple tab bars have: a capsule shadow under the glass so
  // the pill reads as floating instead of painted on the feed.
  pair.tabContainer.layer.shadowColor=UIColor.blackColor.CGColor;
