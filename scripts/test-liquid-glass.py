@@ -7,6 +7,7 @@ import platform
 import plistlib
 import shutil
 import subprocess
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
@@ -19,7 +20,16 @@ build_env = dict(os.environ, DEVELOPER_DIR=os.environ['BUILD_DEVELOPER_DIR'])
 
 def run(*args, env=None, timeout=120):
     print('+', ' '.join(map(str, args)), flush=True)
-    return subprocess.check_output(args, env=env, text=True, timeout=timeout).strip()
+    # CoreSimulator can pass stdout handles to long-lived service processes.
+    with tempfile.TemporaryFile(mode='w+') as output:
+        try:
+            subprocess.run(args, env=env, stdout=output, text=True, check=True, timeout=timeout)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            output.seek(0)
+            print(output.read(), flush=True)
+            raise
+        output.seek(0)
+        return output.read().strip()
 
 
 sdk = run('xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path', env=build_env)
