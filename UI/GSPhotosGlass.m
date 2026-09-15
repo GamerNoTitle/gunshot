@@ -6,6 +6,7 @@
 
 static NSString *const GSPhotosGlassPreference=@"GSPhotosBottomBarLiquidGlass";
 static NSString *const GSDesignCompatibilityOverride=@"com.apple.SwiftUI.IgnoreSolariumOptOut";
+static const CGFloat GSNativeTabBarVerticalOutset=8.0;
 static char GSGlassPairKey;
 static BOOL GSInstalled,GSBootGlassEnabled,GSRestartRequired,GSDesignOverrideApplied;
 static NSHashTable *GSControllers,*GSPairs;
@@ -193,7 +194,9 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  pair.changing=YES;
  pair.segments.alpha=0;pair.segments.userInteractionEnabled=NO;pair.segments.accessibilityElementsHidden=YES;
  pair.search.alpha=0;pair.search.userInteractionEnabled=NO;pair.search.accessibilityElementsHidden=YES;
- pair.nativeTabBar.frame=[pair.segments convertRect:pair.segments.bounds toView:pair.host];
+ CGRect tabFrame=[pair.segments convertRect:pair.segments.bounds toView:pair.host];
+ tabFrame=CGRectInset(tabFrame,0,-GSNativeTabBarVerticalOutset);
+ pair.nativeTabBar.frame=tabFrame;
  pair.searchProxy.frame=[pair.search convertRect:pair.search.bounds toView:pair.host];
  pair.nativeTabBar.hidden=NO;pair.searchProxy.hidden=NO;pair.nativeTabBar.alpha=1;pair.searchProxy.alpha=1;
  GSSyncTabSelection(pair);[pair.host bringSubviewToFront:pair.nativeTabBar];[pair.host bringSubviewToFront:pair.searchProxy];
