@@ -15,8 +15,13 @@ gestures stay in place. Opt-out restores native backgrounds and elevation.
 The search button uses its existing `phs_brandIconTonalGlassRound` styling.
 Changing only `glassType` missed the native glass colors, shadows and opacity
 configuration. Only the marked button's `isGlassEnabled` and material view's
-`isGlass` gates are overridden. The host's `UIDesignRequiresCompatibility=true`
-and global `M3CLiquidGlass` gate remain intact. Opt-out reapplies the original
+`isGlass` gates are overridden. Google Photos ships with
+`UIDesignRequiresCompatibility=true`, which suppresses real Liquid Glass for the
+whole process. When this option is enabled, Gunshot writes
+`com.apple.SwiftUI.IgnoreSolariumOptOut=true` before `UIApplicationMain` on the
+next launch so UIKit uses the iOS 26 design while keeping the host Info.plist
+unchanged. Changing the option therefore requires one Google Photos restart.
+Opt-out reapplies the original
 `phs_brandIconTonalRound` styling plus Photos' saved normal/highlight backgrounds,
 normal tint and elevation shadow; inactive glass-specific style tokens can remain
 in the native button's tables until destruction or the next glass application.
@@ -30,8 +35,9 @@ in the native button's tables until destruction or the next glass application.
   `UIGlassEffectStyleClear`; type 2 would use Regular. The old type-only patch
   bypassed the native styling sequence.
 
-The existing UIKit smoke uses real glass APIs inside a compatibility-mode fixture
-and fake Photos classes. It is not an injected Google Photos device test. Device
+The existing UIKit smoke keeps `UIDesignRequiresCompatibility=true`, pre-seeds the
+same launch-time rollout override before `UIApplicationMain`, and then uses real
+glass APIs with fake Photos classes. It is not an injected Google Photos device test. Device
 validation must cover opt-in/out, tab selection, search, light/dark appearance,
 rotation and returning from a backgrounded app. No additional build target or
 workflow is required.

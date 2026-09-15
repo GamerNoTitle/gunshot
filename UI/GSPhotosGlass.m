@@ -51,10 +51,10 @@ static BOOL GSPhotosGlassHostVersionSupported(void){
 }
 
 static void GSWriteDesignCompatibilityOverride(BOOL enabled){
- if(!GSPhotosGlassHostVersionSupported())return;
+ if(!GSPhotosHostSupported())return;
  if(@available(iOS 26.0,*)){
   NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
-  if(enabled)[defaults setBool:YES forKey:GSDesignCompatibilityOverride];
+  if(enabled&&GSPhotosGlassHostVersionSupported())[defaults setBool:YES forKey:GSDesignCompatibilityOverride];
   else [defaults removeObjectForKey:GSDesignCompatibilityOverride];
   [defaults synchronize];
  }
