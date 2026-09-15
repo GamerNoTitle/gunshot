@@ -142,6 +142,8 @@ func Open(root string, runner Runner) (*Engine, error) {
 	s := State{Version: 1, Options: defaults(), Jobs: []*Job{}}
 	b, e := os.ReadFile(filepath.Join(root, "state.json"))
 	if e == nil {
+		// Defaults belong only to a new store, not a damaged persisted state.
+		s = State{}
 		if json.Unmarshal(b, &s) != nil || s.Version != 1 || !s.Options.valid() {
 			return nil, errors.New("invalid state; restore backup")
 		}

@@ -56,3 +56,5 @@ assert s.count(needle) == 1, 'review upstream bearer-token entry point'
 s = s.replace(needle, needle + '\n if token, native, err := gunshotNativeBearer(a.authData); native { return token, err }')
 p.write_text(s)
 shutil.copy2(r / 'tests/quality_wire_test.go.txt', d / 'backend/gunshot_quality_wire_test.go')
+
+shutil.copy2(r / 'tests/context_transport_test.go.txt', d / 'backend/gunshot_context_transport_test.go')

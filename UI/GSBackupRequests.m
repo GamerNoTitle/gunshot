@@ -29,7 +29,8 @@ static char GSTransferKey;
 static BOOL GSInstalled;
 static NSObject *GSLock;
 static NSMutableDictionary *GSCounts;
-static NSMutableSet *GSReconciling;
+// Each overlapping request owns one registration, even for the same asset.
+static NSCountedSet *GSReconciling;
 static BOOL GSMethod(id object,NSString *name,const char *encoding){
  Method m=class_getInstanceMethod(object_getClass(object),NSSelectorFromString(name));return m&&!strcmp(method_getTypeEncoding(m),encoding);
 }
@@ -135,7 +136,10 @@ static void GSStart(id request,SEL selector,IMP original){
     if(!completed){GSCount(@"failed");GSFail(request,3);return;}
     if(!GSNativeIdentityMatches(transfer.identityIdentifier)||!GSNativeAccountMatches(GSGet(GSGet(request,@"credentials"),@"accountID"))){GSCount(@"authorizationChanged");GSFail(request,2);return;}
     // Refresh native backup state from the server; GSGuard blocks re-upload.
-    transfer.reconciling=YES;@synchronized(GSLock){[GSReconciling addObject:transfer.localID];}
+    @synchronized(GSLock){
+     if(transfer.cancelled||transfer.finished)return;
+     transfer.reconciling=YES;[GSReconciling addObject:transfer.localID];
+    }
     GSCount(@"reconciling");((void(*)(id,SEL))original)(request,selector);
    });
   });
@@ -147,7 +151,7 @@ static void GSFinish(id request,BOOL success){
  @synchronized(GSLock){
   if(!t||t.finished)return;
   t.finished=YES;if(success)t.progress=1;
-  if(t.localID)[GSReconciling removeObject:t.localID];
+  if(t.reconciling&&!t.cancelled)[GSReconciling removeObject:t.localID];
   if(t.reconciling)GSCount(success?@"nativeReconciled":@"reconcileFailed");
  }
 }
@@ -174,8 +178,11 @@ static void GSBindStart(Class c){
  GSReplace(c,timeout,imp_implementationWithBlock(^BOOL(id request){GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);return t&&!t.reconciling&&!t.cancelled?NO:((BOOL(*)(id,SEL))oldTimeout)(request,timeout);}));
  SEL cancel=NSSelectorFromString(@"cancel");IMP oldCancel=method_getImplementation(class_getInstanceMethod(c,cancel));
  GSReplace(c,cancel,imp_implementationWithBlock(^(id request){
-  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);t.cancelGo=GSUploadHostForeground();t.cancelled=YES;
-  if(t.localID)@synchronized(GSLock){[GSReconciling removeObject:t.localID];}
+  GSBackupTransfer *t=objc_getAssociatedObject(request,&GSTransferKey);t.cancelGo=GSUploadHostForeground();
+  @synchronized(GSLock){
+   if(t.reconciling&&!t.finished&&!t.cancelled)[GSReconciling removeObject:t.localID];
+   t.cancelled=YES;
+  }
   // Background cancellation preserves the Go job for foreground resumption.
   if(t.jobID&&t.cancelGo)dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{GSRequest(@{@"op":@"cancel",@"id":t.jobID},nil);});
   ((void(*)(id,SEL))oldCancel)(request,cancel);
@@ -249,7 +256,7 @@ void GSInstallBackupRequests(void){
  if(GSPhotosCompletionForClass(asset)==GSPhotosCompletionUnavailable)return;
  Method ac=class_getInstanceMethod(asset,NSSelectorFromString(GSPhotosAssetCompletion(asset))),lc=class_getInstanceMethod(live,NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"));
  if(!ac||!lc||strcmp(method_getTypeEncoding(ac),GSPhotosAssetCompletionABI(asset))||strcmp(method_getTypeEncoding(lc),"v32@0:8@16@24"))return;
- GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSReconciling=[NSMutableSet set];
+ GSLock=[NSObject new];GSCounts=[NSMutableDictionary dictionary];GSReconciling=[NSCountedSet new];
  GSBindStart(asset);GSBindStart(live);GSBindCompletion(asset,NO);GSBindCompletion(live,YES);
  GSBindProgress(asset);GSBindProgress(live);
  GSBindBackground(NSClassFromString(@"GMUBackgroundAssetUploadRequest"));

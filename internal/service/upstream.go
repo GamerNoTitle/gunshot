@@ -76,9 +76,7 @@ func (e *Engine) accounts(r Request) (any, error) {
 type reporter struct {
 	backend.NopReporter
 	callback     func(Progress)
-	total        int64
-	completed    int64
-	previousPath string
+	uploaded     int64
 }
 
 func (r *reporter) ThreadStatus(s backend.ThreadStatus) {
@@ -89,16 +87,12 @@ func (r *reporter) ThreadStatus(s backend.ThreadStatus) {
 	case "finalizing":
 		phase = "committing"
 	}
-	if s.FilePath != r.previousPath && r.previousPath != "" {
-		r.completed += r.total
-	}
-	if s.FilePath != "" {
-		r.previousPath = s.FilePath
-	}
+	// One reporter serves one work item. Upstream already aggregates Live Photo
+	// components; phase-only notifications omit bytes and must preserve progress.
 	if s.BytesTotal > 0 {
-		r.total = s.BytesTotal
+		r.uploaded = s.BytesUploaded
 	}
-	r.callback(Progress{State: phase, Uploaded: r.completed + s.BytesUploaded})
+	r.callback(Progress{State: phase, Uploaded: r.uploaded})
 }
 func upload(ctx context.Context, paths []string, account, quality string, cb func(Progress)) (string, error) {
 	opts := backend.UploadOptions{Api: backend.ApiOptions{Account: account, Saver: quality == "saver", UseQuota: quality == "quota"}, Threads: 1, ForceUpload: quality == "original", PairLivePhotos: len(paths) == 2, SkipIncompleteLivePhotos: true}

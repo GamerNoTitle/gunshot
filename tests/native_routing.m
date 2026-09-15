@@ -27,6 +27,9 @@ static NSUInteger originalCount,importedCount;
 static BOOL failExport;
 static NSString *selected=@"destination@example.com";
 static NSString *lastAccount;
+static NSString *identity=@"native-destination";
+static void (^duringExport)(void);
+static NSURL *exportDirectory;
 @interface PHSBackupActionBehaviorImpl : NSObject
 - (void)backupLocalAssets:(id)assets;
 @end
@@ -43,13 +46,18 @@ static NSString *lastAccount;
 void GSPresentRoutedAssets(NSArray<PHAsset *> *assets,NSString *account){assert(!"backup presented GoToHP UI");}
 void GSInstallBackupRequests(void){}
 BOOL GSBackupRequestsAvailable(void){return NO;} // Exercise the compatibility path.
-NSDictionary *GSNativeAccountSummary(void){return @{@"email":@"destination@example.com"};}
+NSDictionary *GSNativeAccountSummary(void){assert(NSThread.isMainThread);return @{@"email":@"destination@example.com",@"identifier":identity};}
+BOOL GSNativeIdentityMatches(NSString *expected){assert(NSThread.isMainThread);return expected.length&&[expected isEqual:identity];}
 NSDictionary *GSRequest(NSDictionary *request,NSError **error){
  if([request[@"op"]isEqual:@"accounts"])return @{@"selected":selected};
  if([request[@"op"]isEqual:@"options"])return @{@"quality":@"original"};
  return @{};
 }
-NSArray *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error){assert(!NSThread.isMainThread);return failExport?nil:@[[directory URLByAppendingPathComponent:@"original.heic"]];}
+NSArray *GSExportAsset(PHAsset *asset,NSURL *directory,NSError **error){
+ assert(!NSThread.isMainThread);exportDirectory=directory;
+ if(duringExport)dispatch_sync(dispatch_get_main_queue(),duringExport);
+ return failExport?nil:@[[directory URLByAppendingPathComponent:@"original.heic"]];
+}
 NSString *GSImportFiles(NSArray *files,NSString *account,NSString *quality,NSDate *date,NSError **error){assert(!NSThread.isMainThread);assert([quality isEqual:@"original"]);importedCount++;lastAccount=account;return @"job";}
 static void Drain(NSUInteger queued,NSUInteger failed){
  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:3];
@@ -78,8 +86,28 @@ int main(void){@autoreleasepool{
  assert(importedCount==3&&originalCount==2&&GSNativeRoutingSnapshot()[@"lastError"]);
  failExport=NO;[behavior backupLocalAssets:@[local]];Drain(4,4);
  assert(!GSNativeRoutingSnapshot()[@"lastError"]);
+ // Changing the identity, selected account, destination, or toggle during
+ // PhotoKit export must not import even the first asset (nor later assets).
+ NSArray *changes=@[
+  ^{identity=@"other-native-identity";},
+  ^{identity=@"";},
+  ^{selected=@"other@example.com";},
+  ^{GSSetNativeRouting(YES,@"other@example.com");},
+  ^{GSSetNativeRouting(NO,nil);}
+ ];
+ NSUInteger failed=4;
+ for(void (^change)(void) in changes){
+  identity=@"native-destination";selected=@"destination@example.com";GSSetNativeRouting(YES,selected);duringExport=change;
+  [behavior backupLocalAssets:@[local,local.phAsset]];Drain(4,++failed);
+  assert(importedCount==4&&originalCount==2);
+  assert(![NSFileManager.defaultManager fileExistsAtPath:exportDirectory.path]);
+ }
+ duringExport=nil;identity=@"native-destination";selected=@"destination@example.com";GSSetNativeRouting(YES,selected);
+ [grid backupLocalAssets:@[local]];Drain(5,failed);assert(!GSNativeRoutingSnapshot()[@"lastError"]);
+ // A missing initial identity is rejected before starting any export.
+ identity=@"";exportDirectory=nil;[behavior backupLocalAssets:@[local]];Drain(5,++failed);assert(!exportDirectory);
  GSSetNativeRouting(NO,nil);[behavior backupLocalAssets:@[local]];
- assert(originalCount==3&&importedCount==4);
+ assert(originalCount==3&&importedCount==5);
  NSLog(@"PASS silent manual import, batch, original policy, account binding, invalid/locked assets, export failure, recovery and no native fallback");
  return 0;
 }}
