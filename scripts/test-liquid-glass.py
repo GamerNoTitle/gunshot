@@ -56,18 +56,25 @@ try:
     run('xcrun', 'simctl', 'bootstatus', udid, '-b', timeout=180)
     run('xcrun', 'simctl', 'install', udid, str(app))
     # simctl --console stays attached until the fixture exits.
-    launch = subprocess.run(['xcrun', 'simctl', 'launch', '--console', udid, bundle],
-                            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            timeout=90)
-    print(launch.stdout, flush=True)
-    (results / 'console.txt').write_text(launch.stdout)
+    launch_error = None
+    # A regular file avoids waiting for EOF from inherited console pipe handles.
+    with (results / 'console.txt').open('w') as console:
+        try:
+            subprocess.run(['xcrun', 'simctl', 'launch', '--console', udid, bundle],
+                           stdout=console, stderr=subprocess.STDOUT, check=True, timeout=120)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            launch_error = str(error)
+    print((results / 'console.txt').read_text(), flush=True)
     data = pathlib.Path(run('xcrun', 'simctl', 'get_app_container', udid, bundle, 'data')) / 'Documents'
     for path in data.iterdir():
         if path.suffix in ('.txt', '.png'):
             shutil.copy2(path, results / path.name)
-    result = (results / 'result.txt').read_text()
+    result_file = results / 'result.txt'
+    result = result_file.read_text() if result_file.exists() else 'FAIL fixture did not write a result'
     print(result, flush=True)
-    if launch.returncode or not result.startswith('PASS '):
+    if launch_error:
+        print(launch_error, flush=True)
+    if launch_error or not result.startswith('PASS '):
         raise SystemExit(1)
 finally:
     subprocess.run(['xcrun', 'simctl', 'shutdown', udid], timeout=30, check=False)
