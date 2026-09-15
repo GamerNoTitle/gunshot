@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scheme: [rootless, rootful, jailed]
+        scheme: [rootless, rootful]
     env:
       THEOS: ${{ github.workspace }}/.theos-sdk
     steps:
@@ -89,8 +89,40 @@ jobs:
           .build/native-autoconnect-jailed-test
           clang -fobjc-arc -DGS_JAILED=1 -DGS_TEST_AUTOCONNECT=1 -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m UI/GSAccountConnection.m tests/native_account.m -o .build/native-autoconnect-jailed-legacy-test
           .build/native-autoconnect-jailed-legacy-test
+      - name: Jailbreak backup routing and shared completion monitor
+        if: matrix.scheme == 'rootless'
+        run: |
+          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/daemon-backup-test
+          .build/daemon-backup-test
+          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/daemon-backup-legacy-test
+          .build/daemon-backup-legacy-test
+          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSUploadMonitor.m UI/GSPhotosIntegration.m tests/upload_monitor.m -o .build/upload-monitor-test
+          .build/upload-monitor-test
+      - name: Build Go archive and Debian package
+        run: bash scripts/package.sh '${{ matrix.scheme }}'
+      - name: Verify package layout
+        run: python3 scripts/verify-package.py '${{ matrix.scheme }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gotohp-tweak-${{ matrix.scheme }}
+          path: |
+            packages/*.deb
+            packages/jailed/*.deb
+            packages/jailed/*.dylib
+            packages/jailed/ThirdPartyNotices.txt
+          if-no-files-found: error
+  jailed-test:
+    name: jailed tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
       - name: Sideload SSO compatibility
-        if: matrix.scheme == 'jailed'
         run: |
           mkdir -p .build
           clang -fobjc-arc -framework Foundation -framework Security -framework LocalAuthentication tests/sideload_keychain.m -o .build/sideload-keychain-test
@@ -103,7 +135,6 @@ jobs:
             .build/sideload-identity-test "$mode"
           done
       - name: Native routing contract
-        if: matrix.scheme == 'jailed'
         run: |
           mkdir -p .build
           clang -fobjc-arc -framework Foundation tests/localization.m -o .build/localization-test
@@ -129,17 +160,7 @@ jobs:
           .build/native-account-test
           clang -fobjc-arc -framework Foundation -Itests/menu-shims -Itests/native-shims UI/GSAccountMenu.m tests/account_menu.m -o .build/account-menu-test
           .build/account-menu-test
-      - name: Jailbreak backup routing and shared completion monitor
-        if: matrix.scheme == 'rootless'
-        run: |
-          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/daemon-backup-test
-          .build/daemon-backup-test
-          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSNativeRouting.m UI/GSBackupRequests.m tests/backup_requests.m -o .build/daemon-backup-legacy-test
-          .build/daemon-backup-legacy-test
-          clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSNativeAccount.m UI/GSUploadMonitor.m UI/GSPhotosIntegration.m tests/upload_monitor.m -o .build/upload-monitor-test
-          .build/upload-monitor-test
       - name: Google Photos 7.20.2 native contracts
-        if: matrix.scheme == 'jailed'
         run: |
           clang -fobjc-arc -framework Foundation UI/GSUnlimitedStorage.m tests/unlimited_storage_legacy.m -o .build/unlimited-storage-legacy-test
           .build/unlimited-storage-legacy-test
@@ -159,7 +180,6 @@ jobs:
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/menu-shims -Itests/native-shims UI/GSAccountMenu.m tests/account_menu.m -o .build/account-menu-legacy-test
           .build/account-menu-legacy-test
       - name: API detection independent of host version
-        if: matrix.scheme == 'jailed'
         run: |
           clang -fobjc-arc -framework Foundation tests/photos_compatibility.m -o .build/photos-compatibility-test
           .build/photos-compatibility-test
@@ -180,38 +200,58 @@ jobs:
             .build/native-account-legacy-test
           done
       - name: Bulk photo import
-        if: matrix.scheme == 'jailed'
         run: |
           clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSBatchImport.m tests/batch_import.m -o .build/batch-import-test
           .build/batch-import-test
           clang -fobjc-arc -framework Foundation -Itests/native-shims UI/GSBatchImport.m UI/GSExporter.m tests/exporter_batch.m -o .build/exporter-batch-test
           .build/exporter-batch-test
       - name: UIKit settings presentation smoke
-        if: matrix.scheme == 'jailed'
         timeout-minutes: 8
         run: bash scripts/test-settings-ui.sh
       - uses: actions/upload-artifact@v4
-        if: matrix.scheme == 'jailed' && always()
+        if: always()
         with:
           name: settings-ui-smoke
           path: .build/settings-ui-results/
           if-no-files-found: warn
+  jailed-build:
+    name: package (jailed)
+    runs-on: macos-15
+    env:
+      THEOS: ${{ github.workspace }}/.theos-sdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+      - name: Install Theos and tools
+        run: |
+          brew install ldid dpkg
+          git clone https://github.com/theos/theos.git "$THEOS"
+          git -C "$THEOS" checkout 5280bd038207e14f8bd76f5417aa2fe641c03228
+          git -C "$THEOS" submodule update --init --recursive
+          sdk=$(xcrun --sdk iphoneos --show-sdk-path)
+          version=$(xcrun --sdk iphoneos --show-sdk-version)
+          mkdir -p "$THEOS/sdks"
+          ln -s "$sdk" "$THEOS/sdks/iPhoneOS${version}.sdk"
       - name: Build Go archive and Debian package
-        run: bash scripts/package.sh '${{ matrix.scheme }}'
+        run: bash scripts/package.sh jailed
       - name: Verify package layout
-        run: python3 scripts/verify-package.py '${{ matrix.scheme }}'
+        run: python3 scripts/verify-package.py jailed
       - uses: actions/upload-artifact@v4
         with:
-          name: gotohp-tweak-${{ matrix.scheme }}
+          name: gotohp-tweak-jailed
           path: |
-            packages/*.deb
             packages/jailed/*.deb
             packages/jailed/*.dylib
             packages/jailed/ThirdPartyNotices.txt
           if-no-files-found: error
   release:
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v'))
-    needs: [core, package]
+    needs: [core, package, jailed-test, jailed-build]
     runs-on: ubuntu-latest
     concurrency:
       group: release-${{ inputs.release_tag || github.ref_name }}
