@@ -1,0 +1,47 @@
+name: Liquid Glass UI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  controls:
+    runs-on: macos-15
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: legacy-ios
+            sdk: '16.4'
+            runtime: '18.5'
+            compatibility: '0'
+          - name: legacy-host-ios26
+            sdk: '16.4'
+            runtime: '26.0'
+            compatibility: '0'
+          - name: modern-host-ios26
+            sdk: '26.0'
+            runtime: '26.0'
+            compatibility: '0'
+          - name: compatibility-host-ios26
+            sdk: '26.0'
+            runtime: '26.0'
+            compatibility: '1'
+    name: ${{ matrix.name }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+      BUILD_DEVELOPER_DIR: /Applications/Xcode_${{ matrix.sdk }}.app/Contents/Developer
+      SIMULATOR_VERSION: ${{ matrix.runtime }}
+      COMPATIBILITY: ${{ matrix.compatibility }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/test-liquid-glass.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: liquid-glass-${{ matrix.name }}
+          path: .build/liquid-glass-results/
+          if-no-files-found: warn
