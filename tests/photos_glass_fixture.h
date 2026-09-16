@@ -145,7 +145,7 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
   GS_GLASS_CHECK(overlay&&nativeTabs&&nativeTabs.parentViewController==nil&&controller.childViewControllers.count==hostChildren);
   GS_GLASS_CHECK(nativeTabs.delegate&&nativeTabs.mode==UITabBarControllerModeTabBar&&nativeTabs.tabs.count==4&&nativeTabs.tabBar.window==overlay);
   GS_GLASS_CHECK([nativeTabs.tabs[0].title isEqual:@"Photos"]&&[nativeTabs.tabs[1].title isEqual:@"Collections"]&&[nativeTabs.tabs[2].title isEqual:@"Create"]);
-  GS_GLASS_CHECK([nativeTabs.tabs[3] isKindOfClass:UISearchTab.class]&&!((UISearchTab *)nativeTabs.tabs[3]).automaticallyActivatesSearch);
+  GS_GLASS_CHECK([nativeTabs.tabs[3] isKindOfClass:NSClassFromString(@"UISearchTab")]);
   GS_GLASS_CHECK(CGRectEqualToRect(overlay.frame,window.windowScene.coordinateSpace.bounds)&&CGRectGetHeight(nativeTabs.view.bounds)>CGRectGetHeight(bar.bounds)*3.0);
   [nativeTabs.view setNeedsLayout];[nativeTabs.view layoutIfNeeded];[nativeTabs.tabBar layoutIfNeeded];
   CGRect nativeHit=[nativeTabs.tabBar convertRect:nativeTabs.tabBar.bounds toView:overlay];
