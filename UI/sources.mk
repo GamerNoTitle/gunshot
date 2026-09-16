@@ -2,6 +2,7 @@
 GUNSHOT_UI_FILES = \
 	GSPanel.m \
 	GSPhotosGlass.m \
+	GSPhotosGlassVisibilityGuard.m \
 	GSBatchImport.m \
 	GSAlbumPicker.m \
 	GSAccountMenu.m \
