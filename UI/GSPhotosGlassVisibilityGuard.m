@@ -4,6 +4,7 @@
 
 static IMP GSOriginalSetTabBarHiddenAnimated;
 static IMP GSOriginalSetTabBarIsHidden;
+static IMP GSOriginalOverlaySetContentSuppressed;
 static BOOL GSVisibilityGuardInstalled;
 static char GSExplicitHiddenStateKey;
 static char GSVisibilityStateArmedKey;
@@ -67,7 +68,7 @@ static BOOL GSVisibilityStateArmed(id controller){
 static BOOL GSOverlayNativeTabsReady(UIWindow *overlayWindow){
  if(!GSIsPhotosGlassOverlayWindow(overlayWindow)||overlayWindow.hidden)return NO;
  UITabBarController *tabs=(UITabBarController *)overlayWindow.rootViewController;
- return tabs.isViewLoaded&&!tabs.view.hidden&&tabs.tabBar&&tabs.tabBar.window==overlayWindow;
+ return tabs.isViewLoaded&&tabs.tabBar&&tabs.tabBar.window==overlayWindow;
 }
 
 static BOOL GSClassLoadedFromPhotosBundle(Class cls){
@@ -135,7 +136,13 @@ static BOOL GSSceneShouldMaskNativeTabs(UIWindowScene *scene,UIWindow *overlayWi
 
 static void GSApplySceneMask(UIWindowScene *scene){
  UIWindow *overlayWindow=GSGlassOverlayWindow(scene);if(!overlayWindow)return;
- overlayWindow.alpha=GSSceneShouldMaskNativeTabs(scene,overlayWindow)?0.0:1.0;
+ BOOL masked=GSSceneShouldMaskNativeTabs(scene,overlayWindow);
+ overlayWindow.alpha=masked?0.0:1.0;
+ UITabBarController *tabs=[overlayWindow.rootViewController isKindOfClass:UITabBarController.class]?(UITabBarController *)overlayWindow.rootViewController:nil;
+ if(tabs){
+  tabs.view.hidden=masked;
+  if(!masked){[tabs.view setNeedsLayout];[tabs.view layoutIfNeeded];}
+ }
 }
 
 static void GSRefreshAllScenes(void){
@@ -175,6 +182,14 @@ static void GSSetTabBarIsHidden(id controller,SEL selector,BOOL hidden){
  GSScheduleVisibilityRefreshes();
 }
 
+static void GSOverlaySetContentSuppressed(id window,SEL selector,BOOL suppressed){
+ BOOL effective=suppressed;
+ UIWindowScene *scene=[window isKindOfClass:UIWindow.class]?((UIWindow *)window).windowScene:nil;
+ if(suppressed&&scene)effective=GSSceneShouldMaskNativeTabs(scene,(UIWindow *)window);
+ ((void(*)(id,SEL,BOOL))GSOriginalOverlaySetContentSuppressed)(window,selector,effective);
+ if(scene)dispatch_async(dispatch_get_main_queue(),^{GSApplySceneMask(scene);});
+}
+
 static IMP GSHookOwnOrInheritedMethod(Class cls,SEL selector,IMP replacement){
  Method method=class_getInstanceMethod(cls,selector);if(!method)return NULL;
  IMP current=method_getImplementation(method);
@@ -193,6 +208,11 @@ static void GSInstallVisibilityGuard(void){
  Method propertyMethod=class_getInstanceMethod(cls,propertySelector);
  if(propertyMethod&&method_getNumberOfArguments(propertyMethod)==3)
   GSOriginalSetTabBarIsHidden=GSHookOwnOrInheritedMethod(cls,propertySelector,(IMP)GSSetTabBarIsHidden);
+ Class overlayClass=NSClassFromString(@"GSPhotosGlassOverlayWindow");
+ SEL suppressedSelector=NSSelectorFromString(@"setContentSuppressed:");
+ Method suppressedMethod=class_getInstanceMethod(overlayClass,suppressedSelector);
+ if(suppressedMethod&&method_getNumberOfArguments(suppressedMethod)==3)
+  GSOriginalOverlaySetContentSuppressed=GSHookOwnOrInheritedMethod(overlayClass,suppressedSelector,(IMP)GSOverlaySetContentSuppressed);
  GSVisibilityGuardInstalled=YES;
  GSScheduleVisibilityRefreshes();
 }
