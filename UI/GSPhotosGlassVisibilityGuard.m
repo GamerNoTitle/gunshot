@@ -6,6 +6,7 @@ static IMP GSOriginalSetTabBarHiddenAnimated;
 static IMP GSOriginalSetTabBarIsHidden;
 static BOOL GSVisibilityGuardInstalled;
 static char GSExplicitHiddenStateKey;
+static char GSVisibilityStateArmedKey;
 
 static BOOL GSIsPhotosGlassOverlayWindow(UIWindow *window){
  if(!window)return NO;
@@ -41,28 +42,63 @@ static UIWindow *GSPhotosHostWindow(UIWindowScene *scene,UIViewController **tabC
  return fallback;
 }
 
-static void GSSetExplicitHidden(id controller,BOOL hidden){
- if(!controller)return;
- objc_setAssociatedObject(controller,&GSExplicitHiddenStateKey,@(hidden),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-static BOOL GSExplicitlyHidden(id controller){
- NSNumber *value=controller?objc_getAssociatedObject(controller,&GSExplicitHiddenStateKey):nil;
- return value.boolValue;
-}
-
 static UIWindow *GSGlassOverlayWindow(UIWindowScene *scene){
  for(UIWindow *window in scene.windows)if(GSIsPhotosGlassOverlayWindow(window))return window;
  return nil;
 }
 
+static void GSSetExplicitHidden(id controller,BOOL hidden){
+ if(!controller)return;
+ objc_setAssociatedObject(controller,&GSExplicitHiddenStateKey,@(hidden),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+static BOOL GSExplicitlyHidden(id controller){
+ NSNumber *value=controller?objc_getAssociatedObject(controller,&GSExplicitHiddenStateKey):nil;
+ return value.boolValue;
+}
+static void GSSetVisibilityStateArmed(id controller,BOOL armed){
+ if(!controller)return;
+ objc_setAssociatedObject(controller,&GSVisibilityStateArmedKey,@(armed),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+static BOOL GSVisibilityStateArmed(id controller){
+ NSNumber *value=controller?objc_getAssociatedObject(controller,&GSVisibilityStateArmedKey):nil;
+ return value.boolValue;
+}
+
+static BOOL GSOverlayNativeTabsReady(UIWindow *overlayWindow){
+ if(!GSIsPhotosGlassOverlayWindow(overlayWindow)||overlayWindow.hidden)return NO;
+ UITabBarController *tabs=(UITabBarController *)overlayWindow.rootViewController;
+ return tabs.isViewLoaded&&!tabs.view.hidden&&tabs.tabBar&&tabs.tabBar.window==overlayWindow;
+}
+
+static BOOL GSClassLoadedFromPhotosBundle(Class cls){
+ if(!cls)return NO;
+ const char *image=class_getImageName(cls);if(!image)return NO;
+ NSString *path=[NSString stringWithUTF8String:image];
+ NSString *bundlePath=NSBundle.mainBundle.bundlePath;
+ return path.length&&bundlePath.length&&[path hasPrefix:bundlePath];
+}
+
+static BOOL GSControllerTreeContainsPhotosCode(UIViewController *controller,NSMutableSet *seen){
+ if(!controller||[seen containsObject:controller])return NO;[seen addObject:controller];
+ if(GSClassLoadedFromPhotosBundle(controller.class))return YES;
+ for(UIViewController *child in controller.childViewControllers)
+  if(GSControllerTreeContainsPhotosCode(child,seen))return YES;
+ UIViewController *presented=controller.presentedViewController;
+ return presented&&!presented.isBeingDismissed&&GSControllerTreeContainsPhotosCode(presented,seen);
+}
+
+static BOOL GSWindowBelongsToPhotosUI(UIWindow *window){
+ if(!window.rootViewController)return NO;
+ return GSControllerTreeContainsPhotosCode(window.rootViewController,[NSMutableSet set]);
+}
+
 static BOOL GSWindowActuallyCoversNativeTabs(UIWindow *candidate,UIWindow *hostWindow,UIWindow *overlayWindow){
  if(!candidate||candidate==hostWindow||candidate==overlayWindow||candidate.hidden||candidate.alpha<=0.01||!candidate.rootViewController)return NO;
- if(candidate.windowLevel<hostWindow.windowLevel)return NO;
- // Ignore high-level system helper windows (status/text effects/etc.). Google Photos'
- // own full-screen/menu windows stay at or near the app's normal level.
- if(candidate.windowLevel>hostWindow.windowLevel+10.0)return NO;
+ if(candidate.windowLevel<hostWindow.windowLevel||candidate.windowLevel>hostWindow.windowLevel+10.0)return NO;
  if(candidate.windowLevel==hostWindow.windowLevel&&!candidate.isKeyWindow)return NO;
+ // Only app-owned Google Photos windows can suppress the overlay. UIKit helper,
+ // text-effects, status and LiveContainer windows must never hide the normal grid.
+ if(!GSWindowBelongsToPhotosUI(candidate))return NO;
  UITabBarController *tabs=[overlayWindow.rootViewController isKindOfClass:UITabBarController.class]?(UITabBarController *)overlayWindow.rootViewController:nil;
  UITabBar *tabBar=tabs.tabBar;
  if(!tabBar||tabBar.hidden||tabBar.alpha<=0.01||!tabBar.window)return NO;
@@ -73,8 +109,7 @@ static BOOL GSWindowActuallyCoversNativeTabs(UIWindow *candidate,UIWindow *hostW
               CGRectGetMidX(tabRect),
               CGRectGetMinX(tabRect)+CGRectGetWidth(tabRect)*0.85};
  for(NSUInteger i=0;i<3;i++){
-  CGPoint overlayPoint=CGPointMake(xs[i],y);
-  CGPoint screenPoint=[overlayWindow convertPoint:overlayPoint toWindow:nil];
+  CGPoint screenPoint=[overlayWindow convertPoint:CGPointMake(xs[i],y) toWindow:nil];
   CGPoint candidatePoint=[candidate convertPoint:screenPoint fromWindow:nil];
   if(!CGRectContainsPoint(candidate.bounds,candidatePoint))continue;
   UIView *hit=[candidate hitTest:candidatePoint withEvent:nil];
@@ -83,7 +118,7 @@ static BOOL GSWindowActuallyCoversNativeTabs(UIWindow *candidate,UIWindow *hostW
  return NO;
 }
 
-static BOOL GSSceneHasOccludingWindow(UIWindowScene *scene,UIWindow *hostWindow,UIWindow *overlayWindow){
+static BOOL GSSceneHasOccludingPhotosWindow(UIWindowScene *scene,UIWindow *hostWindow,UIWindow *overlayWindow){
  for(UIWindow *window in scene.windows)
   if(GSWindowActuallyCoversNativeTabs(window,hostWindow,overlayWindow))return YES;
  return NO;
@@ -91,11 +126,16 @@ static BOOL GSSceneHasOccludingWindow(UIWindowScene *scene,UIWindow *hostWindow,
 
 static BOOL GSSceneShouldMaskNativeTabs(UIWindowScene *scene,UIWindow *overlayWindow){
  UIViewController *tabs=nil;UIWindow *hostWindow=GSPhotosHostWindow(scene,&tabs);
- // This guard only adds positive suppression. If discovery is temporarily
- // incomplete, leave visibility to GSPhotosGlass.m instead of hiding everything.
  if(!hostWindow||!tabs)return NO;
- if(GSExplicitlyHidden(tabs))return YES;
- if(GSSceneHasOccludingWindow(scene,hostWindow,overlayWindow))return YES;
+ // Google Photos can emit a hidden transition during startup before its normal
+ // grid has settled. Do not let that stale startup state permanently suppress
+ // the replacement bar. Arm transition tracking only after our native tabs have
+ // actually reached a visible baseline once.
+ if(!GSVisibilityStateArmed(tabs)&&GSOverlayNativeTabsReady(overlayWindow)){
+  GSSetVisibilityStateArmed(tabs,YES);GSSetExplicitHidden(tabs,NO);
+ }
+ if(GSVisibilityStateArmed(tabs)&&GSExplicitlyHidden(tabs))return YES;
+ if(GSSceneHasOccludingPhotosWindow(scene,hostWindow,overlayWindow))return YES;
  return NO;
 }
 
@@ -124,15 +164,19 @@ static void GSMaskSceneNowForController(id controller){
 }
 
 static void GSSetTabBarHiddenAnimated(id controller,SEL selector,BOOL hidden,BOOL animated){
- GSSetExplicitHidden(controller,hidden);
- if(hidden)GSMaskSceneNowForController(controller);
+ if(GSVisibilityStateArmed(controller)){
+  GSSetExplicitHidden(controller,hidden);
+  if(hidden)GSMaskSceneNowForController(controller);
+ }
  ((void(*)(id,SEL,BOOL,BOOL))GSOriginalSetTabBarHiddenAnimated)(controller,selector,hidden,animated);
  GSScheduleVisibilityRefreshes();
 }
 
 static void GSSetTabBarIsHidden(id controller,SEL selector,BOOL hidden){
- GSSetExplicitHidden(controller,hidden);
- if(hidden)GSMaskSceneNowForController(controller);
+ if(GSVisibilityStateArmed(controller)){
+  GSSetExplicitHidden(controller,hidden);
+  if(hidden)GSMaskSceneNowForController(controller);
+ }
  ((void(*)(id,SEL,BOOL))GSOriginalSetTabBarIsHidden)(controller,selector,hidden);
  GSScheduleVisibilityRefreshes();
 }
