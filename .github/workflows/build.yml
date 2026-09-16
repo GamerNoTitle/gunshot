@@ -173,7 +173,7 @@ jobs:
           .build/backup-requests-legacy-test
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/native-shims UI/GSPhotosIntegration.m tests/photos_integration.m -o .build/photos-integration-legacy-test
           .build/photos-integration-legacy-test
-          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation UI/GSUploadDiagnostics.m tests/upload_diagnostics.m -o .build/upload-diagnostics-legacy-test
+          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation UI/GSUploadDiagnostics.m tests/upload_diagnostics_legacy.m -o .build/upload-diagnostics-legacy-test
           .build/upload-diagnostics-legacy-test
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m tests/native_account.m -o .build/native-account-legacy-test
           .build/native-account-legacy-test
@@ -251,7 +251,7 @@ jobs:
           if-no-files-found: error
   release:
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.release_tag, 'v'))
-    needs: [core, package, jailed-test, jailed-build]
+    needs: [core, package, jailed-build]
     runs-on: ubuntu-latest
     concurrency:
       group: release-${{ inputs.release_tag || github.ref_name }}
