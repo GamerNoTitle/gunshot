@@ -96,8 +96,6 @@ static BOOL GSWindowActuallyCoversNativeTabs(UIWindow *candidate,UIWindow *hostW
  if(!candidate||candidate==hostWindow||candidate==overlayWindow||candidate.hidden||candidate.alpha<=0.01||!candidate.rootViewController)return NO;
  if(candidate.windowLevel<hostWindow.windowLevel||candidate.windowLevel>hostWindow.windowLevel+10.0)return NO;
  if(candidate.windowLevel==hostWindow.windowLevel&&!candidate.isKeyWindow)return NO;
- // Only app-owned Google Photos windows can suppress the overlay. UIKit helper,
- // text-effects, status and LiveContainer windows must never hide the normal grid.
  if(!GSWindowBelongsToPhotosUI(candidate))return NO;
  UITabBarController *tabs=[overlayWindow.rootViewController isKindOfClass:UITabBarController.class]?(UITabBarController *)overlayWindow.rootViewController:nil;
  UITabBar *tabBar=tabs.tabBar;
@@ -127,10 +125,6 @@ static BOOL GSSceneHasOccludingPhotosWindow(UIWindowScene *scene,UIWindow *hostW
 static BOOL GSSceneShouldMaskNativeTabs(UIWindowScene *scene,UIWindow *overlayWindow){
  UIViewController *tabs=nil;UIWindow *hostWindow=GSPhotosHostWindow(scene,&tabs);
  if(!hostWindow||!tabs)return NO;
- // Google Photos can emit a hidden transition during startup before its normal
- // grid has settled. Do not let that stale startup state permanently suppress
- // the replacement bar. Arm transition tracking only after our native tabs have
- // actually reached a visible baseline once.
  if(!GSVisibilityStateArmed(tabs)&&GSOverlayNativeTabsReady(overlayWindow)){
   GSSetVisibilityStateArmed(tabs,YES);GSSetExplicitHidden(tabs,NO);
  }
