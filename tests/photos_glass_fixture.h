@@ -143,7 +143,7 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
 
   UIWindow *overlay=GSFixtureGlassOverlayWindow(window);UITabBarController *nativeTabs=(UITabBarController *)overlay.rootViewController;
   GS_GLASS_CHECK(overlay&&nativeTabs&&nativeTabs.parentViewController==nil&&controller.childViewControllers.count==hostChildren);
-  GS_GLASS_CHECK(nativeTabs.delegate&&nativeTabs.mode==UITabBarControllerModeTabBar&&nativeTabs.tabs.count==4&&nativeTabs.tabBar.window==overlay);
+  GS_GLASS_CHECK(nativeTabs.delegate&&nativeTabs.mode==UITabBarControllerModeTabBar&&nativeTabs.tabs.count==4&&nativeTabs.tabBar.window==overlay&&!nativeTabs.view.hidden);
   GS_GLASS_CHECK([nativeTabs.tabs[0].title isEqual:@"Photos"]&&[nativeTabs.tabs[1].title isEqual:@"Collections"]&&[nativeTabs.tabs[2].title isEqual:@"Create"]);
   GS_GLASS_CHECK([nativeTabs.tabs[3] isKindOfClass:NSClassFromString(@"UISearchTab")]);
   GS_GLASS_CHECK(CGRectEqualToRect(overlay.frame,window.windowScene.coordinateSpace.bounds)&&CGRectGetHeight(nativeTabs.view.bounds)>CGRectGetHeight(bar.bounds)*3.0);
@@ -161,11 +161,19 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
   taps=controller.taps;GS_GLASS_CHECK([delegate tabBarController:nativeTabs shouldSelectTab:createTab]&&controller.taps==taps);
 
   taps=controller.taps;UITab *searchTab=nativeTabs.tabs[3];GS_GLASS_CHECK(![delegate tabBarController:nativeTabs shouldSelectTab:searchTab]&&controller.taps==taps+1);
-  [controller viewDidLayoutSubviews];GS_GLASS_CHECK(!overlay.hidden&&nativeTabs.selectedTab==createTab);
+  [controller viewDidLayoutSubviews];GS_GLASS_CHECK(!overlay.hidden&&!nativeTabs.view.hidden&&nativeTabs.selectedTab==createTab);
 
   segments.selectedSegmentIndex=1;GS_GLASS_CHECK(nativeTabs.selectedTab==nativeTabs.tabs[1]&&segments.selection==selection);
-  bar.alpha=0;[controller viewDidLayoutSubviews];GS_GLASS_CHECK(overlay.hidden);
-  bar.alpha=1;[controller viewDidLayoutSubviews];GS_GLASS_CHECK(!overlay.hidden);
+  bar.alpha=0;[controller viewDidLayoutSubviews];GS_GLASS_CHECK(!overlay.hidden&&nativeTabs.view.hidden);
+  bar.alpha=1;[controller viewDidLayoutSubviews];GS_GLASS_CHECK(!overlay.hidden&&!nativeTabs.view.hidden);
+
+  UIView *occluder=[[UIView alloc]initWithFrame:CGRectMake(0,MAX(0,window.bounds.size.height-140),window.bounds.size.width,140)];
+  occluder.backgroundColor=UIColor.clearColor;occluder.userInteractionEnabled=YES;[window addSubview:occluder];
+  [controller viewDidLayoutSubviews];GS_GLASS_CHECK(!overlay.hidden&&nativeTabs.view.hidden&&[GSPhotosGlassSnapshot()[@"visibleOverlays"]unsignedIntegerValue]==0);
+  [occluder removeFromSuperview];[controller viewDidLayoutSubviews];GS_GLASS_CHECK(!overlay.hidden&&!nativeTabs.view.hidden&&[GSPhotosGlassSnapshot()[@"visibleOverlays"]unsignedIntegerValue]>=1);
+
+  CGPoint barCenter=bar.center;bar.center=CGPointMake(barCenter.x,barCenter.y+160);[segments layoutSubviews];GS_GLASS_CHECK(!overlay.hidden&&nativeTabs.view.hidden);
+  bar.center=barCenter;[segments layoutSubviews];GS_GLASS_CHECK(!overlay.hidden&&!nativeTabs.view.hidden);
 
   GSSetPhotosGlass(NO);GSSetPhotosGlass(NO);
   GS_GLASS_CHECK(!GSPhotosGlassEnabled()&&overlay.hidden&&overlay.rootViewController==nil);
@@ -177,7 +185,7 @@ static BOOL GSCheckPhotosGlass(GSPanel *panel,UIWindow *window){
   GSSetPhotosGlass(YES);[bad viewDidLayoutSubviews];GS_GLASS_CHECK([GSPhotosGlassSnapshot()[@"lastSkipReason"]isEqual:@"floating_bottom_bar_not_found"]);GSSetPhotosGlass(NO);
 
   GSFixtureDetach(controller);
-  NSLog(@"PASS independent full-screen UITabBarController overlay with UITab + pinned UISearchTab, no Google child-controller insertion, source routing, passthrough hit-testing, visibility mirroring and restoration");
+  NSLog(@"PASS independent full-screen UITabBarController overlay with UITab + pinned UISearchTab, no Google child-controller insertion, source routing, passthrough hit-testing, occlusion/offscreen suppression, visibility mirroring and restoration");
  } @finally {
   method_setImplementation(info,(IMP)GSOriginalBundleInfo);GSGlassFixturePhotosVersion=nil;
  }
