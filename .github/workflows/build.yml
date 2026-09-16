@@ -173,7 +173,7 @@ jobs:
           .build/backup-requests-legacy-test
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation -Itests/native-shims UI/GSPhotosIntegration.m tests/photos_integration.m -o .build/photos-integration-legacy-test
           .build/photos-integration-legacy-test
-          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation UI/GSUploadDiagnostics.m tests/upload_diagnostics_legacy.m -o .build/upload-diagnostics-legacy-test
+          clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation UI/GSUploadDiagnostics.m tests/upload_diagnostics.m -o .build/upload-diagnostics-legacy-test
           .build/upload-diagnostics-legacy-test
           clang -fobjc-arc -DGS_TEST_LEGACY=1 -framework Foundation UI/GSNativeAccount.m tests/native_account.m -o .build/native-account-legacy-test
           .build/native-account-legacy-test
