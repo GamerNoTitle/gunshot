@@ -46,7 +46,7 @@ static NSString *GSLastSkip;
 }
 @end
 
-@interface GSPhotosGlassPair : NSObject <UITabBarControllerDelegate>
+@interface GSPhotosGlassPair : NSObject
 @property(nonatomic,weak) UIViewController *controller;
 @property(nonatomic,weak) UIStackView *bar;
 @property(nonatomic,weak) UIControl *segments;
@@ -54,8 +54,8 @@ static NSString *GSLastSkip;
 @property(nonatomic,weak) UIWindow *hostWindow;
 @property(nonatomic,strong) GSPhotosGlassOverlayWindow *overlayWindow;
 @property(nonatomic,strong) UITabBarController *nativeTabController;
-@property(nonatomic,strong) NSArray<UITab *> *regularTabs;
-@property(nonatomic,strong) UISearchTab *searchTab;
+@property(nonatomic,strong) NSArray *regularTabs;
+@property(nonatomic,strong) id searchTab;
 @property(nonatomic) CGFloat segmentsAlpha,searchAlpha;
 @property(nonatomic) BOOL segmentsInteraction,searchInteraction;
 @property(nonatomic) BOOL segmentsAccessibilityHidden,searchAccessibilityHidden,changing;
@@ -108,7 +108,11 @@ static NSString *GSUnavailableReason(void){
    @[@"PHSSegmentedControl",@"setSelectedSegmentIndex:",@"v24@0:8q16"],
    @[@"M3CButton",@"layoutSubviews",@"v16@0:8"]])
    if(!GSPhotosHasMethod(NSClassFromString(entry[0]),entry[1],[entry[2]UTF8String]))return [NSString stringWithFormat:@"missing_contract:%@.%@",entry[0],entry[1]];
-  if(!NSClassFromString(@"UITab")||!NSClassFromString(@"UISearchTab")||
+  Class tabClass=NSClassFromString(@"UITab"),searchTabClass=NSClassFromString(@"UISearchTab");
+  if(!tabClass||!searchTabClass||
+     ![tabClass instancesRespondToSelector:NSSelectorFromString(@"initWithTitle:image:identifier:viewControllerProvider:")]||
+     ![searchTabClass instancesRespondToSelector:NSSelectorFromString(@"initWithViewControllerProvider:")]||
+     ![UITabBarController instancesRespondToSelector:NSSelectorFromString(@"initWithTabs:")]||
      ![UITabBarController instancesRespondToSelector:NSSelectorFromString(@"setTabs:")]||
      ![UITabBarController instancesRespondToSelector:NSSelectorFromString(@"setSelectedTab:")])return @"missing_native_tab_api";
   return nil;
@@ -146,7 +150,7 @@ static NSArray<NSString *> *GSTabTitles(UIControl *segments){
  return titles.count==3?titles:@[@"Photos",@"Collections",@"Create"];
 }
 
-static UIViewController *GSNewClearTabController(UITab *tab){return [GSPhotosGlassClearController new];}
+static UIViewController *GSNewClearTabController(id tab){return [GSPhotosGlassClearController new];}
 
 static UITabBarController *GSCreateNativeTabController(GSPhotosGlassPair *pair){
  if(@available(iOS 18.0,*)){
@@ -160,25 +164,33 @@ static UITabBarController *GSCreateNativeTabController(GSPhotosGlassPair *pair){
   }
   UISearchTab *search=[[UISearchTab alloc]initWithViewControllerProvider:^UIViewController *(UITab *providerTab){return GSNewClearTabController(providerTab);}];
   if(!search)return nil;
-  search.automaticallyActivatesSearch=NO;
+  SEL autoSearch=NSSelectorFromString(@"setAutomaticallyActivatesSearch:");
+  if([search respondsToSelector:autoSearch])((void(*)(id,SEL,BOOL))objc_msgSend)(search,autoSearch,NO);
   NSMutableArray<UITab *> *all=[regular mutableCopy];[all addObject:search];
   UITabBarController *tabs=[[UITabBarController alloc]initWithTabs:all];
-  tabs.mode=UITabBarControllerModeTabBar;tabs.delegate=pair;
+  tabs.mode=UITabBarControllerModeTabBar;tabs.delegate=(id<UITabBarControllerDelegate>)pair;
   tabs.view.backgroundColor=UIColor.clearColor;tabs.view.opaque=NO;tabs.view.clipsToBounds=NO;
   pair.regularTabs=regular.copy;pair.searchTab=search;
   NSInteger selected=GSInteger(pair.segments,@"selectedSegmentIndex");
-  if(selected>=0&&selected<(NSInteger)pair.regularTabs.count)tabs.selectedTab=pair.regularTabs[selected];
+  if(selected>=0&&selected<(NSInteger)pair.regularTabs.count)
+   ((void(*)(id,SEL,id))objc_msgSend)(tabs,NSSelectorFromString(@"setSelectedTab:"),pair.regularTabs[selected]);
   return tabs;
  }
  return nil;
 }
 
+static id GSSelectedNativeTab(UITabBarController *tabs){
+ SEL selector=NSSelectorFromString(@"selectedTab");
+ return [tabs respondsToSelector:selector]?((id(*)(id,SEL))objc_msgSend)(tabs,selector):nil;
+}
 static void GSSyncTabSelection(GSPhotosGlassPair *pair){
  if(!pair.nativeTabController||!pair.segments||pair.regularTabs.count!=3)return;
  NSInteger selected=GSInteger(pair.segments,@"selectedSegmentIndex");
  if(selected<0||selected>=(NSInteger)pair.regularTabs.count)return;
- UITab *target=pair.regularTabs[selected];if(pair.nativeTabController.selectedTab==target)return;
- BOOL changing=pair.changing;pair.changing=YES;pair.nativeTabController.selectedTab=target;pair.changing=changing;
+ id target=pair.regularTabs[selected];if(GSSelectedNativeTab(pair.nativeTabController)==target)return;
+ BOOL changing=pair.changing;pair.changing=YES;
+ ((void(*)(id,SEL,id))objc_msgSend)(pair.nativeTabController,NSSelectorFromString(@"setSelectedTab:"),target);
+ pair.changing=changing;
 }
 
 static BOOL GSSelectGoogleTab(GSPhotosGlassPair *pair,NSInteger index){
@@ -245,7 +257,7 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
 }
 
 @implementation GSPhotosGlassPair
-- (BOOL)tabBarController:(UITabBarController *)tabBarController shouldSelectTab:(UITab *)tab{
+- (BOOL)tabBarController:(UITabBarController *)tabBarController shouldSelectTab:(id)tab{
  if(tabBarController!=self.nativeTabController||self.changing)return YES;
  if(tab==self.searchTab){[self forwardSearch];return NO;}
  NSUInteger index=[self.regularTabs indexOfObjectIdenticalTo:tab];
@@ -254,8 +266,13 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
 }
 - (BOOL)tabBarController:(UITabBarController *)tabBarController shouldSelectViewController:(UIViewController *)viewController{
  if(tabBarController!=self.nativeTabController||self.changing)return YES;
- if(viewController==self.searchTab.viewController){[self forwardSearch];return NO;}
- for(NSUInteger index=0;index<self.regularTabs.count;index++)if(viewController==self.regularTabs[index].viewController)return GSSelectGoogleTab(self,(NSInteger)index);
+ SEL viewControllerSelector=NSSelectorFromString(@"viewController");
+ id searchViewController=[self.searchTab respondsToSelector:viewControllerSelector]?((id(*)(id,SEL))objc_msgSend)(self.searchTab,viewControllerSelector):nil;
+ if(viewController==searchViewController){[self forwardSearch];return NO;}
+ for(NSUInteger index=0;index<self.regularTabs.count;index++){
+  id tab=self.regularTabs[index];id candidate=[tab respondsToSelector:viewControllerSelector]?((id(*)(id,SEL))objc_msgSend)(tab,viewControllerSelector):nil;
+  if(viewController==candidate)return GSSelectGoogleTab(self,(NSInteger)index);
+ }
  return YES;
 }
 - (void)forwardSearch{
