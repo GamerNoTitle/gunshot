@@ -2,70 +2,113 @@
 
 Enable `GoToHP > Appearance > Google Photos · Liquid Glass` on iOS 26+.
 The option defaults to off. Google Photos 7.92.0 is the audited host; later
-versions must pass the same method contracts and live view-hierarchy checks.
-Both targets are validated before either is changed. Exported diagnostics include
-`bottomBarGlass` with availability, attached-bar count and a skip reason.
-`attached` reports view installation, not a verified rendering result.
+versions must pass the same runtime contracts and live hierarchy checks.
+Exported diagnostics include `bottomBarGlass` with availability, attached-bar
+count, visible overlay count and a skip reason.
 
-The visible left navigation is now owned by a real UIKit `UITabBarController`
-rather than a standalone `UITabBar`. This distinction matters on iOS 26: the
-controller is the system component that configures the floating Liquid Glass tab
-presentation. A standalone `UITabBar` can show the lens interaction while still
-using the much thinner compact bar geometry seen in the broken device build.
-Gunshot keeps the controller in `UITabBarControllerModeTabBar`, embeds its view
-as a child of Google Photos' `PHSTabBarController`, and lets UIKit own the outer
-floating platter, selected-tab lens and pressed/held refraction. After the
-controller performs its system layout, the controller-owned `UITabBar` is sized
-to the Google Photos floating-tab viewport so its visible pill reaches the same
-bottom edge as the Search button without drawing a second glass layer.
+## Why the native controller must be independent
 
-Google Photos' original `PHSSegmentedControl` stays in its original `UIStackView`
-as the navigation backend, but is made visually/accessibility-inactive while the
-UIKit controller mirrors its selection. `GSPhotosGlassPair` is a
-`UITabBarControllerDelegate`; selecting a tab writes the corresponding
-`selectedSegmentIndex`. On-device 7.92.0 builds do not all agree with the static
-analysis about whether that setter emits `UIControlEventValueChanged`, so
-`GSPhotosTabBarEventBridge.m` observes the setter call and emits the event only
-when the host did not. A changed tab therefore produces exactly one navigation
-event on either behavior; tapping the already-selected tab produces none.
+The visible navigation is a real UIKit `UITabBarController`, not a hand-drawn
+capsule and not a standalone `UITabBar`. UIKit therefore owns the floating
+Liquid Glass platter, the selected-tab lens, press/hold refraction, layout and the
+semantic trailing Search tab.
 
-The visible search control is a separate sibling `UIButton` built from
-`UIButtonConfiguration.glassButtonConfiguration` and forwards `TouchUpInside`
-to the untouched Google `M3CButton`. The original segmented and search controls
-remain in Google's stack, so disabling the feature removes the child tab
-controller and Search proxy and restores their saved
-alpha/interactivity/accessibility state; native targets, gestures, colors,
-shadows and Material state are never rewritten by the renderer.
+It is intentionally **not** inserted into Google Photos'
+`PHSTabBarController.childViewControllers`. Device validation on iOS 27 beta
+showed that Photos treats child controllers as app destinations: inserting a
+stock `UITabBarController` caused Google code to send it the private selector
+`destination` and terminate with
+`-[UITabBarController destination]: unrecognized selector`.
 
-Google Photos ships with `UIDesignRequiresCompatibility=true`, which suppresses
-real Liquid Glass for the whole process. When this option is enabled, Gunshot
-writes `com.apple.SwiftUI.IgnoreSolariumOptOut=true` before `UIApplicationMain`
-on the next launch so UIKit uses the iOS 26 design while keeping the host
-Info.plist unchanged. Changing the option therefore requires one Google Photos
+Gunshot instead creates a transparent `UIWindow` attached to the same
+`UIWindowScene` and uses the native `UITabBarController` as that window's root.
+This gives UIKit a normal full-screen container, which is important because the
+previous constrained/standalone experiments produced the compact, too-thin tab
+platter. The overlay never becomes a Google child controller and the native
+`tabBar.frame` is not manually stretched.
+
+The overlay window only participates in hit-testing over the native tab bar
+(with a small touch margin). Everywhere else it returns `nil`, so the underlying
+Google Photos window keeps receiving gestures and controls normally. Visibility,
+appearance and scene geometry are mirrored from the host window; the overlay is
+hidden when the source bottom bar is hidden or the app resigns active.
+
+## Native tab model
+
+The controller uses the modern tab model:
+
+- three `UITab` instances for Photos, Collections and Create;
+- one `UISearchTab` as the fourth tab;
+- `UITabBarControllerModeTabBar`;
+- `UISearchTab.automaticallyActivatesSearch = NO` because Google Photos still
+  owns the actual search destination.
+
+`UISearchTab` is used instead of a custom search `UIButton` so UIKit can give the
+search affordance its semantic pinned/trailing placement and system Liquid Glass
+presentation. Selecting Search is intercepted and forwarded to Google's original
+`M3CButton` `TouchUpInside` action. Selecting one of the regular native tabs
+writes the corresponding `PHSSegmentedControl.selectedSegmentIndex`.
+
+Google Photos' original `PHSSegmentedControl` and `M3CButton` remain in the
+original `UIStackView` as navigation/action backends. While the option is active
+they are visually, interactively and accessibility hidden, but their target/action
+registrations, gestures and Google-owned subviews are not rewritten. Disabling
+the option tears down the overlay window and restores the saved source state.
+
+Some 7.92.0 variants emit `UIControlEventValueChanged` from
+`setSelectedSegmentIndex:` and some device validation did not. Tab forwarding
+therefore temporarily observes that event around the setter and synthesizes one
+only when the host did not emit it. Programmatic Google selection is mirrored
+back to `UITabBarController.selectedTab`.
+
+## Compatibility opt-in
+
+The supplied Google Photos 7.92.0 IPA reports:
+
+- `CFBundleShortVersionString = 7.92.0`;
+- `CFBundleVersion = 7.92.977090216`;
+- `MinimumOSVersion = 18.0`;
+- `DTSDKName = iphoneos26.4`;
+- `UIDesignRequiresCompatibility = true`.
+
+The compatibility flag suppresses the new system design for the process. When
+the option is enabled, Gunshot writes
+`com.apple.SwiftUI.IgnoreSolariumOptOut=true` before `UIApplicationMain` on the
+next launch so UIKit can render the current Liquid Glass design without modifying
+the host Info.plist. Changing the option therefore requires a Google Photos
 restart.
 
-7.92.0 static evidence (hashes and method ABIs: `objc/manifest.json` and indexes):
+Static strings in the supplied 7.92.0 executable also confirm the audited host
+surface (`PHSTabBarController`, `floatingBottomTabBar`,
+`floatingSegmentedControl`, `floatingSearchButton`, `createFloatingSearchButton`)
+and multiple `destination` selectors/methods. The production gate additionally
+checks exact Objective-C ABIs for the methods it calls before attaching anything.
 
-- `PHSTabBarController.createFloatingSearchButton` at `0x10005c46c` calls
-  `phs_brandIconTonalRound`, assigns the search image/accessibility label, and
-  registers a `TouchUpInside` target.
-- `PHSSegmentedControl.numberOfSegments` is `q16@0:8`,
-  `selectedSegmentIndex` is `q16@0:8`, and `setSelectedSegmentIndex:` is
-  `v24@0:8q16` in the supplied 7.92.0 image.
-- Static analysis suggested that `setSelectedSegmentIndex:` emits control event
-  `0x1000` (`UIControlEventValueChanged`) after a changed selection. Device
-  validation found builds where only the index changed, which is why the runtime
-  bridge measures the actual behavior instead of relying on either assumption.
+## Regression coverage
 
-The existing UIKit smoke keeps `UIDesignRequiresCompatibility=true`, pre-seeds
-the same launch-time rollout override before `UIApplicationMain`, and then uses
-a real child `UITabBarController` plus the iOS 26 glass button API with fake
-Photos classes. It is not an injected Google Photos device test. Device
-validation must cover opt-in/out, tab selection, Search, light/dark appearance,
-rotation, press-and-hold interaction and returning from a backgrounded app. No
-additional build target or workflow is required.
+The UIKit smoke deliberately makes the fake Google segmented control only 44 pt
+high while Search remains 56 pt. It verifies that the visible controller lives in
+an independent full-screen scene window instead of inheriting that compact
+geometry. It also checks:
+
+- Google `childViewControllers` does not change;
+- there are three regular `UITab`s plus one `UISearchTab`;
+- Search is semantic and does not auto-activate its own search controller;
+- the overlay only intercepts touches in the native tab-bar region;
+- tab routing fires the Google backend exactly once;
+- Search forwards to the original button;
+- programmatic Google selection synchronizes the native selected tab;
+- hiding the Google bar hides the overlay;
+- disabling restores the original controls and removes the overlay root.
+
+The simulator smoke is not a substitute for injected-device validation. Device
+validation should cover launch, all four controls, selected/unselected press and
+hold, light/dark appearance, rotation, background/foreground transitions and
+presented full-screen flows.
 
 Apple API references:
 - https://developer.apple.com/videos/play/wwdc2025/284/
+- https://developer.apple.com/videos/play/wwdc2024/10147/
 - https://developer.apple.com/documentation/uikit/uitabbarcontroller
-- https://developer.apple.com/documentation/uikit/uibuttonconfiguration/glassbuttonconfiguration
+- https://developer.apple.com/documentation/uikit/uitab
+- https://developer.apple.com/documentation/uikit/uisearchtab
