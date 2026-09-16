@@ -266,9 +266,9 @@ jobs:
         run: |
           cp artifacts/gotohp-tweak-rootless/*.deb gotohp-tweak-rootless.deb
           cp artifacts/gotohp-tweak-rootful/*.deb gotohp-tweak-rootful.deb
-          cp artifacts/gotohp-tweak-jailed/jailed/*.deb gotohp-tweak-jailed.deb
-          cp artifacts/gotohp-tweak-jailed/jailed/GunshotJailed.dylib GunshotJailed.dylib
-          cp artifacts/gotohp-tweak-jailed/jailed/ThirdPartyNotices.txt ThirdPartyNotices.txt
+          cp artifacts/gotohp-tweak-jailed/*.deb gotohp-tweak-jailed.deb
+          cp artifacts/gotohp-tweak-jailed/GunshotJailed.dylib GunshotJailed.dylib
+          cp artifacts/gotohp-tweak-jailed/ThirdPartyNotices.txt ThirdPartyNotices.txt
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
