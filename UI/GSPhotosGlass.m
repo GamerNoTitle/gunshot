@@ -163,7 +163,7 @@ static BOOL GSControllerTreeHasPresentedOverlay(UIViewController *controller,UIW
  if(!controller)return NO;
  UIViewController *presented=controller.presentedViewController;
  if(presented&&!presented.isBeingDismissed){
-  if(!presented.isViewLoaded||!presented.view.hidden&&presented.view.alpha>0.01&&(presented.view.window==hostWindow||presented.view.window==nil))return YES;
+  if(!presented.isViewLoaded||(!presented.view.hidden&&presented.view.alpha>0.01&&(presented.view.window==hostWindow||presented.view.window==nil)))return YES;
  }
  for(UIViewController *child in controller.childViewControllers)if(GSControllerTreeHasPresentedOverlay(child,hostWindow))return YES;
  return NO;
