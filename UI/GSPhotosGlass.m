@@ -12,6 +12,7 @@ static NSHashTable *GSControllers,*GSPairs;
 static NSString *GSLastSkip;
 
 @class GSPhotosGlassPair;
+static void GSRefreshOverlayVisibility(GSPhotosGlassPair *pair);
 
 @interface GSPhotosGlassValueChangeProbe : NSObject
 @property(nonatomic) BOOL fired;
@@ -23,11 +24,26 @@ static NSString *GSLastSkip;
 
 @interface GSPhotosGlassOverlayWindow : UIWindow
 @property(nonatomic,weak) UITabBarController *tabController;
+@property(nonatomic,weak) GSPhotosGlassPair *pair;
+@property(nonatomic) BOOL contentSuppressed;
+@property(nonatomic) BOOL refreshScheduled;
+- (void)scheduleVisibilityRefresh;
 @end
 @implementation GSPhotosGlassOverlayWindow
+- (void)scheduleVisibilityRefresh{
+ if(self.refreshScheduled)return;self.refreshScheduled=YES;
+ __weak GSPhotosGlassOverlayWindow *weakSelf=self;
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.05*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+  GSPhotosGlassOverlayWindow *strongSelf=weakSelf;if(!strongSelf)return;strongSelf.refreshScheduled=NO;
+  GSPhotosGlassPair *pair=strongSelf.pair;if(pair)GSRefreshOverlayVisibility(pair);
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.20*NSEC_PER_SEC)),dispatch_get_main_queue(),^{GSPhotosGlassPair *later=weakSelf.pair;if(later)GSRefreshOverlayVisibility(later);});
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.50*NSEC_PER_SEC)),dispatch_get_main_queue(),^{GSPhotosGlassPair *later=weakSelf.pair;if(later)GSRefreshOverlayVisibility(later);});
+ });
+}
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event{
+ [self scheduleVisibilityRefresh];
  UITabBar *tabBar=self.tabController.tabBar;
- if(self.hidden||self.alpha<=0.01||!self.userInteractionEnabled||!tabBar||tabBar.hidden||tabBar.alpha<=0.01||!tabBar.window)return NO;
+ if(self.hidden||self.alpha<=0.01||!self.userInteractionEnabled||self.contentSuppressed||self.tabController.view.hidden||!tabBar||tabBar.hidden||tabBar.alpha<=0.01||!tabBar.window)return NO;
  CGRect hitFrame=[tabBar convertRect:tabBar.bounds toView:self];
  hitFrame=CGRectInset(hitFrame,-12.0,-12.0);
  return CGRectContainsPoint(hitFrame,point);
@@ -121,6 +137,61 @@ static NSString *GSUnavailableReason(void){
 }
 BOOL GSPhotosGlassAvailable(void){return GSUnavailableReason()==nil;}
 
+static BOOL GSViewVisibleInHostWindow(UIView *view,UIWindow *hostWindow){
+ if(!view||!hostWindow||view.window!=hostWindow)return NO;
+ for(UIView *node=view;node&&node!=hostWindow;node=node.superview)if(node.hidden||node.alpha<=0.01)return NO;
+ CGRect sourceRect=[view convertRect:view.bounds toView:hostWindow];
+ if(CGRectIsNull(sourceRect)||CGRectIsEmpty(sourceRect))return NO;
+ CGRect visibleRect=CGRectIntersection(sourceRect,hostWindow.bounds);
+ return !CGRectIsNull(visibleRect)&&!CGRectIsEmpty(visibleRect)&&CGRectGetWidth(visibleRect)>1.0&&CGRectGetHeight(visibleRect)>1.0;
+}
+
+static BOOL GSHostPointStillBelongsToBar(GSPhotosGlassPair *pair,UIView *source,UIWindow *hostWindow){
+ if(!source||!pair.bar||source.window!=hostWindow)return NO;
+ CGPoint point=[source convertPoint:CGPointMake(CGRectGetMidX(source.bounds),CGRectGetMidY(source.bounds)) toView:hostWindow];
+ if(!CGRectContainsPoint(hostWindow.bounds,point))return NO;
+ UIView *hit=[hostWindow hitTest:point withEvent:nil];
+ return hit&&(hit==pair.bar||[hit isDescendantOfView:pair.bar]);
+}
+
+static BOOL GSBarIsFrontmost(GSPhotosGlassPair *pair,UIWindow *hostWindow){
+ if(!GSViewVisibleInHostWindow(pair.bar,hostWindow))return NO;
+ return GSHostPointStillBelongsToBar(pair,pair.segments,hostWindow)&&GSHostPointStillBelongsToBar(pair,pair.search,hostWindow);
+}
+
+static BOOL GSControllerTreeHasPresentedOverlay(UIViewController *controller,UIWindow *hostWindow){
+ if(!controller)return NO;
+ UIViewController *presented=controller.presentedViewController;
+ if(presented&&!presented.isBeingDismissed){
+  if(!presented.isViewLoaded||(!presented.view.hidden&&presented.view.alpha>0.01&&(presented.view.window==hostWindow||presented.view.window==nil)))return YES;
+ }
+ for(UIViewController *child in controller.childViewControllers)if(GSControllerTreeHasPresentedOverlay(child,hostWindow))return YES;
+ return NO;
+}
+
+static BOOL GSHostSourceVisible(GSPhotosGlassPair *pair,UIWindow *hostWindow){
+ if(!pair||!hostWindow||UIApplication.sharedApplication.applicationState!=UIApplicationStateActive)return NO;
+ if(pair.controller.view.window!=hostWindow||pair.controller.view.hidden||pair.controller.view.alpha<=0.01)return NO;
+ if(pair.bar.window!=hostWindow||pair.bar.hidden||pair.bar.alpha<=0.01)return NO;
+ if(GSControllerTreeHasPresentedOverlay(hostWindow.rootViewController,hostWindow))return NO;
+ return GSBarIsFrontmost(pair,hostWindow);
+}
+
+static void GSApplyOverlayVisibility(GSPhotosGlassPair *pair,BOOL visible){
+ if(!pair.overlayWindow||!pair.nativeTabController)return;
+ BOOL active=UIApplication.sharedApplication.applicationState==UIApplicationStateActive;
+ pair.overlayWindow.hidden=!active;
+ pair.overlayWindow.contentSuppressed=!visible;
+ pair.nativeTabController.view.hidden=!visible;
+ if(visible){[pair.nativeTabController.view setNeedsLayout];[pair.nativeTabController.view layoutIfNeeded];}
+}
+
+static void GSRefreshOverlayVisibility(GSPhotosGlassPair *pair){
+ if(!pair||pair.changing||!pair.hostWindow||!pair.overlayWindow||!pair.nativeTabController)return;
+ BOOL visible=GSHostSourceVisible(pair,pair.hostWindow);GSApplyOverlayVisibility(pair,visible);
+ if(visible)GSLastSkip=nil;
+}
+
 static void GSCollectVisibleLabels(UIView *view,UIControl *segments,NSMutableArray<NSDictionary *> *items){
  if(view!=segments&&(view.hidden||view.alpha<=0.01))return;
  if([view isKindOfClass:UILabel.class]){
@@ -207,7 +278,7 @@ static BOOL GSSelectGoogleTab(GSPhotosGlassPair *pair,NSInteger index){
 
 static void GSTearDownOverlay(GSPhotosGlassPair *pair){
  pair.nativeTabController.delegate=nil;
- pair.overlayWindow.hidden=YES;pair.overlayWindow.tabController=nil;pair.overlayWindow.rootViewController=nil;
+ pair.overlayWindow.pair=nil;pair.overlayWindow.hidden=YES;pair.overlayWindow.tabController=nil;pair.overlayWindow.rootViewController=nil;
  pair.overlayWindow=nil;pair.nativeTabController=nil;pair.regularTabs=nil;pair.searchTab=nil;pair.hostWindow=nil;
 }
 
@@ -218,10 +289,10 @@ static BOOL GSEnsureOverlay(GSPhotosGlassPair *pair,UIWindow *hostWindow){
  UITabBarController *tabs=GSCreateNativeTabController(pair);if(!tabs)return NO;
  GSPhotosGlassOverlayWindow *overlay=[[GSPhotosGlassOverlayWindow alloc]initWithWindowScene:hostWindow.windowScene];
  overlay.backgroundColor=UIColor.clearColor;overlay.opaque=NO;overlay.userInteractionEnabled=YES;overlay.windowLevel=hostWindow.windowLevel+1.0;
- overlay.frame=hostWindow.windowScene.coordinateSpace.bounds;overlay.rootViewController=tabs;overlay.tabController=tabs;
+ overlay.frame=hostWindow.windowScene.coordinateSpace.bounds;overlay.rootViewController=tabs;overlay.tabController=tabs;overlay.pair=pair;
  overlay.tintColor=hostWindow.tintColor;overlay.overrideUserInterfaceStyle=hostWindow.overrideUserInterfaceStyle;
  pair.hostWindow=hostWindow;pair.nativeTabController=tabs;pair.overlayWindow=overlay;
- overlay.hidden=NO;[tabs.view setNeedsLayout];[tabs.view layoutIfNeeded];return YES;
+ overlay.hidden=NO;overlay.contentSuppressed=NO;tabs.view.hidden=NO;[tabs.view setNeedsLayout];[tabs.view layoutIfNeeded];return YES;
 }
 
 static void GSRestore(GSPhotosGlassPair *pair){
@@ -249,10 +320,8 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  pair.overlayWindow.windowLevel=hostWindow.windowLevel+1.0;
  pair.overlayWindow.frame=hostWindow.windowScene.coordinateSpace.bounds;
  pair.overlayWindow.tintColor=hostWindow.tintColor;pair.overlayWindow.overrideUserInterfaceStyle=hostWindow.overrideUserInterfaceStyle;
- BOOL sourceVisible=UIApplication.sharedApplication.applicationState==UIApplicationStateActive&&
-    pair.bar.window==hostWindow&&!pair.bar.hidden&&pair.bar.alpha>0.01&&!pair.controller.view.hidden&&pair.controller.view.alpha>0.01;
- pair.overlayWindow.hidden=!sourceVisible;GSSyncTabSelection(pair);
- if(sourceVisible){[pair.nativeTabController.view setNeedsLayout];[pair.nativeTabController.view layoutIfNeeded];}
+ BOOL sourceVisible=GSHostSourceVisible(pair,hostWindow);
+ GSApplyOverlayVisibility(pair,sourceVisible);GSSyncTabSelection(pair);
  pair.changing=NO;if(sourceVisible)GSLastSkip=nil;return sourceVisible;
 }
 
@@ -276,8 +345,7 @@ static BOOL GSLayoutNativeControls(GSPhotosGlassPair *pair){
  return YES;
 }
 - (void)forwardSearch{
- if(!self.search)return;self.overlayWindow.hidden=YES;[self.search sendActionsForControlEvents:UIControlEventTouchUpInside];
- dispatch_async(dispatch_get_main_queue(),^{GSLayoutNativeControls(self);});
+ if(!self.search)return;GSApplyOverlayVisibility(self,NO);[self.search sendActionsForControlEvents:UIControlEventTouchUpInside];[self.overlayWindow scheduleVisibilityRefresh];
 }
 @end
 
@@ -333,7 +401,7 @@ void GSSetPhotosGlass(BOOL enabled){
 NSDictionary *GSPhotosGlassSnapshot(void){
  if(!NSThread.isMainThread){__block NSDictionary *snapshot;dispatch_sync(dispatch_get_main_queue(),^{snapshot=GSPhotosGlassSnapshot();});return snapshot;}
  NSUInteger attached=0,visible=0;
- for(GSPhotosGlassPair *pair in GSPairs.allObjects)if(pair.overlayWindow&&pair.nativeTabController&&pair.segments.superview==pair.bar&&pair.search.superview==pair.bar){attached++;if(!pair.overlayWindow.hidden)visible++;}
+ for(GSPhotosGlassPair *pair in GSPairs.allObjects)if(pair.overlayWindow&&pair.nativeTabController&&pair.segments.superview==pair.bar&&pair.search.superview==pair.bar){attached++;if(!pair.overlayWindow.hidden&&!pair.overlayWindow.contentSuppressed&&!pair.nativeTabController.view.hidden)visible++;}
  NSString *unavailable=GSUnavailableReason();
  return @{@"enabled":@(GSPhotosGlassEnabled()),@"activeThisLaunch":@(GSPhotosGlassActiveThisLaunch()),@"available":@(unavailable==nil),@"hooksInstalled":@(GSInstalled),
   @"designCompatibilityOverride":@(GSDesignOverrideApplied),@"restartRequired":@(GSRestartRequired),@"controllersSeen":@(GSControllers.count),@"attachedBars":@(attached),@"visibleOverlays":@(visible),
