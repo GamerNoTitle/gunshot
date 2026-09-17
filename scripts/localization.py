@@ -44,7 +44,7 @@ if __name__ == '__main__':
     content = generate()
     output = ROOT / 'Shared/GSLocalization.generated.h'
     if args.check:
-        assert output.read_text() == content, 'Run python3 scripts/localization.py'
+        assert output.read_text(encoding="utf8") == content, 'Run python3 scripts/localization.py'
         print('PASS localization coverage, format arguments and embedded catalog')
     else:
         output.write_text(content, encoding="utf8")
