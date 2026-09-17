@@ -75,8 +75,8 @@
 }
 - (void)chooseLanguage{
  UIAlertController *sheet=[UIAlertController alertControllerWithTitle:GSL(@"Language") message:nil preferredStyle:UIAlertControllerStyleActionSheet];
- NSArray *codes=@[@"system",@"ja",@"en"],*names=@[GSL(@"System default"),GSL(@"Japanese"),@"English"];
- for(NSUInteger i=0;i<codes.count;i++){NSString *code=codes[i];NSString *title=[code isEqual:GSLanguageOverride()]?[@"✓ " stringByAppendingString:names[i]]:names[i];
+  NSArray *codes=@[@"system",@"ja",@"zh-hans",@"vi",@"en"], *names=@[GSL(@"System default"),GSL(@"Japanese"),GSL(@"Simplified Chinese"),GSL(@"Vietnamese"),@"English"]; 
+  for(NSUInteger i=0;i<codes.count;i++){NSString *code=codes[i];NSString *title=[code isEqual:GSLanguageOverride()]?[@"✓ " stringByAppendingString:names[i]]:names[i];
   [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){GSSetLanguage(code);[self updateNavigationLabels];[self reloadTablePreservingPosition];[self refresh];}]];
  }
  [sheet addAction:[UIAlertAction actionWithTitle:GSL(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];[self sheet:sheet];
@@ -238,7 +238,11 @@
   cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
   if(control==17)cell.detailTextLabel.text=GSL(@"Upload an entire album; browse folders to choose an album.");
   if(control==18){BOOL active=[GSBatchImportSnapshot()[@"active"]boolValue];cell.textLabel.textColor=active?UIColor.systemRedColor:UIColor.secondaryLabelColor;cell.accessoryType=UITableViewCellAccessoryNone;cell.detailTextLabel.text=GSL(@"Stop after the current item. Queued uploads continue.");}
-  if(control==15)cell.detailTextLabel.text=[GSLanguageOverride()isEqual:@"system"]?GSL(@"System default"):[GSLanguageOverride()isEqual:@"ja"]?GSL(@"Japanese"):@"English";
+  if(control==15){
+  NSString *code=GSLanguageOverride();
+  NSDictionary *names=@{@"system":GSL(@"System default"),@"ja":GSL(@"Japanese"),@"zh-hans":GSL(@"Simplified Chinese"),@"vi":GSL(@"Vietnamese"),@"en":@"English"};
+  cell.detailTextLabel.text=names[code]?:@"English";
+  }
   if(control==0)cell.detailTextLabel.text=[self qualityTitle:self.options[@"quality"]];
   if(control==1)cell.detailTextLabel.text=[NSString stringWithFormat:GSL(@"Concurrent uploads: %@"),self.options[@"concurrent"]?:@1];
   if(control==2)cell.detailTextLabel.text=[NSString stringWithFormat:GSL(@"Retry limit: %@"),self.options[@"retries"]?:@3];
