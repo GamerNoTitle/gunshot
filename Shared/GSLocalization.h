@@ -6,8 +6,14 @@
 // Sideloadly or LiveContainer injects only the dylib into the host application.
 static inline NSString *GSLanguageForPreferences(NSArray<NSString *> *languages) {
  for(NSString *language in languages){
-  NSString *base=[[[language stringByReplacingOccurrencesOfString:@"_" withString:@"-"] componentsSeparatedByString:@"-"] firstObject].lowercaseString;
-  if(GSLocalizationCatalogs()[base])return base;
+  NSArray<NSString *> *parts=[[[language stringByReplacingOccurrencesOfString:@"_" withString:@"-"]lowercaseString]componentsSeparatedByString:@"-"];
+  for(NSUInteger length=parts.count;length>0;length--){
+   NSString *tag=[[parts subarrayWithRange:NSMakeRange(0,length)]componentsJoinedByString:@"-"];
+   if(GSLocalizationCatalogs()[tag])return tag;
+  }
+  // Legacy zh-CN without script
+  if(parts.count==2&&[parts[0]isEqual:@"zh"]&&[parts[1]isEqual:@"cn"]&&GSLocalizationCatalogs()[@"zh-hans"])
+   return @"zh-hans";
  }
  return @"en";
 }
