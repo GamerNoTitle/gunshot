@@ -108,6 +108,7 @@
   "Reopen the profile menu to update its language.": "重新打开资料页以更新语言",
   "Done": "完成",
   "Japanese": "日语",
+  "Simplified Chinese": "简体中文",
   "Show unlimited storage": "显示无限存储空间",
   "Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged.": "重新打开资料页以应用更改。无限存储空间只会修改显示情况，账户自身的存储空间大小限制和上传的图片画质不会被改变",
   "GoToHP daemon connection failed.": "无法连接到 GoToHP 守护进程",
