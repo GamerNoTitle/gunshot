@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def generate():
-    catalogs = {p.stem: json.loads(p.read_text()) for p in sorted((ROOT / 'Localization').glob('*.json'))}
+    catalogs = {p.stem: json.loads(p.read_text(encoding="utf8")) for p in sorted((ROOT / 'Localization').glob('*.json'))}
     english = catalogs['en']
     assert english and all(k == v for k, v in english.items()), 'English keys must equal their fallback text'
     tokens = lambda s: re.findall(r'%(?:\d+\$)?(?:lu|lld|ld|@|d|u|f|%)', s)
@@ -20,7 +20,7 @@ def generate():
             assert tokens(key) == tokens(value), f'{language}: format arguments differ: {key}'
     for folder in ['UI', 'Shared', 'Jailed']:
         for path in (ROOT / folder).glob('*.m'):
-            source = path.read_text()
+            source = path.read_text(encoding="utf8")
             assert not re.search(r'@"[^"\n]*[\u3040-\u9fff]', source), f'{path}: hardcoded Japanese'
             for literal in re.findall(r'GSL\(@("(?:[^"\\]|\\.)*")\)', source):
                 assert json.loads(literal) in english, f'{path}: unknown translation {literal}'
@@ -44,7 +44,7 @@ if __name__ == '__main__':
     content = generate()
     output = ROOT / 'Shared/GSLocalization.generated.h'
     if args.check:
-        assert output.read_text() == content, 'Run python3 scripts/localization.py'
+        assert output.read_text(encoding="utf8") == content, 'Run python3 scripts/localization.py'
         print('PASS localization coverage, format arguments and embedded catalog')
     else:
-        output.write_text(content)
+        output.write_text(content, encoding="utf8")

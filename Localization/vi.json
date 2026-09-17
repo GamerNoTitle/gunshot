@@ -108,6 +108,8 @@
   "Reopen the profile menu to update its language.": "Mở lại menu hồ sơ để cập nhật ngôn ngữ.",
   "Done": "Xong",
   "Japanese": "Tiếng Nhật",
+  "Simplified Chinese": "Tiếng Trung giản thể",
+  	"Vietnamese": "Tiếng Việt",
   "Show unlimited storage": "Hiển thị bộ nhớ không giới hạn",
   "Reopen the profile menu to apply changes. Unlimited storage affects only the display; account limits and upload quality stay unchanged.": "Mở lại menu hồ sơ để áp dụng thay đổi. Bộ nhớ không giới hạn chỉ ảnh hưởng đến việc hiển thị; giới hạn tài khoản và chất lượng tải lên không thay đổi.",
   "GoToHP daemon connection failed.": "Kết nối daemon GoToHP không thành công.",
